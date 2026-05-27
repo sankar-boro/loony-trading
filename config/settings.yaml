@@ -160,7 +160,7 @@ india_market:
 
 notifications:
   telegram:
-    enabled: false
+    enabled: true              # set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID in .env
     bot_token: "${TELEGRAM_BOT_TOKEN}"
     chat_id: "${TELEGRAM_CHAT_ID}"
   email:

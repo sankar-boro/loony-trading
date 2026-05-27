@@ -93,7 +93,18 @@ DEFAULT_SYMBOLS = [
     "SBIN", "BAJFINANCE", "AXISBANK",
 ]
 
-STATE_FILE = ROOT / "data" / "live_positions.json"
+STATE_FILE   = ROOT / "data" / "live_positions.json"
+JOURNAL_FILE = ROOT / "logs" / "paper_trades.jsonl"
+
+
+def _journal_log(record: dict) -> None:
+    """Append a trade record to the paper trade journal."""
+    try:
+        JOURNAL_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(JOURNAL_FILE, "a") as f:
+            f.write(json.dumps(record) + "\n")
+    except Exception:
+        pass
 
 _TF_CONFIG = {
     "1d":  ("day",      365),
@@ -321,7 +332,8 @@ class ClosedTrade:
 
 class PaperPortfolio:
     def __init__(self, capital: float, max_positions: int,
-                 risk_per_trade: float = 0.01, trailing_stop_pct: float = 0.02):
+                 risk_per_trade: float = 0.01, trailing_stop_pct: float = 0.02,
+                 alerter=None):
         self.initial_capital = capital
         self.cash = capital
         self.max_positions = max_positions
@@ -331,6 +343,7 @@ class PaperPortfolio:
         self.closed_trades: list[ClosedTrade] = []
         self.signal_log: list[dict] = []
         self._commission = 0.001
+        self._alerter = alerter
 
     @property
     def total_value(self) -> float:
@@ -434,6 +447,11 @@ class PaperPortfolio:
             "strategy": signal.strategy,
             "confidence": signal.confidence,
         })
+        if self._alerter:
+            self._alerter.trade_alert(
+                strategy=signal.strategy, symbol=sym,
+                direction=action.strip(), qty=int(size), price=price,
+            )
         return msg
 
     def _close_position(self, symbol: str, price: float, reason: str) -> str:
@@ -464,6 +482,26 @@ class PaperPortfolio:
             "pnl": pnl,
             "reason": reason,
         })
+        # Append to paper trade journal
+        _journal_log({
+            "ts":          datetime.now().isoformat(),
+            "type":        "close",
+            "symbol":      symbol,
+            "direction":   pos.direction,
+            "strategy":    pos.strategy,
+            "entry_price": pos.entry_price,
+            "exit_price":  exit_price,
+            "size":        pos.size,
+            "pnl":         round(pnl, 2),
+            "reason":      reason,
+            "entry_time":  pos.entry_time,
+            "exit_time":   datetime.now().strftime("%H:%M:%S"),
+        })
+        if self._alerter:
+            self._alerter.trade_alert(
+                strategy=pos.strategy, symbol=symbol,
+                direction="CLOSE", qty=int(pos.size), price=exit_price, pnl=pnl,
+            )
         dir_s = "LONG" if pos.direction == 1 else "SHORT"
         return (f"CLOSE {dir_s} {int(pos.size)} × {symbol} @ ₹{exit_price:,.2f}  "
                 f"P&L:{pnl_s(pnl)}  [{reason}]")
@@ -486,6 +524,68 @@ class PaperPortfolio:
     def win_rate(self) -> float:
         wins = sum(1 for t in self.closed_trades if t.pnl > 0)
         return wins / len(self.closed_trades) * 100 if self.closed_trades else 0.0
+
+
+# ── End-of-day report ────────────────────────────────────────────────────────
+
+DAILY_PNL_FILE = ROOT / "data" / "daily_pnl.jsonl"
+
+
+def _eod_report(portfolio: "PaperPortfolio", alerter) -> None:
+    """Append today's P&L record to daily_pnl.jsonl and send Telegram summary."""
+    wins   = [t for t in portfolio.closed_trades if t.pnl > 0]
+    losses = [t for t in portfolio.closed_trades if t.pnl <= 0]
+
+    # Max intraday drawdown from equity curve approximation
+    equity_points = [portfolio.initial_capital]
+    running = portfolio.initial_capital
+    for t in portfolio.closed_trades:
+        running += t.pnl
+        equity_points.append(running)
+    peak = equity_points[0]
+    max_dd_pct = 0.0
+    for v in equity_points:
+        if v > peak:
+            peak = v
+        dd = (peak - v) / peak * 100 if peak > 0 else 0.0
+        if dd > max_dd_pct:
+            max_dd_pct = dd
+
+    top_sym = ""
+    if portfolio.closed_trades:
+        best = max(portfolio.closed_trades, key=lambda t: t.pnl)
+        top_sym = best.symbol
+
+    record = {
+        "date":          date.today().isoformat(),
+        "realised":      round(portfolio.realised_pnl, 2),
+        "unrealised":    round(portfolio.unrealised_pnl, 2),
+        "trades":        len(portfolio.closed_trades),
+        "wins":          len(wins),
+        "losses":        len(losses),
+        "win_rate":      round(portfolio.win_rate, 1),
+        "max_drawdown_pct": round(max_dd_pct, 2),
+        "top_symbol":    top_sym,
+    }
+
+    try:
+        DAILY_PNL_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(DAILY_PNL_FILE, "a") as f:
+            f.write(json.dumps(record) + "\n")
+    except Exception:
+        pass
+
+    alerter.daily_summary(
+        capital=portfolio.initial_capital,
+        daily_pnl=record["realised"],
+        trade_count=record["trades"],
+        win_rate=record["win_rate"] / 100,
+        drawdown_pct=record["max_drawdown_pct"],
+        top_winners=[f"{t.symbol} ₹{t.pnl:+,.0f}"
+                     for t in sorted(wins, key=lambda x: x.pnl, reverse=True)[:3]],
+        top_losers=[f"{t.symbol} ₹{t.pnl:+,.0f}"
+                    for t in sorted(losses, key=lambda x: x.pnl)[:3]],
+    )
 
 
 # ── State persistence ─────────────────────────────────────────────────────────
@@ -715,11 +815,15 @@ def main():
         print(f"\n{Y}Strategy engine load failed: {e}{E}")
         print(f"  {dim('Signals will not be generated. Only price tracking will run.')}")
 
+    from utils.telegram_alerts import TelegramAlerter
+    alerter = TelegramAlerter()
+
     portfolio = PaperPortfolio(
         capital=args.capital,
         max_positions=args.max_positions,
         risk_per_trade=args.risk_per_trade,
         trailing_stop_pct=0.02,
+        alerter=alerter,
     )
 
     restored = _load_state(portfolio)
@@ -754,6 +858,7 @@ def main():
     session_start = datetime.now().strftime("%H:%M:%S")
     tick_no = 0
     _mis_squaredoff = False     # ensure squareoff fires only once per session
+    _eod_done = False           # ensure EOD report fires only once per session
     _last_refresh: dict[str, float] = {}  # sym → last refresh epoch
     candle_period = _CANDLE_SECONDS.get(interval, 86400)
 
@@ -778,7 +883,15 @@ def main():
     print(f"  Symbols: {', '.join(syms)}")
     print(f"  Capital: ₹{args.capital:,.0f}  •  Max positions: {args.max_positions}")
     print(f"  Tick: {args.tick}s  •  Signal every {args.signal_every} ticks")
+    if alerter.enabled:
+        print(f"  Telegram alerts: {G}enabled{E}")
     print(f"  Press Ctrl+C to stop.\n")
+    alerter.send(
+        f"📊 <b>Paper trade session started</b>\n"
+        f"Capital: ₹{args.capital:,.0f} | Symbols: {', '.join(syms[:6])}"
+        f"{'...' if len(syms) > 6 else ''}\n"
+        f"Timeframe: {args.timeframe} | Max positions: {args.max_positions}"
+    )
     time.sleep(2)
 
     try:
@@ -843,11 +956,17 @@ def main():
             all_events = close_events + signal_events
             next_signal_in = args.signal_every - (tick_no % args.signal_every)
 
-            from utils.timeutils import minutes_to_market_close, is_market_session
+            from utils.timeutils import minutes_to_market_close, is_market_session, now_ist
+            from datetime import time as _dt_time
             if is_market_session():
                 mins_left = minutes_to_market_close()
                 if 0 < mins_left <= 20:
                     all_events = [f"{Y}Market closes in {mins_left} min  (MIS squareoff at 3:14 PM){E}"] + all_events
+
+            # EOD report at 3:35 PM IST — fires once per session
+            if not _eod_done and now_ist().time() >= _dt_time(15, 35):
+                _eod_done = True
+                _eod_report(portfolio, alerter)
 
             _render_dashboard(portfolio, prices, tick_no, next_signal_in,
                                all_events, session_start)
@@ -869,6 +988,8 @@ def main():
         _save_state(portfolio)
         if log_file:
             log_file.close()
+        if not _eod_done:
+            _eod_report(portfolio, alerter)
 
     # Final summary
     print(f"\n{bold('Session ended.')}")

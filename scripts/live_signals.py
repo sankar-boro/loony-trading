@@ -510,6 +510,10 @@ def main():
         print(f"  MLClassifierStrategy disabled for these symbols.")
         print(f"  Run: python main.py --mode train\n")
 
+    from utils.telegram_alerts import TelegramAlerter
+    alerter = TelegramAlerter()
+    _alerted_signals: set[str] = set()   # track (sym, signal_type) to avoid duplicate alerts
+
     def _run_scan():
         from datetime import datetime
         from utils.timeutils import is_market_session, minutes_to_market_close
@@ -541,6 +545,26 @@ def main():
         for res in results:
             _print_row(res, args.all_signals, args.min_confidence,
                        args.buy_only, args.sell_only)
+            # Telegram alert for actionable signals (deduplicated per scan)
+            best = res.get("best")
+            if best and not res.get("error"):
+                from strategies.base import SignalType
+                if best.signal_type in (SignalType.BUY, SignalType.SELL):
+                    sig_key = f"{res['symbol']}:{best.signal_type.value}"
+                    if sig_key not in _alerted_signals and best.confidence >= args.min_confidence:
+                        _alerted_signals.add(sig_key)
+                        sl_s  = f"₹{best.stop_loss:,.2f}"  if best.stop_loss  else "—"
+                        tp_s  = f"₹{best.take_profit:,.2f}" if best.take_profit else "—"
+                        alerter.send(
+                            f"🔔 <b>Signal: {res['symbol']}</b>\n"
+                            f"{best.signal_type.value.upper()} @ ₹{res['ltp']:,.2f}\n"
+                            f"Strategy: {best.strategy} | Conf: {best.confidence:.0%}\n"
+                            f"SL: {sl_s} | TP: {tp_s}"
+                        )
+            elif not res.get("error"):
+                # Clear stale alert dedupe when signal disappears
+                for st in ("buy", "sell"):
+                    _alerted_signals.discard(f"{res['symbol']}:{st}")
         _print_summary(results, elapsed)
         print()
 

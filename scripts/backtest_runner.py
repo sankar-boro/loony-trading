@@ -228,9 +228,54 @@ def _ascii_equity_curve(curve: "np.ndarray", width: int = 70, height: int = 12,
 
 # ── Result display ────────────────────────────────────────────────────────────
 
+def _compute_benchmark(strategy_curve, benchmark_df) -> dict:
+    """
+    Compute alpha, beta, and information ratio vs Nifty 50.
+    strategy_curve : np.ndarray of portfolio values (length N+1)
+    benchmark_df   : DataFrame with 'close' column, same date range
+    """
+    import numpy as np
+
+    if benchmark_df is None or benchmark_df.empty or len(strategy_curve) < 2:
+        return {}
+
+    strat_vals = np.array(strategy_curve, dtype=float)
+    strat_rets = np.diff(strat_vals) / strat_vals[:-1]
+
+    bench_close = benchmark_df["close"].values.astype(float)
+    # Align lengths
+    n = min(len(strat_rets), len(bench_close) - 1)
+    strat_rets  = strat_rets[-n:]
+    bench_rets  = np.diff(bench_close)[-n:] / bench_close[-n-1:-1]
+
+    if len(strat_rets) < 5:
+        return {}
+
+    bench_total_ret  = (bench_close[-1] / bench_close[0] - 1) * 100
+    strat_total_ret  = (strat_vals[-1]  / strat_vals[0]  - 1) * 100
+
+    cov_mat = np.cov(strat_rets, bench_rets)
+    beta    = cov_mat[0, 1] / cov_mat[1, 1] if cov_mat[1, 1] != 0 else 0.0
+    alpha   = strat_total_ret - beta * bench_total_ret
+
+    # Information Ratio = active return / tracking error
+    active_rets = strat_rets - bench_rets
+    te = float(np.std(active_rets)) * (252 ** 0.5) if len(active_rets) > 1 else 0.0
+    ir = (alpha / te) if te != 0 else 0.0
+
+    return {
+        "bench_return_pct": round(bench_total_ret, 2),
+        "strat_return_pct": round(strat_total_ret, 2),
+        "alpha_pct":        round(alpha, 2),
+        "beta":             round(beta, 3),
+        "info_ratio":       round(ir, 3),
+    }
+
+
 def _print_result(result, symbol: str, capital: float,
                   show_trades: bool, show_curve: bool, days: int,
-                  from_date: str, to_date: str):
+                  from_date: str, to_date: str,
+                  benchmark_df=None):
     import numpy as np
 
     m = result.metrics
@@ -250,6 +295,19 @@ def _print_result(result, symbol: str, capital: float,
     print(f"  {'Sortino Ratio':<22}  {m.get('sortino', 0.0):>8.3f}")
     dd_pct = m.get("max_drawdown_pct", 0.0)
     print(f"  {'Max Drawdown':<22}  {red(f'{dd_pct:>+7.2f}%')}")
+
+    # Benchmark comparison
+    bm = _compute_benchmark(curve, benchmark_df)
+    if bm:
+        alpha_pct = bm["alpha_pct"]
+        print()
+        print(f"  {dim('── vs Nifty 50 ─────────────────────────────────────────────────')}")
+        print(f"  {'Nifty 50 Return':<22}  {pct_s(bm['bench_return_pct'])}")
+        print(f"  {'Strategy Return':<22}  {pct_s(bm['strat_return_pct'])}")
+        alpha_str = green(f"{alpha_pct:>+7.2f}%") if alpha_pct > 0 else red(f"{alpha_pct:>+7.2f}%")
+        print(f"  {'Alpha (vs Nifty)':<22}  {alpha_str}")
+        print(f"  {'Beta':<22}  {bm['beta']:>8.3f}")
+        print(f"  {'Information Ratio':<22}  {bm['info_ratio']:>8.3f}")
     print()
 
     # Trade stats
@@ -298,7 +356,8 @@ def _print_result(result, symbol: str, capital: float,
         print()
 
 
-def _print_portfolio_summary(all_results: list[tuple[str, object]], capital: float):
+def _print_portfolio_summary(all_results: list[tuple[str, object]], capital: float,
+                              benchmark_df=None):
     import numpy as np
     if not all_results:
         return
@@ -326,6 +385,19 @@ def _print_portfolio_summary(all_results: list[tuple[str, object]], capital: flo
     avg_ret = sum(r.metrics.get("total_return_pct", 0) for _, r in all_results) / len(all_results)
     print(f"  {'AVERAGE':<14}  {pct_s(avg_ret)}")
     print(f"\n  Hypothetical combined P&L (equal-weight): {pnl_s(total_pnl / len(all_results))}")
+
+    # Benchmark summary row
+    if benchmark_df is not None and not benchmark_df.empty:
+        import numpy as np
+        bc = benchmark_df["close"].values.astype(float)
+        bench_ret = (bc[-1] / bc[0] - 1) * 100 if bc[0] != 0 else 0.0
+        beat = sum(1 for _, r in all_results
+                   if r.metrics.get("total_return_pct", 0) > bench_ret)
+        alpha_col = green(f"{avg_ret - bench_ret:>+7.2f}%") \
+                    if avg_ret > bench_ret else red(f"{avg_ret - bench_ret:>+7.2f}%")
+        print(f"\n  Nifty 50 benchmark return : {pct_s(bench_ret)}")
+        print(f"  Avg strategy alpha        : {alpha_col}")
+        print(f"  Strategies beating Nifty  : {beat}/{len(all_results)}")
     print()
 
 
@@ -410,6 +482,15 @@ def main():
 
     all_results: list[tuple[str, object]] = []
 
+    # Fetch Nifty 50 benchmark once for the same period
+    print(f"  {dim('Fetching Nifty 50 benchmark...')} ", end="", flush=True)
+    benchmark_df = _fetch_ohlcv(token, "NSE_INDEX|Nifty 50", interval, days)
+    if not benchmark_df.empty:
+        print(f"{dim(f'{len(benchmark_df)} bars')}")
+    else:
+        print(f"{Y}unavailable — benchmark comparison disabled{E}")
+        benchmark_df = None
+
     for sym, ikey in resolved:
         print(f"\n  {dim(f'Fetching {sym}...')} ", end="", flush=True)
         t0 = time.perf_counter()
@@ -455,7 +536,8 @@ def main():
                 elapsed = time.perf_counter() - t0
                 print(f"done ({elapsed:.1f}s)")
                 _print_result(result, sym, args.capital, args.trades,
-                               args.equity_curve, days, from_date, to_date)
+                               args.equity_curve, days, from_date, to_date,
+                               benchmark_df=benchmark_df)
 
                 if args.monte_carlo and result.trades:
                     try:
@@ -479,7 +561,7 @@ def main():
             print(f"\n  {Y}Backtest failed for {sym}: {e}{E}")
 
     if len(all_results) > 1:
-        _print_portfolio_summary(all_results, args.capital)
+        _print_portfolio_summary(all_results, args.capital, benchmark_df=benchmark_df)
 
 
 if __name__ == "__main__":
