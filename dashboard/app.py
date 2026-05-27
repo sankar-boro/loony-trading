@@ -2,23 +2,28 @@
 Loony Trading Dashboard
 Run: streamlit run dashboard/app.py
 """
-import sys, os
+import sys
+import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import json
 import time
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-import streamlit as st
 import plotly.graph_objects as go
+import streamlit as st
 from plotly.subplots import make_subplots
-from pathlib import Path
-from datetime import datetime
 
-from config import settings
-from utils.math_utils import sharpe_ratio, max_drawdown, safe_divide
-from data_engine.upstox.instruments import KNOWN_INSTRUMENTS
-from data_engine.upstox.market_hours import is_market_open, minutes_to_close, now_ist
+from config.loader import Settings
+from utils.math_utils import sharpe_ratio, max_drawdown
+from data_engine.upstox.market_hours import (
+    is_market_open, minutes_to_close, now_ist, next_market_open,
+)
+
+# ── Page config ────────────────────────────────────────────────────────────────
 
 st.set_page_config(
     page_title="Loony Trading",
@@ -27,60 +32,48 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Sidebar ────────────────────────────────────────────────────────────────────
-
-with st.sidebar:
-    st.title("⚙️ Loony Trading")
-    market = st.selectbox("Primary Market", ["India (Upstox)", "Crypto (Binance)"])
-    mode   = st.selectbox("Trading Mode", ["paper", "live", "backtest"])
-
-    st.markdown("---")
-    if market == "India (Upstox)":
-        default_symbols = list(KNOWN_INSTRUMENTS.keys())[:10]
-        symbols = st.multiselect("Symbols (NSE)", default_symbols,
-                                  default=["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK"])
-        st.markdown("**F&O**")
-        fo_sym = st.selectbox("F&O Underlying", ["NIFTY50", "NIFTYBANK"])
-    else:
-        symbols = st.multiselect("Crypto Symbols",
-                                  ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT"],
-                                  default=["BTC/USDT", "ETH/USDT"])
-        fo_sym = None
-
-    st.markdown("---")
-    st.markdown("**Risk Controls**")
-    max_risk = st.slider("Max Risk/Trade %", 0.1, 5.0, 1.0, 0.1)
-    max_dd   = st.slider("Max Daily DD %",   1.0, 20.0, 5.0, 0.5)
-
-    refresh_rate = st.slider("Refresh (sec)", 10, 120, 30)
-    auto_refresh = st.checkbox("Auto Refresh", value=True)
-
-    # Market status badge
-    st.markdown("---")
-    if is_market_open():
-        mins = minutes_to_close()
-        st.success(f"🟢 NSE OPEN — {mins} min to close")
-    else:
-        nxt = now_ist()
-        st.error(f"🔴 NSE CLOSED")
-
-# ── Helpers ────────────────────────────────────────────────────────────────────
-
 ROOT = Path(__file__).resolve().parent.parent
+
 _STATE_FILE   = ROOT / "data" / "live_positions.json"
 _EQUITY_FILE  = ROOT / "data" / "equity_curve.jsonl"
 _PAPER_LOG    = ROOT / "logs" / "paper_trades.jsonl"
 _LIVE_LOG     = ROOT / "logs" / "trades.jsonl"
+_DAILY_FILE   = ROOT / "data" / "daily_pnl.jsonl"
+_TOKEN_FILE   = ROOT / "data" / "upstox_token.json"
 
-_BOT_STALE_SECS = 300   # state file older than 5 min → bot is not running
+_BOT_STALE_SECS = 300
+
+PLOTLY_LAYOUT = dict(
+    template="plotly_dark",
+    paper_bgcolor="#0e1117",
+    plot_bgcolor="#0e1117",
+    margin=dict(l=10, r=10, t=50, b=10),
+    font=dict(family="Inter, sans-serif", size=12),
+)
 
 
-def _load_jsonl(path: Path) -> list[dict]:
-    if not path.exists():
-        return []
+# ── Data loading (cached) ──────────────────────────────────────────────────────
+
+@st.cache_data(ttl=10)
+def load_live_state() -> dict | None:
+    if not _STATE_FILE.exists():
+        return None
+    try:
+        state = json.loads(_STATE_FILE.read_text())
+        if time.time() - state.get("saved_at", 0) > _BOT_STALE_SECS:
+            return None
+        return state
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=30)
+def load_equity_curve() -> pd.DataFrame:
+    if not _EQUITY_FILE.exists():
+        return pd.DataFrame()
     records = []
     try:
-        for line in path.read_text().splitlines():
+        for line in _EQUITY_FILE.read_text().splitlines():
             line = line.strip()
             if line:
                 try:
@@ -88,474 +81,819 @@ def _load_jsonl(path: Path) -> list[dict]:
                 except Exception:
                     pass
     except Exception:
-        pass
-    return records
-
-
-def load_live_state() -> dict | None:
-    """Return parsed live_positions.json or None if bot is not running / stale."""
-    if not _STATE_FILE.exists():
-        return None
-    try:
-        state = json.loads(_STATE_FILE.read_text())
-        age = time.time() - state.get("saved_at", 0)
-        if age > _BOT_STALE_SECS:
-            return None
-        return state
-    except Exception:
-        return None
-
-
-def load_equity_curve() -> pd.DataFrame:
-    records = _load_jsonl(_EQUITY_FILE)
+        return pd.DataFrame()
     if not records:
         return pd.DataFrame()
     df = pd.DataFrame(records)
     df["ts"] = pd.to_datetime(df["ts"])
+    return df.set_index("ts").sort_index()
+
+
+@st.cache_data(ttl=30)
+def load_trade_log(live: bool = False) -> pd.DataFrame:
+    path = _LIVE_LOG if live else _PAPER_LOG
+    if not path.exists():
+        return pd.DataFrame()
+    records = []
+    try:
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    r = json.loads(line)
+                    if "pnl" in r:
+                        records.append(r)
+                except Exception:
+                    pass
+    except Exception:
+        return pd.DataFrame()
+    return pd.DataFrame(records) if records else pd.DataFrame()
+
+
+@st.cache_data(ttl=60)
+def load_daily_pnl() -> pd.DataFrame:
+    if not _DAILY_FILE.exists():
+        return pd.DataFrame()
+    records = []
+    try:
+        for line in _DAILY_FILE.read_text().splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    records.append(json.loads(line))
+                except Exception:
+                    pass
+    except Exception:
+        return pd.DataFrame()
+    if not records:
+        return pd.DataFrame()
+    df = pd.DataFrame(records)
+    df["date"] = pd.to_datetime(df["date"])
+    return df.sort_values("date")
+
+
+@st.cache_data(ttl=3600)
+def load_config_weights() -> dict:
+    try:
+        s = Settings()
+        return {
+            "weights":  s.get("strategies.weights") or {},
+            "enabled":  s.get("strategies.enabled") or [],
+            "capital":  s.get("portfolio.initial_capital") or 500_000,
+        }
+    except Exception:
+        return {"weights": {}, "enabled": [], "capital": 500_000}
+
+
+@st.cache_data(ttl=10)
+def get_upstox_token() -> tuple[str, float]:
+    """Returns (token, age_hours). token="" if unavailable."""
+    env_token = os.environ.get("UPSTOX_ACCESS_TOKEN", "").strip()
+    if _TOKEN_FILE.exists():
+        try:
+            d = json.loads(_TOKEN_FILE.read_text())
+            file_token = d.get("access_token", "")
+            age_h = (time.time() - d.get("obtained_at", 0)) / 3600
+            token = env_token or file_token
+            return token, age_h
+        except Exception:
+            pass
+    return env_token, -1.0
+
+
+@st.cache_data(ttl=300)
+def fetch_ohlcv(instrument_key: str, interval: str, days: int) -> pd.DataFrame:
+    token, age = get_upstox_token()
+    if not token or age > 23:
+        return pd.DataFrame()
+    import requests
+    key = instrument_key.replace("|", "%7C").replace(" ", "%20")
+    to_d   = date.today().isoformat()
+    from_d = (date.today() - timedelta(days=days)).isoformat()
+
+    if interval == "day":
+        url = f"https://api.upstox.com/v2/historical-candle/{key}/day/{to_d}/{from_d}"
+    else:
+        url = f"https://api.upstox.com/v2/historical-candle/intraday/{key}/{interval}"
+
+    try:
+        r = requests.get(
+            url,
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+            timeout=10,
+        )
+        if r.status_code != 200:
+            return pd.DataFrame()
+        candles = r.json().get("data", {}).get("candles", [])
+    except Exception:
+        return pd.DataFrame()
+
+    if not candles:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(candles, columns=["ts", "open", "high", "low", "close", "volume", "oi"])
+    df["ts"] = pd.to_datetime(df["ts"])
     df = df.set_index("ts").sort_index()
+    for col in ["open", "high", "low", "close", "volume"]:
+        df[col] = pd.to_numeric(df[col])
     return df
 
 
-def load_trade_log(live: bool = False) -> pd.DataFrame:
-    path = _LIVE_LOG if live else _PAPER_LOG
-    records = _load_jsonl(path)
-    if not records:
-        return pd.DataFrame()
-    pnl_records = [r for r in records if "pnl" in r]
-    return pd.DataFrame(pnl_records) if pnl_records else pd.DataFrame()
+@st.cache_data(ttl=60)
+def fetch_ltp(instrument_keys: tuple[str]) -> dict[str, float]:
+    token, age = get_upstox_token()
+    if not token or age > 23:
+        return {}
+    import requests
+    keys = ",".join(k.replace("|", "%7C").replace(" ", "%20") for k in instrument_keys)
+    try:
+        r = requests.get(
+            f"https://api.upstox.com/v2/market-quote/ltp?instrument_key={keys}",
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+            timeout=8,
+        )
+        if r.status_code != 200:
+            return {}
+        data = r.json().get("data", {})
+        return {k.replace(":", "|"): float(v.get("last_price", 0) or 0)
+                for k, v in data.items()}
+    except Exception:
+        return {}
 
 
-def fake_equity(n: int = 250, start: float = 500_000, drift: float = 0.0008) -> np.ndarray:
-    np.random.seed(42)
-    returns = np.random.normal(drift, 0.012, n)
-    return start * np.cumprod(1 + returns)
+# ── Instrument map ─────────────────────────────────────────────────────────────
+
+IKEYS = {
+    "RELIANCE":   "NSE_EQ|INE002A01018",
+    "TCS":        "NSE_EQ|INE467B01029",
+    "HDFCBANK":   "NSE_EQ|INE040A01034",
+    "INFY":       "NSE_EQ|INE009A01021",
+    "ICICIBANK":  "NSE_EQ|INE090A01021",
+    "SBIN":       "NSE_EQ|INE062A01020",
+    "BAJFINANCE": "NSE_EQ|INE296A01024",
+    "BHARTIARTL": "NSE_EQ|INE397D01024",
+    "KOTAKBANK":  "NSE_EQ|INE237A01028",
+    "LT":         "NSE_EQ|INE018A01030",
+    "AXISBANK":   "NSE_EQ|INE238A01034",
+    "WIPRO":      "NSE_EQ|INE075A01022",
+    "TATAMOTORS": "NSE_EQ|INE155A01022",
+    "HCLTECH":    "NSE_EQ|INE860A01027",
+    "ITC":        "NSE_EQ|INE154A01025",
+    "NIFTY50":    "NSE_INDEX|Nifty 50",
+    "BANKNIFTY":  "NSE_INDEX|Nifty Bank",
+}
+
+TF_INTERVAL = {
+    "1d":  ("day",       365),
+    "1h":  ("60minute",  7),
+    "15m": ("30minute",  2),
+}
 
 
-def candlestick_fig(df: pd.DataFrame, symbol: str,
-                     currency: str = "₹") -> go.Figure:
-    fig = make_subplots(rows=3, cols=1, shared_xaxes=True,
-                        row_heights=[0.58, 0.22, 0.20], vertical_spacing=0.02)
+# ── Plot helpers ───────────────────────────────────────────────────────────────
+
+def candlestick_fig(df: pd.DataFrame, symbol: str) -> go.Figure:
+    fig = make_subplots(
+        rows=3, cols=1, shared_xaxes=True,
+        row_heights=[0.60, 0.20, 0.20], vertical_spacing=0.02,
+        subplot_titles=("", "Volume", "RSI"),
+    )
+
     fig.add_trace(go.Candlestick(
         x=df.index, open=df["open"], high=df["high"],
         low=df["low"], close=df["close"], name=symbol,
         increasing_line_color="#26a69a", decreasing_line_color="#ef5350",
+        increasing_fillcolor="#26a69a", decreasing_fillcolor="#ef5350",
     ), row=1, col=1)
 
-    colors = ["#26a69a" if c >= o else "#ef5350"
-              for c, o in zip(df["close"], df["open"])]
-    fig.add_trace(go.Bar(x=df.index, y=df["volume"],
-                          marker_color=colors, opacity=0.7, name="Volume"), row=2, col=1)
+    vol_colors = ["#26a69a" if c >= o else "#ef5350"
+                  for c, o in zip(df["close"], df["open"])]
+    fig.add_trace(go.Bar(
+        x=df.index, y=df["volume"],
+        marker_color=vol_colors, opacity=0.6, name="Volume", showlegend=False,
+    ), row=2, col=1)
 
-    from feature_engine.indicators import TechnicalIndicators as TI
-    rsi = TI.rsi(df["close"], 14)
-    upper, mid, lower = TI.bollinger_bands(df["close"])
-    ema20 = TI.ema(df["close"], 20)
-    ema50 = TI.ema(df["close"], 50)
+    try:
+        from feature_engine.indicators import TechnicalIndicators as TI
+        rsi   = TI.rsi(df["close"], 14)
+        upper, _, lower = TI.bollinger_bands(df["close"])
+        ema20 = TI.ema(df["close"], 20)
+        ema50 = TI.ema(df["close"], 50)
 
-    fig.add_trace(go.Scatter(x=df.index, y=upper, line=dict(color="rgba(66,135,245,0.4)", width=1),
-                              name="BB Upper", showlegend=False), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=lower, line=dict(color="rgba(66,135,245,0.4)", width=1),
-                              fill="tonexty", fillcolor="rgba(66,135,245,0.05)",
-                              name="BB Band", showlegend=False), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=ema20, line=dict(color="#ff9800", width=1.2),
-                              name="EMA20"), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=ema50, line=dict(color="#ab47bc", width=1.2),
-                              name="EMA50"), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=rsi, name="RSI",
-                              line=dict(color="orange", width=1.5)), row=3, col=1)
-    fig.add_hline(y=70, line_dash="dash", line_color="red",   line_width=0.8, row=3, col=1)
-    fig.add_hline(y=30, line_dash="dash", line_color="green", line_width=0.8, row=3, col=1)
-    fig.add_hline(y=50, line_dash="dot",  line_color="grey",  line_width=0.6, row=3, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=upper,
+            line=dict(color="rgba(66,135,245,0.35)", width=1),
+            name="BB Upper", showlegend=False), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=lower,
+            line=dict(color="rgba(66,135,245,0.35)", width=1),
+            fill="tonexty", fillcolor="rgba(66,135,245,0.04)",
+            name="BB Band", showlegend=False), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=ema20,
+            line=dict(color="#ff9800", width=1.3), name="EMA 20"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=ema50,
+            line=dict(color="#ab47bc", width=1.3), name="EMA 50"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=rsi,
+            line=dict(color="#ffa726", width=1.5), name="RSI", showlegend=False), row=3, col=1)
+        for y, clr in [(70, "#ef5350"), (30, "#26a69a"), (50, "#555")]:
+            fig.add_hline(y=y, line_dash="dash", line_color=clr, line_width=0.8, row=3, col=1)
+    except Exception:
+        pass
 
     fig.update_layout(
-        height=620, title=f"<b>{symbol}</b>",
-        xaxis_rangeslider_visible=False,
-        template="plotly_dark", paper_bgcolor="#0e1117",
-        plot_bgcolor="#0e1117", showlegend=True,
+        height=640, title=f"<b>{symbol}</b>",
+        xaxis_rangeslider_visible=False, showlegend=True,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-        margin=dict(l=10, r=10, t=60, b=10),
+        **PLOTLY_LAYOUT,
     )
-    fig.update_yaxes(tickprefix=currency, row=1, col=1)
+    fig.update_yaxes(tickprefix="₹", row=1, col=1)
     return fig
 
 
-def equity_fig(equity_input, currency: str = "₹",
-               x_vals=None, title: str = "Portfolio Equity & Drawdown") -> go.Figure:
-    if isinstance(equity_input, pd.DataFrame) and not equity_input.empty:
-        equity_arr = equity_input["equity"].values
-        x_vals = equity_input.index
-    else:
-        equity_arr = np.asarray(equity_input)
-    if len(equity_arr) < 2:
-        equity_arr = fake_equity(50)
-        x_vals = None
-    returns = np.diff(equity_arr) / equity_arr[:-1]
-    dd = np.minimum.accumulate(equity_arr / np.maximum.accumulate(equity_arr)) - 1
+def equity_curve_fig(df: pd.DataFrame, initial_capital: float,
+                     title: str = "Equity Curve") -> go.Figure:
+    if df.empty or len(df) < 2:
+        return go.Figure()
+
+    eq  = df["equity"].values
+    ts  = df.index
+    dd  = np.minimum.accumulate(eq / np.maximum.accumulate(eq)) - 1
+
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                        row_heights=[0.7, 0.3], vertical_spacing=0.05)
+                        row_heights=[0.70, 0.30], vertical_spacing=0.04)
+
+    fig.add_hline(y=initial_capital, line_dash="dot",
+                  line_color="rgba(255,255,255,0.2)", row=1, col=1)
+
+    color = "#26a69a" if eq[-1] >= initial_capital else "#ef5350"
     fig.add_trace(go.Scatter(
-        x=x_vals, y=equity_arr, mode="lines",
-        line=dict(color="#26a69a", width=2),
-        fill="tozeroy", fillcolor="rgba(38,166,154,0.08)",
+        x=ts, y=eq, mode="lines",
+        line=dict(color=color, width=2),
+        fill="tozeroy", fillcolor=f"rgba(38,166,154,0.07)" if color == "#26a69a" else "rgba(239,83,80,0.07)",
         name="Equity",
     ), row=1, col=1)
+
     fig.add_trace(go.Scatter(
-        x=x_vals[:-1] if x_vals is not None else None,
-        y=dd[:-1] * 100, mode="lines",
-        fill="tozeroy", fillcolor="rgba(239,83,80,0.12)",
+        x=ts, y=dd * 100, mode="lines",
+        fill="tozeroy", fillcolor="rgba(239,83,80,0.10)",
         line=dict(color="#ef5350", width=1.2),
         name="Drawdown %",
     ), row=2, col=1)
-    fig.update_layout(
-        height=380, title=title,
-        template="plotly_dark", paper_bgcolor="#0e1117",
-        plot_bgcolor="#0e1117", showlegend=True,
-        margin=dict(l=10, r=10, t=50, b=10),
-    )
-    fig.update_yaxes(tickprefix=currency, row=1, col=1)
+
+    fig.update_layout(height=400, title=title, showlegend=False, **PLOTLY_LAYOUT)
+    fig.update_yaxes(tickprefix="₹", row=1, col=1)
     fig.update_yaxes(ticksuffix="%", row=2, col=1)
     return fig
 
 
-def demo_ohlcv(symbol: str, n: int = 180, base: float = 2500.0) -> pd.DataFrame:
-    np.random.seed(hash(symbol) % 100)
-    idx = pd.bdate_range("2024-07-01", periods=n, freq="B")
-    price = base + np.cumsum(np.random.normal(1.5, base * 0.012, n))
-    price = np.maximum(price, base * 0.3)
-    return pd.DataFrame({
-        "open":   price,
-        "high":   price + np.abs(np.random.normal(0, base * 0.008, n)),
-        "low":    price - np.abs(np.random.normal(0, base * 0.008, n)),
-        "close":  price + np.random.normal(0, base * 0.003, n),
-        "volume": np.abs(np.random.normal(1_000_000, 300_000, n)).astype(int),
-    }, index=idx)
+def pnl_bar_fig(df: pd.DataFrame) -> go.Figure:
+    if df.empty:
+        return go.Figure()
+    colors = ["#26a69a" if v >= 0 else "#ef5350" for v in df["realised"]]
+    fig = go.Figure(go.Bar(
+        x=df["date"], y=df["realised"],
+        marker_color=colors, name="Daily P&L",
+    ))
+    fig.add_hline(y=0, line_color="rgba(255,255,255,0.2)", line_width=1)
+    fig.update_layout(height=280, title="Daily Realised P&L",
+                      xaxis_title="Date", yaxis_tickprefix="₹",
+                      **PLOTLY_LAYOUT)
+    return fig
 
 
-# ── Currency & base price by market ───────────────────────────────────────────
-currency   = "₹" if market == "India (Upstox)" else "$"
-base_price = {"RELIANCE": 2900, "TCS": 3800, "HDFCBANK": 1650,
-              "INFY": 1750, "ICICIBANK": 1220}.get(
-              symbols[0] if symbols else "", 2500) if market == "India (Upstox)" else 40000
+def trade_dist_fig(trades: pd.DataFrame) -> go.Figure:
+    if trades.empty or "pnl" not in trades.columns:
+        return go.Figure()
+    pnl = trades["pnl"].dropna().values
+    colors = ["#26a69a" if v >= 0 else "#ef5350" for v in pnl]
+    fig = go.Figure(go.Histogram(
+        x=pnl, nbinsx=30,
+        marker_color="#26a69a", opacity=0.8, name="P&L",
+    ))
+    fig.add_vline(x=0, line_color="rgba(255,255,255,0.4)", line_width=1)
+    fig.update_layout(height=260, title="Trade P&L Distribution",
+                      xaxis_tickprefix="₹", **PLOTLY_LAYOUT)
+    return fig
 
-# ── Main header ────────────────────────────────────────────────────────────────
-st.title("📈 Loony Trading Bot")
-mkt_label = "🇮🇳 Indian Markets (NSE/BSE)" if market == "India (Upstox)" else "🌐 Crypto"
-st.caption(f"{mkt_label} | Mode: **{mode.upper()}** | {now_ist().strftime('%d %b %Y  %H:%M IST')}")
 
-# ── Live state ────────────────────────────────────────────────────────────────
-_live_state  = load_live_state()
-_equity_df   = load_equity_curve()
-_bot_running = _live_state is not None
+# ── Sidebar ────────────────────────────────────────────────────────────────────
 
-if _bot_running:
-    st.success("🟢 Bot running — last heartbeat < 5 min ago")
-else:
-    st.info("⚪ Bot not running — showing historical equity curve (if any)")
+with st.sidebar:
+    st.markdown("## 📈 Loony Trading")
 
-# ── KPI row ────────────────────────────────────────────────────────────────────
-_initial_capital = 500_000 if market == "India (Upstox)" else 10_000
-
-if not _equity_df.empty:
-    equity = _equity_df["equity"].values
-    equity_source = "live"
-else:
-    equity = fake_equity(n=250, start=_initial_capital)
-    equity_source = "demo"
-
-total_return = (equity[-1] - equity[0]) / equity[0] * 100
-dd_val = max_drawdown(equity) * 100
-returns_arr = np.diff(equity) / equity[:-1]
-sr = sharpe_ratio(returns_arr)
-wins_pct = np.mean(returns_arr > 0) * 100
-
-_open_pos = len(_live_state.get("positions", [])) if _live_state else "—"
-_today_pnl = _live_state.get("cash", _initial_capital) - _initial_capital if _live_state else None
-_today_pnl_str = (f"{currency}{_today_pnl:+,.0f}" if _today_pnl is not None else "—")
-
-k1, k2, k3, k4, k5, k6 = st.columns(6)
-k1.metric("Portfolio", f"{currency}{equity[-1]:,.0f}",
-          f"{total_return:+.2f}%  {'(live)' if equity_source == 'live' else '(demo)'}",
-          delta_color="normal" if total_return >= 0 else "inverse")
-k2.metric("Sharpe Ratio", f"{sr:.3f}", delta_color="off")
-k3.metric("Max Drawdown",  f"{dd_val:.2f}%", delta_color="inverse")
-k4.metric("Win Rate",      f"{wins_pct:.1f}%")
-k5.metric("Open Positions", str(_open_pos))
-k6.metric("Today PnL",     _today_pnl_str)
-
-_eq_title = "Portfolio Equity & Drawdown (live)" if equity_source == "live" else "Portfolio Equity & Drawdown (demo)"
-st.plotly_chart(
-    equity_fig(_equity_df if equity_source == "live" else equity, currency, title=_eq_title),
-    use_container_width=True,
-)
-
-# ── Tabs ───────────────────────────────────────────────────────────────────────
-tab_labels = (
-    ["📊 NSE Chart", "📋 Signals", "💼 Portfolio", "📜 Trade History",
-     "⚡ Option Chain", "🔁 Backtest"]
-    if market == "India (Upstox)" else
-    ["📊 Crypto Chart", "📋 Signals", "💼 Portfolio", "📜 Trade History", "🔁 Backtest"]
-)
-tabs = st.tabs(tab_labels)
-
-# ── Tab 0: Chart ───────────────────────────────────────────────────────────────
-with tabs[0]:
-    chart_sym = st.selectbox("Symbol", symbols if symbols else (
-        ["RELIANCE", "TCS", "HDFCBANK"] if market == "India (Upstox)" else ["BTC/USDT"]))
-    tf_choice = st.radio("Timeframe", ["1d", "1h", "15m"], horizontal=True)
-    st.info("Connect Upstox API credentials in config/settings.yaml to load live chart data.")
-    demo_df = demo_ohlcv(chart_sym, n=120 if tf_choice == "1d" else 200, base=base_price)
-    st.plotly_chart(candlestick_fig(demo_df, chart_sym, currency), use_container_width=True)
-
-    # Quick stats below chart
-    last = demo_df.iloc[-1]
-    prev = demo_df.iloc[-2]
-    chg = (last["close"] - prev["close"]) / prev["close"] * 100
-    cs1, cs2, cs3, cs4, cs5 = st.columns(5)
-    cs1.metric("LTP",    f"{currency}{last['close']:.2f}", f"{chg:+.2f}%")
-    cs2.metric("Open",   f"{currency}{last['open']:.2f}")
-    cs3.metric("High",   f"{currency}{last['high']:.2f}")
-    cs4.metric("Low",    f"{currency}{last['low']:.2f}")
-    cs5.metric("Volume", f"{last['volume']:,.0f}")
-
-# ── Tab 1: Signals ─────────────────────────────────────────────────────────────
-with tabs[1]:
-    st.subheader("Strategy Signals — Live View")
-
-    if market == "India (Upstox)":
-        sample_signals = pd.DataFrame([
-            {"Time": "09:45 IST", "Symbol": "RELIANCE", "Strategy": "ema_crossover",
-             "Signal": "🟢 BUY",  "Price": "₹2,912", "SL": "₹2,858", "TP": "₹3,020",
-             "Confidence": 0.83, "Regime": "Trending"},
-            {"Time": "10:15 IST", "Symbol": "HDFCBANK",  "Strategy": "rsi_mean_reversion",
-             "Signal": "🟢 BUY",  "Price": "₹1,648", "SL": "₹1,612", "TP": "₹1,730",
-             "Confidence": 0.71, "Regime": "Ranging"},
-            {"Time": "11:00 IST", "Symbol": "TCS",       "Strategy": "macd_momentum",
-             "Signal": "🔴 SELL", "Price": "₹3,792", "SL": "₹3,850", "TP": "₹3,640",
-             "Confidence": 0.67, "Regime": "Trending"},
-            {"Time": "11:30 IST", "Symbol": "INFY",      "Strategy": "bollinger_reversion",
-             "Signal": "🟢 BUY",  "Price": "₹1,742", "SL": "₹1,705", "TP": "₹1,820",
-             "Confidence": 0.75, "Regime": "Ranging"},
-            {"Time": "13:00 IST", "Symbol": "ICICIBANK", "Strategy": "supertrend",
-             "Signal": "🟢 BUY",  "Price": "₹1,218", "SL": "₹1,185", "TP": "₹1,290",
-             "Confidence": 0.78, "Regime": "Trending"},
-        ])
+    # Market status
+    if is_market_open():
+        mins = minutes_to_close()
+        st.success(f"🟢 NSE OPEN  •  {mins} min left")
     else:
-        sample_signals = pd.DataFrame([
-            {"Time": "10:00 UTC", "Symbol": "BTC/USDT", "Strategy": "ema_crossover",
-             "Signal": "🟢 BUY",  "Price": "$67,200", "SL": "$65,500", "TP": "$70,800",
-             "Confidence": 0.82, "Regime": "Trending"},
-            {"Time": "11:30 UTC", "Symbol": "ETH/USDT", "Strategy": "rsi_mean_reversion",
-             "Signal": "🟢 BUY",  "Price": "$3,520",  "SL": "$3,420", "TP": "$3,720",
-             "Confidence": 0.69, "Regime": "Ranging"},
-        ])
+        nxt = next_market_open()
+        st.error(f"🔴 NSE CLOSED")
+        st.caption(f"Next open: **{nxt.strftime('%a %d %b • %H:%M IST')}**")
 
-    st.dataframe(
-        sample_signals,
-        use_container_width=True,
-        column_config={
-            "Confidence": st.column_config.ProgressColumn(
-                "Confidence", format="%.0f%%", min_value=0, max_value=1),
-        },
-        hide_index=True,
+    # Token status
+    token, token_age = get_upstox_token()
+    if not token:
+        st.warning("⚠️ No Upstox token — charts will be empty")
+    elif token_age > 20:
+        st.warning(f"⚠️ Token is {token_age:.0f}h old — expires soon")
+    else:
+        st.success(f"🔑 Token valid  ({token_age:.0f}h old)")
+
+    st.markdown("---")
+
+    # Bot status
+    _live_state = load_live_state()
+    _bot_running = _live_state is not None
+    if _bot_running:
+        n_pos = len(_live_state.get("positions", []))
+        st.success(f"🤖 Bot running  •  {n_pos} open position(s)")
+    else:
+        st.info("⚪ Bot not running")
+        st.caption("Start: `python scripts/paper_trade.py`")
+
+    st.markdown("---")
+
+    symbols = st.multiselect(
+        "Watchlist",
+        list(IKEYS.keys()),
+        default=["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "NIFTY50"],
     )
 
-    # Active strategy weights
-    st.markdown("**Active Strategies & Regime Weights**")
-    strategy_data = {
-        "Strategy": ["EMA Crossover", "RSI Reversion", "MACD Momentum", "Bollinger",
-                     "Supertrend", "ATR Breakout", "ML Classifier", "Pair Trading"],
-        "Weight":   [1.0, 1.0, 1.0, 1.0, 0.9, 0.9, 1.2, 0.8],
-        "Preferred Regime": ["Trending", "Ranging", "Trending", "Ranging",
-                              "Trending", "Volatile", "All", "All"],
-        "Active":   [True, True, True, True, True, False, True, False],
-    }
-    st.dataframe(pd.DataFrame(strategy_data), use_container_width=True, hide_index=True)
+    st.markdown("---")
+    refresh_rate = st.slider("Auto-refresh (sec)", 15, 120, 30)
+    auto_refresh  = st.checkbox("Auto refresh", value=True)
+    st.caption(f"Last updated: {now_ist().strftime('%H:%M:%S IST')}")
 
-# ── Tab 2: Portfolio ───────────────────────────────────────────────────────────
-with tabs[2]:
-    st.subheader("Portfolio Overview")
-    pc1, pc2 = st.columns(2)
 
-    with pc1:
-        st.markdown("**Open Positions**")
-        if _bot_running and _live_state.get("positions"):
-            raw_pos = _live_state["positions"]
-            pos_rows = []
-            for p in raw_pos:
-                entry = p.get("entry_price", 0)
-                cur   = p.get("current_price", entry)
-                pnl   = p.get("unrealised_pnl", 0.0)
-                pnl_pct = (pnl / (entry * p.get("size", 1)) * 100) if entry else 0
-                pos_rows.append({
-                    "Symbol":  p.get("symbol", "?"),
-                    "Dir":     "LONG" if p.get("direction", 1) == 1 else "SHORT",
-                    "Qty":     int(p.get("size", 0)),
-                    "Entry":   f"{currency}{entry:,.2f}",
-                    "CMP":     f"{currency}{cur:,.2f}",
-                    "P&L":     f"{currency}{pnl:+,.0f}",
-                    "P&L%":    f"{pnl_pct:+.2f}%",
-                    "Strategy": p.get("strategy", "—")[:20],
+# ── Load shared data ───────────────────────────────────────────────────────────
+
+_equity_df     = load_equity_curve()
+_cfg           = load_config_weights()
+_initial_cap   = _cfg["capital"]
+
+# ── Header KPIs ───────────────────────────────────────────────────────────────
+
+st.markdown(f"### 📈 Loony Trading  <span style='font-size:0.8rem;color:#888'>{now_ist().strftime('%d %b %Y  %H:%M IST')}</span>", unsafe_allow_html=True)
+
+# Compute real KPIs
+if not _equity_df.empty:
+    eq_arr  = _equity_df["equity"].values
+    _eq_src = "live"
+else:
+    eq_arr  = np.array([_initial_cap])
+    _eq_src = "no data"
+
+_total_ret = (eq_arr[-1] - eq_arr[0]) / eq_arr[0] * 100 if len(eq_arr) > 1 else 0.0
+_dd_val    = max_drawdown(eq_arr) * 100 if len(eq_arr) > 1 else 0.0
+
+# Win rate and today PnL from actual trades
+_trade_df  = load_trade_log(live=False)
+_n_trades  = len(_trade_df)
+_wins      = int((_trade_df["pnl"] > 0).sum()) if not _trade_df.empty else 0
+_win_rate  = _wins / _n_trades * 100 if _n_trades > 0 else 0.0
+
+_open_pos  = len(_live_state.get("positions", [])) if _live_state else 0
+if _live_state:
+    _total_val = _live_state.get("cash", _initial_cap) + sum(
+        p.get("unrealised_pnl", 0) + p.get("entry_price", 0) * abs(p.get("size", 0))
+        for p in _live_state.get("positions", [])
+    )
+    _today_pnl = _total_val - _initial_cap
+else:
+    _today_pnl = None
+
+k1, k2, k3, k4, k5, k6 = st.columns(6)
+k1.metric("Portfolio",
+          f"₹{eq_arr[-1]:,.0f}" if _eq_src == "live" else "—",
+          f"{_total_ret:+.2f}%" if _eq_src == "live" else "no data")
+k2.metric("Today P&L",
+          f"₹{_today_pnl:+,.0f}" if _today_pnl is not None else "—",
+          delta_color="normal" if (_today_pnl or 0) >= 0 else "inverse")
+k3.metric("Max Drawdown", f"{_dd_val:.2f}%" if _eq_src == "live" else "—")
+k4.metric("Win Rate",
+          f"{_win_rate:.1f}%" if _n_trades > 0 else "—",
+          f"{_wins}W / {_n_trades - _wins}L" if _n_trades > 0 else "no trades")
+k5.metric("Open Positions", str(_open_pos))
+k6.metric("Total Trades", str(_n_trades) if _n_trades > 0 else "—")
+
+if not _equity_df.empty:
+    st.plotly_chart(
+        equity_curve_fig(_equity_df, _initial_cap, "Portfolio Equity"),
+        use_container_width=True,
+    )
+else:
+    st.info("No equity curve data yet — start a paper trade session to populate this.")
+
+# ── Tabs ───────────────────────────────────────────────────────────────────────
+
+tab_chart, tab_positions, tab_trades, tab_daily, tab_strategy, tab_backtest = st.tabs([
+    "📊 Chart",
+    "💼 Positions",
+    "📜 Trades",
+    "📅 Daily P&L",
+    "🎯 Strategies",
+    "🔁 Backtest",
+])
+
+
+# ── Tab: Chart ─────────────────────────────────────────────────────────────────
+
+with tab_chart:
+    c1, c2 = st.columns([2, 1])
+    chart_sym = c1.selectbox(
+        "Symbol",
+        [s for s in symbols if s in IKEYS] or list(IKEYS.keys())[:5],
+        key="chart_sym",
+    )
+    tf_choice = c2.radio("Timeframe", ["1d", "1h", "15m"], horizontal=True, key="tf")
+
+    ikey     = IKEYS.get(chart_sym, "")
+    interval, days = TF_INTERVAL[tf_choice]
+
+    with st.spinner(f"Loading {chart_sym} {tf_choice} data…"):
+        df_chart = fetch_ohlcv(ikey, interval, days) if ikey else pd.DataFrame()
+
+    if df_chart.empty:
+        if not token:
+            st.warning("No Upstox token — run `python scripts/upstox_login.py` first.")
+        elif not is_market_open() and interval != "day":
+            st.info(f"Intraday data only available during market hours.  "
+                    f"Next open: {next_market_open().strftime('%a %d %b %H:%M IST')}")
+        else:
+            st.warning(f"No data returned for {chart_sym} ({tf_choice}).")
+    else:
+        st.plotly_chart(candlestick_fig(df_chart, chart_sym), use_container_width=True)
+
+        last = df_chart.iloc[-1]
+        prev = df_chart.iloc[-2] if len(df_chart) > 1 else last
+        chg  = (last["close"] - prev["close"]) / prev["close"] * 100
+
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("LTP",    f"₹{last['close']:,.2f}", f"{chg:+.2f}%",
+                  delta_color="normal" if chg >= 0 else "inverse")
+        m2.metric("Open",   f"₹{last['open']:,.2f}")
+        m3.metric("High",   f"₹{last['high']:,.2f}")
+        m4.metric("Low",    f"₹{last['low']:,.2f}")
+        m5.metric("Volume", f"{last['volume']:,.0f}")
+
+
+# ── Tab: Positions ─────────────────────────────────────────────────────────────
+
+with tab_positions:
+    col_pos, col_sig = st.columns([1, 1])
+
+    with col_pos:
+        st.markdown("#### Open Positions")
+        if _live_state and _live_state.get("positions"):
+            rows = []
+            for p in _live_state["positions"]:
+                entry   = p.get("entry_price", 0)
+                cur     = p.get("current_price", entry)
+                pnl     = p.get("unrealised_pnl", 0.0)
+                pnl_pct = pnl / (entry * abs(p.get("size", 1))) * 100 if entry else 0
+                rows.append({
+                    "Symbol":   p.get("symbol", "?"),
+                    "Side":     "LONG" if p.get("direction", 1) == 1 else "SHORT",
+                    "Qty":      int(p.get("size", 0)),
+                    "Entry ₹":  round(entry, 2),
+                    "CMP ₹":    round(cur, 2),
+                    "P&L ₹":    round(pnl, 2),
+                    "P&L %":    round(pnl_pct, 2),
+                    "SL ₹":     round(p.get("stop_loss", 0), 2),
+                    "TP ₹":     round(p.get("take_profit", 0), 2),
+                    "Strategy": p.get("strategy", "—"),
                 })
-            pos_df = pd.DataFrame(pos_rows)
-        elif market == "India (Upstox)":
-            pos_df = pd.DataFrame([
-                {"Symbol": "RELIANCE", "Dir": "LONG", "Qty": 5, "Entry": "₹2,890",
-                 "CMP": "₹2,912", "P&L": "₹+110", "P&L%": "+0.76%", "Strategy": "ema_crossover"},
-                {"Symbol": "HDFCBANK",  "Dir": "LONG", "Qty": 10, "Entry": "₹1,635",
-                 "CMP": "₹1,648", "P&L": "₹+130", "P&L%": "+0.80%", "Strategy": "rsi_reversion"},
-            ])
+            pos_df = pd.DataFrame(rows)
+            st.dataframe(
+                pos_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "P&L ₹": st.column_config.NumberColumn("P&L ₹", format="%.0f"),
+                    "P&L %": st.column_config.NumberColumn("P&L %", format="%.2f%%"),
+                },
+            )
+            total_unreal = sum(p.get("unrealised_pnl", 0) for p in _live_state["positions"])
+            st.caption(f"Total unrealised: **₹{total_unreal:+,.0f}**")
+        elif _bot_running:
+            st.info("No open positions right now.")
         else:
-            pos_df = pd.DataFrame([
-                {"Symbol": "BTC/USDT", "Dir": "LONG", "Qty": 0.05,
-                 "Entry": "$67,200", "CMP": "$67,800", "P&L": "$+30", "P&L%": "+0.89%", "Strategy": "ema_crossover"},
-            ])
-        if not pos_df.empty:
-            st.dataframe(pos_df, use_container_width=True, hide_index=True)
+            st.info("Bot not running — no position data available.")
+
+    with col_sig:
+        st.markdown("#### Recent Signals")
+        sig_log = []
+        if _live_state:
+            sig_log = _live_state.get("signal_log", [])[-20:]
+        if sig_log:
+            sig_df = pd.DataFrame(sig_log[::-1])
+            display = [c for c in ["time", "type", "symbol", "strategy",
+                                    "price", "size", "pnl", "confidence"]
+                       if c in sig_df.columns]
+            st.dataframe(sig_df[display], use_container_width=True, hide_index=True)
         else:
-            st.info("No open positions.")
+            st.info("No signals logged yet.")
 
-    with pc2:
-        st.markdown("**Holdings** (Long-term)")
-        if market == "India (Upstox)":
-            hold_df = pd.DataFrame([
-                {"Symbol": "TCS",    "Qty": 10, "Avg Cost": "₹3,650", "CMP": "₹3,792",
-                 "Value": "₹37,920", "P&L": "₹+1,420", "P&L%": "+3.89%"},
-                {"Symbol": "INFY",   "Qty": 20, "Avg Cost": "₹1,680", "CMP": "₹1,742",
-                 "Value": "₹34,840", "P&L": "₹+1,240", "P&L%": "+3.69%"},
-                {"Symbol": "WIPRO",  "Qty": 30, "Avg Cost": "₹520",   "CMP": "₹538",
-                 "Value": "₹16,140", "P&L": "₹+540", "P&L%": "+3.46%"},
-            ])
-            st.dataframe(hold_df, use_container_width=True, hide_index=True)
-        else:
-            st.info("Holdings view is for equity markets (Upstox).")
+    # Live LTP ticker for watchlist
+    st.markdown("#### Watchlist LTPs")
+    watch_keys = tuple(IKEYS[s] for s in symbols if s in IKEYS)
+    if watch_keys and token:
+        with st.spinner("Fetching LTPs…"):
+            ltps = fetch_ltp(watch_keys)
+        if ltps:
+            ltp_rows = []
+            for sym in symbols:
+                ikey = IKEYS.get(sym, "")
+                ltp = ltps.get(ikey, 0)
+                if ltp:
+                    ltp_rows.append({"Symbol": sym, "LTP ₹": ltp})
+            if ltp_rows:
+                ltp_df = pd.DataFrame(ltp_rows)
+                cols = st.columns(min(len(ltp_rows), 6))
+                for col, row in zip(cols, ltp_rows):
+                    col.metric(row["Symbol"], f"₹{row['LTP ₹']:,.2f}")
+    else:
+        st.caption("Token required for live LTPs.")
 
-    st.markdown("**Allocation by Symbol**")
-    alloc_labels = symbols[:5] if symbols else ["RELIANCE", "TCS", "HDFCBANK", "INFY"]
-    alloc_values = np.random.dirichlet(np.ones(len(alloc_labels))) * 100
-    fig_pie = go.Figure(go.Pie(
-        labels=alloc_labels, values=alloc_values,
-        hole=0.4, marker_colors=["#26a69a", "#42a5f5", "#ff9800", "#ab47bc", "#ef5350"],
-    ))
-    fig_pie.update_layout(template="plotly_dark", height=300,
-                           paper_bgcolor="#0e1117", margin=dict(l=0, r=0, t=30, b=0))
-    st.plotly_chart(fig_pie, use_container_width=True)
 
-# ── Tab 3: Trade History ───────────────────────────────────────────────────────
-with tabs[3]:
-    st.subheader("Trade History")
-    _hist_mode = st.radio("Source", ["Paper trades", "Live trades"], horizontal=True)
-    trade_df = load_trade_log(live=(_hist_mode == "Live trades"))
-    if not trade_df.empty:
+# ── Tab: Trades ────────────────────────────────────────────────────────────────
+
+with tab_trades:
+    src_col, _ = st.columns([1, 3])
+    source = src_col.radio("Source", ["Paper", "Live"], horizontal=True, key="trade_src")
+    trades = load_trade_log(live=(source == "Live"))
+
+    if not trades.empty:
         display_cols = [c for c in
-                        ["ts", "symbol", "direction", "strategy", "entry_price",
-                         "exit_price", "size", "pnl", "reason"]
-                        if c in trade_df.columns]
+                        ["ts", "symbol", "strategy", "direction",
+                         "entry_price", "exit_price", "size", "pnl", "reason"]
+                        if c in trades.columns]
+        show = trades[display_cols].copy()
+        if "ts" in show.columns:
+            show = show.sort_values("ts", ascending=False)
+        if "direction" in show.columns:
+            show["direction"] = show["direction"].map({1: "LONG", -1: "SHORT"}).fillna(show["direction"])
+        if "pnl" in show.columns:
+            show["pnl"] = show["pnl"].round(2)
+
         st.dataframe(
-            trade_df[display_cols].sort_values("ts", ascending=False)
-            if "ts" in display_cols else trade_df[display_cols],
+            show,
             use_container_width=True,
             hide_index=True,
+            column_config={
+                "pnl": st.column_config.NumberColumn("P&L ₹", format="%.2f"),
+                "entry_price": st.column_config.NumberColumn("Entry ₹", format="%.2f"),
+                "exit_price":  st.column_config.NumberColumn("Exit ₹",  format="%.2f"),
+            },
         )
-        total_pnl = trade_df["pnl"].sum() if "pnl" in trade_df.columns else 0
-        wins = (trade_df["pnl"] > 0).sum() if "pnl" in trade_df.columns else 0
-        st.caption(
-            f"Total P&L: {currency}{total_pnl:+,.0f}  |  "
-            f"Win rate: {wins / max(len(trade_df), 1) * 100:.1f}%  ({wins}W / {len(trade_df)-wins}L)"
+
+        # Summary strip
+        total_pnl   = trades["pnl"].sum() if "pnl" in trades.columns else 0
+        wins        = int((trades["pnl"] > 0).sum()) if "pnl" in trades.columns else 0
+        losses      = len(trades) - wins
+        avg_win     = trades.loc[trades["pnl"] > 0, "pnl"].mean() if wins else 0
+        avg_loss    = trades.loc[trades["pnl"] <= 0, "pnl"].mean() if losses else 0
+        expectancy  = (wins / max(len(trades), 1)) * avg_win + (losses / max(len(trades), 1)) * avg_loss
+
+        sm1, sm2, sm3, sm4, sm5 = st.columns(5)
+        sm1.metric("Total P&L",  f"₹{total_pnl:+,.0f}")
+        sm2.metric("Win Rate",   f"{wins / max(len(trades), 1) * 100:.1f}%",
+                   f"{wins}W / {losses}L")
+        sm3.metric("Avg Win",    f"₹{avg_win:+,.0f}")
+        sm4.metric("Avg Loss",   f"₹{avg_loss:+,.0f}")
+        sm5.metric("Expectancy", f"₹{expectancy:+,.0f}")
+
+        st.plotly_chart(trade_dist_fig(trades), use_container_width=True)
+
+    else:
+        st.info(f"No {source.lower()} trades yet.")
+        st.caption("Start paper trading: `python scripts/paper_trade.py`")
+
+
+# ── Tab: Daily P&L ────────────────────────────────────────────────────────────
+
+with tab_daily:
+    daily_df = load_daily_pnl()
+
+    if daily_df.empty:
+        st.info("No daily P&L data yet — data populates after the first trading session ends at 3:35 PM IST.")
+    else:
+        # Summary KPIs
+        total_realised  = daily_df["realised"].sum()
+        avg_daily       = daily_df["realised"].mean()
+        best_idx        = daily_df["realised"].idxmax()
+        worst_idx       = daily_df["realised"].idxmin()
+        best_day        = daily_df.loc[best_idx]
+        worst_day       = daily_df.loc[worst_idx]
+        total_trades    = daily_df["trades"].sum() if "trades" in daily_df.columns else 0
+        total_wins      = daily_df["wins"].sum() if "wins" in daily_df.columns else 0
+        overall_wr      = total_wins / max(total_trades, 1) * 100
+
+        # Annualised Sharpe
+        daily_pnls   = daily_df["realised"].values
+        daily_rets   = daily_pnls / _initial_cap
+        sharpe_ann   = (daily_rets.mean() / (daily_rets.std() + 1e-9)) * (252 ** 0.5) if len(daily_rets) > 1 else 0
+
+        d1, d2, d3, d4, d5 = st.columns(5)
+        d1.metric("Total Realised",  f"₹{total_realised:+,.0f}")
+        d2.metric("Avg Daily P&L",   f"₹{avg_daily:+,.0f}")
+        d3.metric("Win Rate",        f"{overall_wr:.1f}%")
+        d4.metric("Sharpe (ann.)",   f"{sharpe_ann:.2f}")
+        d5.metric("Trading Days",    str(len(daily_df)))
+
+        st.plotly_chart(pnl_bar_fig(daily_df), use_container_width=True)
+
+        # Day-by-day table
+        st.markdown("#### Day-by-Day Breakdown")
+        show_daily = daily_df.copy()
+        show_daily["date"] = show_daily["date"].dt.strftime("%Y-%m-%d")
+        if "win_rate" in show_daily.columns:
+            show_daily["win_rate"] = show_daily["win_rate"].round(1)
+        display_d = [c for c in ["date", "realised", "trades", "wins", "losses",
+                                   "win_rate", "max_drawdown_pct", "top_symbol"]
+                     if c in show_daily.columns]
+        st.dataframe(
+            show_daily[display_d].sort_values("date", ascending=False),
+            use_container_width=True, hide_index=True,
+            column_config={
+                "realised": st.column_config.NumberColumn("Realised ₹", format="%.0f"),
+                "win_rate": st.column_config.NumberColumn("Win %", format="%.1f"),
+                "max_drawdown_pct": st.column_config.NumberColumn("Max DD %", format="%.2f"),
+            },
+        )
+
+        be1, be2 = st.columns(2)
+        be1.metric("Best Day",  f"{best_day['date'].strftime('%d %b') if hasattr(best_day['date'], 'strftime') else best_day['date']}  ₹{best_day['realised']:+,.0f}")
+        be2.metric("Worst Day", f"{worst_day['date'].strftime('%d %b') if hasattr(worst_day['date'], 'strftime') else worst_day['date']}  ₹{worst_day['realised']:+,.0f}")
+
+
+# ── Tab: Strategy Performance ─────────────────────────────────────────────────
+
+with tab_strategy:
+    # Strategy weights from settings.yaml
+    weights  = _cfg["weights"]
+    enabled  = set(_cfg["enabled"])
+
+    st.markdown("#### Strategy Weights  (from `config/settings.yaml`)")
+    st.caption("Run `python scripts/tune_weights.py` to auto-tune weights from backtest Sharpe.")
+
+    if weights:
+        w_rows = []
+        for name, w in sorted(weights.items(), key=lambda x: -x[1]):
+            w_rows.append({
+                "Strategy": name,
+                "Weight":   w,
+                "Enabled":  name in enabled,
+            })
+        w_df = pd.DataFrame(w_rows)
+        st.dataframe(
+            w_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Weight": st.column_config.ProgressColumn(
+                    "Weight", format="%.2f", min_value=0, max_value=2),
+                "Enabled": st.column_config.CheckboxColumn("Enabled"),
+            },
         )
     else:
-        st.info("No trades yet. Start a paper trade session: `python scripts/paper_trade.py`")
-        demo_trades = pd.DataFrame([
-            {"ts": "2025-01-15 09:45", "symbol": "RELIANCE", "direction": 1,  "size": 5,
-             "entry_price": 2810, "exit_price": 2912, "pnl": 510,  "strategy": "ema_crossover"},
-            {"ts": "2025-01-18 10:20", "symbol": "HDFCBANK",  "direction": 1,  "size": 10,
-             "entry_price": 1635, "exit_price": 1685, "pnl": 500,  "strategy": "rsi_reversion"},
-            {"ts": "2025-01-20 11:00", "symbol": "TCS",       "direction": -1, "size": 5,
-             "entry_price": 3810, "exit_price": 3840, "pnl": -150, "strategy": "macd_momentum"},
-        ])
-        st.dataframe(demo_trades, use_container_width=True, hide_index=True)
+        st.info("No weights found in settings.yaml.")
 
-# ── Tab 4: Option Chain (India only) ──────────────────────────────────────────
-if market == "India (Upstox)":
-    with tabs[4]:
-        st.subheader("Option Chain — NSE F&O")
-        oc1, oc2, oc3 = st.columns(3)
-        oc_underlying = oc1.selectbox("Underlying", ["NIFTY50", "NIFTYBANK", "RELIANCE"])
-        oc_expiry     = oc2.selectbox("Expiry", ["2025-05-29", "2025-06-26", "2025-07-31"])
-        oc_atm        = oc3.number_input("ATM Strike (~)", value=24500, step=50)
-
-        st.info("Connect Upstox credentials to load live option chain. Demo data shown below.")
-        strikes = range(int(oc_atm) - 500, int(oc_atm) + 550, 50)
-        oc_data = pd.DataFrame([{
-            "Strike":    s,
-            "Call OI":   np.random.randint(10000, 500000),
-            "Call LTP":  max(0.05, (oc_atm - s) + np.random.normal(0, 50)) if s < oc_atm else max(0.05, np.random.normal(30, 20)),
-            "Call IV %": round(np.random.uniform(12, 25), 1),
-            "Put LTP":   max(0.05, (s - oc_atm) + np.random.normal(0, 50)) if s > oc_atm else max(0.05, np.random.normal(30, 20)),
-            "Put OI":    np.random.randint(10000, 500000),
-            "Put IV %":  round(np.random.uniform(12, 25), 1),
-        } for s in strikes])
-
-        def style_row(row):
-            color = "background-color: #1a3a2a" if row["Strike"] == oc_atm else ""
-            return [color] * len(row)
-
-        st.dataframe(oc_data.style.apply(style_row, axis=1),
-                     use_container_width=True, hide_index=True)
-
-        pcr = oc_data["Put OI"].sum() / max(oc_data["Call OI"].sum(), 1)
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Put-Call Ratio", f"{pcr:.2f}", delta="Bearish" if pcr > 1.2 else "Neutral")
-        m2.metric("Max Pain Strike", f"₹{oc_atm:,}")
-        m3.metric("IV Percentile", "42nd %ile")
-
-    bt_tab_idx = 5
-else:
-    bt_tab_idx = 4
-
-# ── Backtest Tab ────────────────────────────────────────────────────────────────
-with tabs[bt_tab_idx]:
-    st.subheader("Backtest")
-    bc1, bc2, bc3 = st.columns(3)
-    bt_sym  = bc1.selectbox("Symbol", symbols or ["RELIANCE"])
-    bt_strat = bc2.selectbox("Strategy", [
-        "ema_crossover", "rsi_mean_reversion", "bollinger_reversion",
-        "macd_momentum", "supertrend", "all_strategies"])
-    bt_period = bc3.selectbox("Period", ["3 months", "6 months", "1 year", "2 years"])
-
-    if st.button("▶ Run Backtest"):
-        with st.spinner(f"Backtesting {bt_sym} with {bt_strat} ({bt_period})..."):
-            time.sleep(1.5)
-        st.success("Backtest complete!")
-        period_days = {"3 months": 63, "6 months": 126, "1 year": 252, "2 years": 504}[bt_period]
-        bt_equity = fake_equity(n=period_days,
-                                 start=500_000 if market == "India (Upstox)" else 10_000)
-        bt_metrics = {
-            "Total Return":   f"{((bt_equity[-1]/bt_equity[0])-1)*100:+.2f}%",
-            "Sharpe Ratio":   f"{sharpe_ratio(np.diff(bt_equity)/bt_equity[:-1]):.3f}",
-            "Max Drawdown":   f"{max_drawdown(bt_equity)*100:.2f}%",
-            "Total Trades":   str(np.random.randint(40, 120)),
-            "Win Rate":       f"{np.random.uniform(48, 62):.1f}%",
-            "Profit Factor":  f"{np.random.uniform(1.1, 1.6):.2f}",
-        }
-        m_cols = st.columns(len(bt_metrics))
-        for col, (k, v) in zip(m_cols, bt_metrics.items()):
-            col.metric(k, v)
-        st.plotly_chart(equity_fig(bt_equity, currency), use_container_width=True)
-
-        # Trade distribution
-        trades_pnl = np.random.normal(500 if market == "India (Upstox)" else 20, 2000, 80)
-        fig_hist = go.Figure(go.Histogram(
-            x=trades_pnl, nbinsx=30,
-            marker_color=["#26a69a" if v > 0 else "#ef5350" for v in trades_pnl],
-        ))
-        fig_hist.update_layout(
-            title="Trade PnL Distribution", template="plotly_dark",
-            paper_bgcolor="#0e1117", height=280,
-            xaxis_title=f"PnL ({currency})", yaxis_title="Count",
+    # Strategy P&L breakdown from trades
+    if not _trade_df.empty and "strategy" in _trade_df.columns and "pnl" in _trade_df.columns:
+        st.markdown("#### Per-Strategy Performance  (paper trades)")
+        grp = (
+            _trade_df.groupby("strategy")["pnl"]
+            .agg(trades="count", total_pnl="sum", avg_pnl="mean",
+                 wins=lambda x: (x > 0).sum())
+            .reset_index()
         )
-        st.plotly_chart(fig_hist, use_container_width=True)
+        grp["win_rate"] = grp["wins"] / grp["trades"] * 100
+        grp = grp.sort_values("total_pnl", ascending=False)
 
-# ── Auto-refresh ────────────────────────────────────────────────────────────────
+        fig_strat = go.Figure(go.Bar(
+            x=grp["strategy"], y=grp["total_pnl"],
+            marker_color=["#26a69a" if v >= 0 else "#ef5350" for v in grp["total_pnl"]],
+            text=grp["total_pnl"].apply(lambda v: f"₹{v:+,.0f}"),
+            textposition="outside",
+        ))
+        fig_strat.update_layout(height=320, title="Total P&L by Strategy",
+                                 yaxis_tickprefix="₹", **PLOTLY_LAYOUT)
+        st.plotly_chart(fig_strat, use_container_width=True)
+
+        st.dataframe(
+            grp[["strategy", "trades", "wins", "win_rate", "total_pnl", "avg_pnl"]].rename(
+                columns={"total_pnl": "Total P&L ₹", "avg_pnl": "Avg P&L ₹",
+                         "win_rate": "Win %"}),
+            use_container_width=True, hide_index=True,
+            column_config={
+                "Total P&L ₹": st.column_config.NumberColumn("Total P&L ₹", format="%.0f"),
+                "Avg P&L ₹":   st.column_config.NumberColumn("Avg P&L ₹",   format="%.0f"),
+                "Win %":        st.column_config.NumberColumn("Win %",        format="%.1f"),
+            },
+        )
+    else:
+        st.info("No trade history yet — strategy P&L breakdown will appear after trading.")
+
+
+# ── Tab: Backtest ──────────────────────────────────────────────────────────────
+
+with tab_backtest:
+    st.markdown("#### Backtest")
+
+    bc1, bc2, bc3, bc4 = st.columns(4)
+    bt_sym    = bc1.selectbox("Symbol", list(IKEYS.keys()), key="bt_sym")
+    bt_strat  = bc2.selectbox("Strategy", _cfg["enabled"] or ["ema_crossover"], key="bt_strat")
+    bt_period = bc3.selectbox("Period", ["3 months", "6 months", "1 year"], key="bt_period")
+    bt_cap    = bc4.number_input("Capital ₹", value=int(_initial_cap),
+                                  step=50_000, min_value=10_000, key="bt_cap")
+
+    if st.button("▶ Run Backtest", type="primary"):
+        period_days = {"3 months": 90, "6 months": 180, "1 year": 365}[bt_period]
+        ikey_bt = IKEYS.get(bt_sym, "")
+        if not ikey_bt:
+            st.error(f"Unknown instrument key for {bt_sym}")
+        elif not token:
+            st.error("No Upstox token — cannot fetch historical data for backtest.")
+        else:
+            with st.spinner(f"Fetching {bt_sym} data and running backtest…"):
+                df_bt = fetch_ohlcv(ikey_bt, "day", period_days)
+
+            if df_bt.empty:
+                st.error(f"Could not fetch {period_days} days of data for {bt_sym}.")
+            else:
+                with st.spinner("Running backtest…"):
+                    try:
+                        from feature_engine.feature_builder import FeatureBuilder
+                        from backtester.backtester import Backtester
+                        from config.loader import Settings
+
+                        cfg_obj = Settings()
+                        bt_cfg  = cfg_obj.as_dict()
+                        bt_cfg.setdefault("data", {})["warmup_bars"] = 50
+
+                        fb = FeatureBuilder()
+                        try:
+                            df_bt = fb.build(df_bt)
+                        except Exception:
+                            pass
+
+                        # Import the specific strategy class
+                        _STRAT_MAP = {
+                            "ema_crossover":       ("strategies.trend",           "EmaCrossoverStrategy"),
+                            "rsi_mean_reversion":  ("strategies.mean_reversion",  "RsiReversionStrategy"),
+                            "bollinger_reversion": ("strategies.mean_reversion",  "BollingerReversionStrategy"),
+                            "macd_momentum":       ("strategies.momentum",        "MacdMomentumStrategy"),
+                            "breakout_atr":        ("strategies.breakout",        "AtrBreakoutStrategy"),
+                            "supertrend":          ("strategies.trend",           "SupertrendStrategy"),
+                            "ml_classifier":       ("strategies.ml_based",        "MLClassifierStrategy"),
+                        }
+                        strat_obj = None
+                        if bt_strat in _STRAT_MAP:
+                            mod_name, cls_name = _STRAT_MAP[bt_strat]
+                            import importlib
+                            mod = importlib.import_module(mod_name)
+                            cls = getattr(mod, cls_name)
+                            strat_obj = cls(bt_cfg)
+
+                        bt = Backtester(bt_cfg, initial_capital=float(bt_cap), product="CNC")
+                        result = bt.run(df_bt, bt_sym, strategy=strat_obj)
+                        m = result.metrics
+
+                        st.success("Backtest complete!")
+
+                        r1, r2, r3, r4, r5, r6 = st.columns(6)
+                        r1.metric("Total Return",  f"{m.get('total_return_pct', 0):+.2f}%")
+                        r2.metric("Sharpe",        f"{m.get('sharpe', 0):.3f}")
+                        r3.metric("Max Drawdown",  f"{m.get('max_drawdown_pct', 0):.2f}%")
+                        r4.metric("Trades",        str(m.get('n_trades', 0)))
+                        r5.metric("Win Rate",      f"{m.get('win_rate', 0):.1f}%")
+                        r6.metric("Profit Factor", f"{m.get('profit_factor', 0):.2f}")
+
+                        # Equity curve
+                        ec = result.equity_curve
+                        if len(ec) > 1:
+                            ec_df = pd.DataFrame({"equity": ec})
+                            ec_df.index = df_bt.index[min(50, len(df_bt) - len(ec)):][:len(ec)]
+                            st.plotly_chart(
+                                equity_curve_fig(ec_df, float(bt_cap),
+                                                 f"{bt_sym} — {bt_strat} ({bt_period})"),
+                                use_container_width=True,
+                            )
+
+                        # Trade distribution
+                        if result.trades:
+                            bt_trades = pd.DataFrame([
+                                {"pnl": t.pnl} for t in result.trades
+                            ])
+                            st.plotly_chart(trade_dist_fig(bt_trades), use_container_width=True)
+
+                    except Exception as exc:
+                        st.error(f"Backtest error: {exc}")
+                        import traceback
+                        st.code(traceback.format_exc())
+
+
+# ── Auto-refresh ───────────────────────────────────────────────────────────────
+
 if auto_refresh:
     time.sleep(refresh_rate)
     st.rerun()
