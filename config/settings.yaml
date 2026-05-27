@@ -1,0 +1,175 @@
+system:
+  name: loony-trading
+  version: "1.1.0"
+  mode: paper              # live | paper | backtest
+  primary_market: upstox   # upstox | binance  — upstox is primary
+  log_level: INFO
+  timezone: Asia/Kolkata   # IST for Indian markets
+
+exchanges:
+  # ── Upstox (Primary — Indian Markets) ──────────────────────────────────────
+  upstox:
+    api_key: "${UPSTOX_API_KEY}"
+    api_secret: "${UPSTOX_API_SECRET}"
+    redirect_uri: "${UPSTOX_REDIRECT_URI}"
+    access_token: "${UPSTOX_ACCESS_TOKEN}"   # pre-obtained token (optional)
+    token_file: "data/upstox_token.json"
+    auth_port: 8888           # local port for OAuth redirect capture
+    default_product: "CNC"    # CNC | MIS | NRML
+
+  # ── Binance (Secondary — Crypto) ───────────────────────────────────────────
+  binance:
+    api_key: "${BINANCE_API_KEY}"
+    api_secret: "${BINANCE_API_SECRET}"
+    sandbox: true
+    rate_limit: 1200
+
+  alpaca:
+    api_key: "${ALPACA_API_KEY}"
+    api_secret: "${ALPACA_API_SECRET}"
+    base_url: "${ALPACA_BASE_URL}"
+
+# ── Indian Market Assets (Upstox) ──────────────────────────────────────────
+assets:
+  india_equity:
+    - RELIANCE
+    - TCS
+    - HDFCBANK
+    - INFY
+    - ICICIBANK
+    - SBIN
+    - BAJFINANCE
+    - BHARTIARTL
+    - KOTAKBANK
+    - LT
+    - AXISBANK
+    - WIPRO
+    - TATAMOTORS
+    - HCLTECH
+    - ITC
+
+  india_indices:
+    - NIFTY50
+    - NIFTYBANK
+
+  india_fo:                  # F&O instruments (instrument_key format or symbol)
+    - NIFTY50                # will resolve to near-month futures/options
+    - BANKNIFTY
+
+  crypto:
+    - BTC/USDT
+    - ETH/USDT
+    - SOL/USDT
+
+timeframes:
+  primary: 1d               # daily for equities
+  intraday: 15m             # 15-min for intraday strategies
+  secondary:
+    - 15m
+    - 1h
+    - 1d
+
+risk:
+  max_risk_per_trade: 0.01       # 1% of portfolio per trade
+  max_daily_drawdown: 0.05       # 5% max daily loss
+  max_concurrent_trades: 10
+  max_portfolio_risk: 0.20       # 20% total exposure
+  stop_loss_atr_multiplier: 2.0
+  take_profit_atr_multiplier: 3.0
+  trailing_stop_pct: 0.02        # 2% trailing
+  use_kelly_criterion: false
+  kelly_fraction: 0.25           # fractional Kelly
+
+execution:
+  order_type: limit              # market | limit | smart
+  slippage_pct: 0.001
+  retry_attempts: 3
+  retry_delay_ms: 500
+  latency_budget_ms: 100
+
+data:
+  lookback_days: 365
+  cache_dir: ./data/cache
+  warmup_bars: 200
+
+strategies:
+  enabled:
+    - ema_crossover
+    - rsi_mean_reversion
+    - bollinger_reversion
+    - breakout_atr
+    - macd_momentum
+    - order_book_imbalance
+    - pair_trading
+    - ml_classifier
+  weights:
+    ema_crossover: 1.0
+    rsi_mean_reversion: 1.0
+    bollinger_reversion: 1.0
+    breakout_atr: 1.0
+    macd_momentum: 1.0
+    order_book_imbalance: 0.5
+    pair_trading: 0.8
+    ml_classifier: 1.2
+
+regime_detection:
+  adx_trend_threshold: 25
+  adx_strong_threshold: 40
+  volatility_high_pct: 0.03
+  volatility_lookback: 20
+
+ml:
+  train_lookback_days: 180
+  retrain_interval_hours: 24
+  lstm:
+    sequence_length: 60
+    hidden_units: 128
+    dropout: 0.2
+    epochs: 50
+    batch_size: 32
+  xgboost:
+    n_estimators: 300
+    max_depth: 6
+    learning_rate: 0.05
+  lightgbm:
+    num_leaves: 63
+    n_estimators: 300
+    learning_rate: 0.05
+  reinforcement:
+    enabled: false
+    algorithm: PPO
+    total_timesteps: 100000
+
+portfolio:
+  initial_capital: 500000      # ₹5,00,000 default for Indian markets
+  base_currency: INR
+  rebalance_interval_hours: 24
+  correlation_limit: 0.7
+
+# ── India Market Calendar ────────────────────────────────────────────────────
+india_market:
+  open_time: "09:15"           # IST
+  close_time: "15:30"          # IST
+  pre_open: "09:00"
+  amo_window_start: "17:00"    # After-market order window
+  amo_window_end:   "08:59"
+  auto_squareoff_time: "15:15" # MIS auto-squareoff (broker may differ)
+  holidays: []                 # list "YYYY-MM-DD" of NSE trading holidays
+
+notifications:
+  telegram:
+    enabled: false
+    bot_token: "${TELEGRAM_BOT_TOKEN}"
+    chat_id: "${TELEGRAM_CHAT_ID}"
+  email:
+    enabled: false
+    smtp_host: "${SMTP_HOST}"
+    smtp_port: 587
+    user: "${EMAIL_USER}"
+    password: "${EMAIL_PASSWORD}"
+    to: "${EMAIL_TO}"
+
+dashboard:
+  host: "0.0.0.0"
+  port: 8501
+  refresh_interval_sec: 5

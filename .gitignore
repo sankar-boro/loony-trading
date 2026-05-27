@@ -1,0 +1,16 @@
+.env
+*.pyc
+__pycache__/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+logs/
+data/cache/
+models/
+*.parquet
+*.pkl
+*.h5
+.DS_Store
+data/

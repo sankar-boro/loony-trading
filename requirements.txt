@@ -1,0 +1,52 @@
+# Core
+numpy>=1.26
+pandas>=2.1
+pyyaml>=6.0
+aiohttp>=3.9
+
+# ── Upstox (Indian markets — primary) ─────────────────────────────────────────
+upstox-python-sdk>=2.5          # Official Upstox SDK (includes protobuf definitions)
+websockets>=12.0                # Async WebSocket client for Upstox feed
+requests>=2.31                  # Sync HTTP (used in Upstox executor)
+protobuf>=4.24                  # Protobuf decoding for WS feed
+
+# ── Exchange connectivity (crypto — secondary) ─────────────────────────────────
+ccxt>=4.2
+
+# Technical indicators (pure Python fallback used; ta-lib optional)
+# ta-lib  # optional: faster C-based indicators
+
+# Machine Learning
+scikit-learn>=1.4
+xgboost>=2.0
+lightgbm>=4.3
+
+# Deep learning (optional — comment out if not needed)
+tensorflow>=2.15
+# torch>=2.2  # alternative to tensorflow
+
+# Reinforcement Learning (optional)
+# stable-baselines3>=2.2
+# gymnasium>=0.29
+
+# Sentiment
+vaderSentiment>=3.3
+
+# Dashboard
+streamlit>=1.31
+plotly>=5.18
+
+# Data storage
+pyarrow>=14.0       # parquet support
+fastparquet>=2023.0 # alternative
+
+# Alerting
+# python-telegram-bot>=20.0  # optional
+
+# Utilities
+python-dotenv>=1.0
+structlog>=24.0
+
+# Testing
+pytest>=7.4
+pytest-asyncio>=0.23
