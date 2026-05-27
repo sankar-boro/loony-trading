@@ -35,6 +35,10 @@ vaderSentiment>=3.3
 # Dashboard
 streamlit>=1.31
 plotly>=5.18
+fastapi>=0.100
+uvicorn[standard]>=0.24
+httpx>=0.25
+python-multipart>=0.0.9
 
 # Data storage
 pyarrow>=14.0       # parquet support
