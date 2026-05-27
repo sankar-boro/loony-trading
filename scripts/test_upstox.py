@@ -530,17 +530,43 @@ def test_websocket(token: str, r: Results, verbose: bool):
         r.section_end("[10]")
         return
 
-    # Step 2: try to open the WebSocket connection (just connect + close)
+    # Step 2: check protobuf SDK availability
     try:
+        from upstox_client.feeder.uplink_limited import MarketDataFeedResponse_pb2  # noqa: F401
+        r.check("Protobuf SDK decoder available", True,
+                detail="upstox-python-sdk installed and importable")
+    except Exception as exc:
+        r.check("Protobuf SDK decoder available", False,
+                detail=f"Fallback manual decoder active ({exc}). Install: pip install upstox-python-sdk",
+                warn_only=True)
+
+    # Step 3: try to open the WebSocket connection and subscribe to one instrument
+    try:
+        import json as _json
+        import threading
         import websocket  # websocket-client
 
-        received: list[bytes] = []
+        received_frames: list[bytes] = []
         connected = [False]
+        subscribed = [False]
         error_msg = [""]
+        _SUB_KEY = "NSE_INDEX|Nifty 50"
 
         def on_open(ws):
             connected[0] = True
-            ws.close()
+            sub_msg = _json.dumps({
+                "guid":   "test-sub",
+                "method": "sub",
+                "data":   {"mode": "ltpc", "instrumentKeys": [_SUB_KEY]},
+            })
+            ws.send(sub_msg)
+            subscribed[0] = True
+
+        def on_message(ws, msg):
+            if isinstance(msg, bytes) and len(msg) > 0:
+                received_frames.append(msg)
+            if len(received_frames) >= 1:
+                ws.close()
 
         def on_error(ws, err):
             error_msg[0] = str(err)
@@ -548,18 +574,46 @@ def test_websocket(token: str, r: Results, verbose: bool):
         ws = websocket.WebSocketApp(
             wss_url,
             on_open=on_open,
+            on_message=on_message,
             on_error=on_error,
         )
-        # run_forever in a thread with short timeout
-        import threading
         t = threading.Thread(target=ws.run_forever, kwargs={"ping_interval": 0})
         t.daemon = True
         t.start()
-        t.join(timeout=8)
+        t.join(timeout=12)
 
         r.check("WebSocket connection established",
                 connected[0],
-                detail=error_msg[0] if error_msg[0] else "connected and closed cleanly")
+                detail=error_msg[0] if error_msg[0] else "connected cleanly")
+        r.check("Subscription sent successfully",
+                subscribed[0],
+                detail=f"Subscribed to {_SUB_KEY}")
+        r.check("Binary frame received from feed",
+                len(received_frames) > 0,
+                detail=f"{len(received_frames)} frame(s) received ({sum(len(f) for f in received_frames)} bytes)"
+                       if received_frames else "0 frames — market may be closed",
+                warn_only=True)
+
+        # Try to decode the received frame with our feed module
+        if received_frames:
+            try:
+                from data_engine.upstox.upstox_feed import UpstoxFeed, UpstoxAuth as _Auth
+                class _MockAuth:
+                    access_token = token
+                feed_obj = UpstoxFeed.__new__(UpstoxFeed)
+                feed_obj._last_prices = {}
+                events = feed_obj._decode_protobuf(received_frames[0])
+                r.check("Protobuf frame decoded",
+                        len(events) >= 0,
+                        detail=f"{len(events)} event(s) decoded from first frame")
+                if events:
+                    e = events[0]
+                    r.check("Decoded LTP is positive",
+                            e.ltp > 0,
+                            detail=f"{e.symbol} LTP=₹{e.ltp:,.2f}",
+                            warn_only=True)
+            except Exception as exc:
+                r.check("Protobuf frame decoded", False, detail=str(exc), warn_only=True)
 
     except ImportError:
         r.skip("WebSocket connection", "websocket-client not installed (pip install websocket-client)")

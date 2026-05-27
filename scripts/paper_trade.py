@@ -93,8 +93,27 @@ DEFAULT_SYMBOLS = [
     "SBIN", "BAJFINANCE", "AXISBANK",
 ]
 
-STATE_FILE   = ROOT / "data" / "live_positions.json"
-JOURNAL_FILE = ROOT / "logs" / "paper_trades.jsonl"
+STATE_FILE        = ROOT / "data" / "live_positions.json"
+JOURNAL_FILE      = ROOT / "logs" / "paper_trades.jsonl"
+EQUITY_CURVE_FILE = ROOT / "data" / "equity_curve.jsonl"
+
+
+def _append_equity(portfolio: "PaperPortfolio") -> None:
+    """Append one timestamped equity snapshot to data/equity_curve.jsonl."""
+    try:
+        EQUITY_CURVE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "ts":          datetime.now().isoformat(),
+            "equity":      round(portfolio.total_value, 2),
+            "cash":        round(portfolio.cash, 2),
+            "realised":    round(portfolio.realised_pnl, 2),
+            "unrealised":  round(portfolio.unrealised_pnl, 2),
+            "open_pos":    len(portfolio.positions),
+        }
+        with open(EQUITY_CURVE_FILE, "a") as f:
+            f.write(json.dumps(record) + "\n")
+    except Exception:
+        pass
 
 
 def _journal_log(record: dict) -> None:
@@ -977,6 +996,7 @@ def main():
                 log_file.flush()
 
             _save_state(portfolio)
+            _append_equity(portfolio)
 
             elapsed = time.perf_counter() - t0
             sleep_sec = max(0.5, args.tick - elapsed)

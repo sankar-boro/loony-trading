@@ -64,6 +64,27 @@ class MarketEvent:
         }
 
 
+_PROTOBUF_OK: bool | None = None
+
+
+def _check_protobuf_decoder() -> bool:
+    """Return True if the Upstox SDK protobuf decoder is importable; warn otherwise."""
+    global _PROTOBUF_OK
+    if _PROTOBUF_OK is not None:
+        return _PROTOBUF_OK
+    try:
+        from upstox_client.feeder.uplink_limited import MarketDataFeedResponse_pb2  # noqa: F401
+        _PROTOBUF_OK = True
+        logger.debug("Upstox protobuf SDK decoder available")
+    except Exception as exc:
+        _PROTOBUF_OK = False
+        logger.warning(
+            "Upstox protobuf SDK not available (%s); falling back to manual decoder. "
+            "Install with: pip install upstox-python-sdk", exc,
+        )
+    return _PROTOBUF_OK
+
+
 class UpstoxFeed:
     """
     Async WebSocket client for Upstox real-time market data feed.
@@ -73,6 +94,8 @@ class UpstoxFeed:
         feed.subscribe(my_callback)
         await feed.start(["RELIANCE", "TCS", "NIFTY50"], mode=MODE_FULL)
     """
+
+    _MAX_MOVE_PCT = 0.20   # reject ticks with >20% move from last known price
 
     def __init__(self, auth: UpstoxAuth, registry=None,
                  mode: str = MODE_LTPC):
@@ -85,6 +108,7 @@ class UpstoxFeed:
         self._ws = None
         self._reconnect_delay = _RECONNECT_BASE
         self._last_prices: Dict[str, float] = {}
+        _check_protobuf_decoder()
 
     def subscribe(self, callback: Callable) -> None:
         self._subscribers.append(callback)
@@ -179,9 +203,27 @@ class UpstoxFeed:
 
     # ── Message decoding ──────────────────────────────────────────────────────
 
+    def _validate_tick(self, event: MarketEvent) -> bool:
+        """Return False and log if the tick looks corrupted."""
+        if event.ltp <= 0:
+            logger.debug("Dropping tick %s: LTP=%.2f", event.symbol, event.ltp)
+            return False
+        prev = self._last_prices.get(event.symbol)
+        if prev and prev > 0:
+            move = abs(event.ltp - prev) / prev
+            if move > self._MAX_MOVE_PCT:
+                logger.warning(
+                    "Suspicious tick %s: LTP %.2f → %.2f (%.1f%% move) — dropped",
+                    event.symbol, prev, event.ltp, move * 100,
+                )
+                return False
+        return True
+
     async def _handle_binary(self, data: bytes) -> None:
         events = self._decode_protobuf(data)
         for event in events:
+            if not self._validate_tick(event):
+                continue
             self._last_prices[event.symbol] = event.ltp
             candle = event.to_candle_event()
             for cb in self._subscribers:

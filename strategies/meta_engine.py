@@ -104,8 +104,8 @@ class MetaStrategyEngine:
         """Returns the signal with the highest weighted confidence score."""
         if not signals:
             return None
-        return max(signals, key=lambda s: s.confidence * s.__class__.__mro__[0].__dict__.get("weight", 1.0)
-                   if hasattr(s, "weight") else s.confidence)
+        weights: dict = self.cfg.get("strategies", {}).get("weights", {})
+        return max(signals, key=lambda s: s.confidence * weights.get(s.strategy, 1.0))
 
     def generate_pair_signals(
         self,
