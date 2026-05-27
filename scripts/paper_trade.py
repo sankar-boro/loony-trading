@@ -102,6 +102,14 @@ _TF_CONFIG = {
     "15m": ("15minute", 45),
 }
 
+# How often (seconds) to refresh intraday candles — one candle period
+_CANDLE_SECONDS = {
+    "day":       86400,
+    "60minute":  3600,
+    "30minute":  1800,
+    "15minute":  900,
+}
+
 
 # ── Token loading ─────────────────────────────────────────────────────────────
 
@@ -217,6 +225,35 @@ def _fetch_ohlcv(token: str, instrument_key: str, interval: str, days: int):
     for col in ["open", "high", "low", "close", "volume"]:
         df[col] = df[col].apply(float)
     return df
+
+
+# ── Intraday data refresh ─────────────────────────────────────────────────────
+
+def _refresh_intraday(token: str, sym: str, ikey: str,
+                      interval: str, df_old, fb) -> "pd.DataFrame":
+    """
+    Fetch the latest intraday candles and merge with df_old.
+    For daily data this is a no-op — LTP update is sufficient.
+    Returns the updated DataFrame (or df_old on failure).
+    """
+    if interval == "day":
+        return df_old
+
+    df_new = _fetch_ohlcv(token, ikey, interval, days=2)
+    if df_new.empty:
+        return df_old
+
+    import pandas as pd
+    df_combined = pd.concat([df_old, df_new])
+    df_combined = df_combined[~df_combined.index.duplicated(keep="last")]
+    df_combined = df_combined.sort_index()
+
+    if fb is not None:
+        try:
+            df_combined = fb.build(df_combined)
+        except Exception:
+            pass
+    return df_combined
 
 
 # ── Virtual position tracking ─────────────────────────────────────────────────
@@ -716,7 +753,9 @@ def main():
     log_file = open(args.log_file, "a") if args.log_file else None
     session_start = datetime.now().strftime("%H:%M:%S")
     tick_no = 0
-    _mis_squaredoff = False   # ensure squareoff fires only once per session
+    _mis_squaredoff = False     # ensure squareoff fires only once per session
+    _last_refresh: dict[str, float] = {}  # sym → last refresh epoch
+    candle_period = _CANDLE_SECONDS.get(interval, 86400)
 
     # ── Market hours guard ────────────────────────────────────────────────────
     from utils.timeutils import is_market_session, next_market_open, minutes_to_market_open
@@ -767,6 +806,16 @@ def main():
 
             # Update positions → check SL/TP
             close_events = portfolio.update_prices(prices)
+
+            # Refresh intraday candles once per candle period (no-op for daily)
+            if interval != "day":
+                for sym, ikey in resolved:
+                    if time.time() - _last_refresh.get(sym, 0) >= candle_period:
+                        refreshed = _refresh_intraday(token, sym, ikey, interval,
+                                                      hist_data.get(sym), fb)
+                        if refreshed is not None and not refreshed.empty:
+                            hist_data[sym] = refreshed
+                        _last_refresh[sym] = time.time()
 
             # Generate signals on schedule
             signal_events: list[str] = []

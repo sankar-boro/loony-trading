@@ -127,7 +127,6 @@ class UpstoxExecutor:
         self._default_product = UpstoxProduct(
             self.cfg.get("upstox_product", "CNC")
         )
-        self._brokerage_pct = 0.0003   # 0.03% Zerodha-like brokerage
 
     def on_fill(self, callback: Callable) -> None:
         self._callbacks.append(callback)
@@ -184,6 +183,7 @@ class UpstoxExecutor:
         tick_size = self.registry.get_tick_size(instrument_key)
         size_float = self.risk_manager.size_position(signal)
         qty = max(lot_size, int(round(size_float / lot_size) * lot_size))
+        qty = self._validate_quantity(instrument_key, qty)
         if qty <= 0:
             logger.warning(f"Zero qty for {signal.symbol}")
             return None
@@ -461,6 +461,39 @@ class UpstoxExecutor:
             logger.error(f"Margin calc error: {e}")
             return {}
 
+    # ── NSE charge calculator ─────────────────────────────────────────────────
+
+    @staticmethod
+    def _compute_charges(price: float, qty: int, side: str, product: str) -> float:
+        """
+        Accurate NSE transaction costs for 2025.
+
+        MIS round-trip ≈ 0.055%:
+          brokerage ₹20 flat or 0.03% (whichever lower) + STT 0.025% sell
+          + exchange charge 0.00345% + GST 18% + SEBI 0.0001% + stamp 0.003% buy
+
+        CNC round-trip ≈ 0.21%:
+          brokerage ₹0 (Upstox delivery free) + STT 0.1% both sides
+          + exchange charge 0.00345% + GST 18% + SEBI 0.0001% + stamp 0.015% buy
+        """
+        value = price * qty
+        is_mis = product in ("MIS", "NRML")
+
+        if is_mis:
+            brokerage  = min(20.0, value * 0.0003)
+            stt        = value * 0.00025 if side == "SELL" else 0.0
+            stamp_duty = value * 0.00003 if side == "BUY" else 0.0
+        else:  # CNC delivery
+            brokerage  = 0.0
+            stt        = value * 0.001   # 0.1% on both sides
+            stamp_duty = value * 0.00015 if side == "BUY" else 0.0
+
+        exchange_charge = value * 0.0000345   # NSE transaction charge
+        gst             = (brokerage + exchange_charge) * 0.18
+        sebi_fee        = value * 0.000001    # ₹10 per crore
+
+        return brokerage + stt + exchange_charge + gst + sebi_fee + stamp_duty
+
     # ── Paper fill simulation ─────────────────────────────────────────────────
 
     async def _paper_fill(self, order: UpstoxOrder, market_price: float) -> None:
@@ -470,10 +503,11 @@ class UpstoxExecutor:
         else:
             fill_price = market_price - slippage
         fill_price = round(fill_price, 2)
-        brokerage = fill_price * order.quantity * self._brokerage_pct
-        # NSE transaction charges, STT, etc. (approximate)
-        stt = fill_price * order.quantity * 0.001 if order.transaction_type == "SELL" else 0
-        total_charges = brokerage + stt
+
+        total_charges = self._compute_charges(
+            fill_price, order.quantity,
+            order.transaction_type, order.product.value,
+        )
 
         order.avg_price = fill_price
         order.filled_qty = order.quantity
@@ -481,6 +515,84 @@ class UpstoxExecutor:
         logger.info(f"[PAPER] {order.transaction_type} {order.quantity} "
                     f"{order.instrument_key.split('|')[-1]} @ ₹{fill_price:.2f} "
                     f"charges=₹{total_charges:.2f}")
+
+    # ── Options basket execution ──────────────────────────────────────────────
+
+    async def execute_options_signal(self, signal) -> list[str]:
+        """
+        Execute a multi-leg options signal (iron condor, straddle, etc.).
+        Returns list of order_ids placed.
+        """
+        from data_engine.upstox.options_resolver import build_legs_from_signal
+        from risk_manager.risk_manager import FO_LOT_SIZES
+
+        legs = build_legs_from_signal(signal)
+        if not legs:
+            logger.warning(
+                f"No legs resolved for {signal.symbol} "
+                f"subtype={signal.metadata.get('strategy_subtype', '?')}"
+            )
+            return []
+
+        lot = FO_LOT_SIZES.get(signal.symbol.upper(), 1)
+        for leg in legs:
+            leg["qty"] = lot   # one lot per leg by default
+
+        return await self.place_basket_order(legs, tag=f"loony-{signal.strategy[:15]}")
+
+    async def place_basket_order(self, legs: list[dict], tag: str = "loony") -> list[str]:
+        """
+        Place multiple option legs sequentially.
+        Each leg: {instrument_key, action, qty, price, tag}.
+        Returns list of order_ids (empty strings for paper fills).
+        """
+        order_ids: list[str] = []
+        for leg in legs:
+            instrument_key = leg["instrument_key"]
+            qty   = self._validate_quantity(instrument_key, int(leg.get("qty", 1)))
+            price = float(leg.get("price", 0.0))
+            side  = leg.get("action", "BUY").upper()
+            leg_tag = leg.get("tag", tag)
+
+            order = UpstoxOrder(
+                instrument_key=instrument_key,
+                quantity=qty,
+                product=UpstoxProduct.NRML,
+                order_type=UpstoxOrderType.LIMIT if price > 0 else UpstoxOrderType.MARKET,
+                transaction_type=side,
+                price=price,
+                tag=leg_tag,
+            )
+
+            if self.mode == "paper":
+                await self._paper_fill(order, price or 1.0)
+                order_ids.append("")
+            else:
+                try:
+                    resp = self._post("/order/place", {
+                        "quantity":           order.quantity,
+                        "product":            order.product.value,
+                        "validity":           "DAY",
+                        "price":              order.price,
+                        "tag":                order.tag,
+                        "instrument_token":   order.instrument_key,
+                        "order_type":         order.order_type.value,
+                        "transaction_type":   order.transaction_type,
+                        "disclosed_quantity": 0,
+                        "trigger_price":      0,
+                        "is_amo":             False,
+                    })
+                    oid = resp.get("data", {}).get("order_id", "")
+                    order_ids.append(oid)
+                    logger.info(
+                        f"Basket leg: {side} {qty} "
+                        f"{instrument_key.split('|')[-1]} → order_id={oid}"
+                    )
+                except Exception as e:
+                    logger.error(f"Basket leg failed ({instrument_key}): {e}")
+                    order_ids.append("")
+
+        return order_ids
 
     # ── MIS squareoff ─────────────────────────────────────────────────────────
 
@@ -555,6 +667,27 @@ class UpstoxExecutor:
         if "|" in symbol:
             return symbol
         return self.registry.get_key(symbol)
+
+    @staticmethod
+    def _validate_quantity(instrument_key: str, qty: int) -> int:
+        """
+        Snap F&O quantities to the nearest valid lot size.
+        Equity lot size is 1, so this is a no-op for equities.
+        """
+        from risk_manager.risk_manager import FO_LOT_SIZES
+        if not (instrument_key.startswith("NSE_FO") or
+                instrument_key.startswith("BSE_FO")):
+            return qty
+        # Extract underlying name from key, e.g. "NSE_FO|NIFTY25JUN24500CE" → "NIFTY"
+        raw = instrument_key.split("|")[-1]
+        underlying = raw.rstrip("0123456789").rstrip("CEPE")
+        for name, lot in FO_LOT_SIZES.items():
+            if underlying.startswith(name):
+                snapped = max(lot, (qty // lot) * lot)
+                if snapped != qty:
+                    logger.info(f"Qty snapped {qty}→{snapped} for {raw} (lot={lot})")
+                return snapped
+        return qty
 
     @staticmethod
     def _choose_order_type(signal: Signal, cfg: str) -> UpstoxOrderType:

@@ -21,6 +21,7 @@ from .auth import UpstoxAuth
 from .instruments import InstrumentRegistry
 from utils.logger import get_logger
 from utils.timeutils import now_utc
+from .corporate_actions import load_actions, apply_adjustments
 
 logger = get_logger("upstox.data")
 
@@ -72,7 +73,8 @@ class UpstoxDataEngine:
     """
 
     def __init__(self, auth: UpstoxAuth, registry: InstrumentRegistry,
-                 cache_dir: str = "data/cache"):
+                 cache_dir: str = "data/cache",
+                 adjust_prices: bool = True):
         self.auth = auth
         self.registry = registry
         self.cache_dir = Path(cache_dir)
@@ -81,6 +83,8 @@ class UpstoxDataEngine:
         self._subscribers: List[Callable] = []
         self._running = False
         self._session = None   # requests.Session, lazy init
+        self._adjust_prices = adjust_prices
+        self._corp_actions: dict | None = None  # loaded lazily
 
     # ── HTTP session ──────────────────────────────────────────────────────────
 
@@ -166,6 +170,12 @@ class UpstoxDataEngine:
         # Resample 30m → 1h if needed
         if timeframe in ("1h", "60m"):
             df = self._resample_to_1h(df)
+
+        # Apply corporate action adjustments (bonus/split) for equity symbols
+        if self._adjust_prices and not instrument_key.startswith("NSE_INDEX"):
+            if self._corp_actions is None:
+                self._corp_actions = load_actions()
+            df = apply_adjustments(df, symbol, self._corp_actions)
 
         df.to_parquet(cache_file)
         self._candle_cache.setdefault(symbol, {})[timeframe] = df

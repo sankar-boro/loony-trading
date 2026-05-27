@@ -8,6 +8,23 @@ from utils.math_utils import safe_divide
 
 logger = get_logger("risk_manager")
 
+# NSE/BSE F&O lot sizes (as of 2025). Must keep in sync with exchange circulars.
+FO_LOT_SIZES: dict[str, int] = {
+    "NIFTY":       75,
+    "BANKNIFTY":   30,
+    "FINNIFTY":    65,
+    "MIDCPNIFTY":  75,
+    "SENSEX":      10,
+    "BANKEX":      15,
+}
+
+
+def snap_to_lot(symbol: str, quantity: float) -> int:
+    """Round quantity down to the nearest valid F&O lot size. Equity lot size is 1."""
+    lot = FO_LOT_SIZES.get(symbol.upper().split("|")[-1][:10], 1)
+    snapped = max(lot, int(quantity // lot) * lot)
+    return snapped
+
 
 @dataclass
 class Position:

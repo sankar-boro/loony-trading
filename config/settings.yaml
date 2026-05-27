@@ -82,7 +82,9 @@ risk:
 
 execution:
   order_type: limit              # market | limit | smart
-  slippage_pct: 0.001
+  slippage_pct: 0.0005           # 0.05% market impact (NSE liquid stocks)
+  commission_intraday: 0.00055   # MIS round-trip ~0.055% total charges
+  commission_delivery: 0.0021    # CNC round-trip ~0.21% total charges
   retry_attempts: 3
   retry_delay_ms: 500
   latency_budget_ms: 100

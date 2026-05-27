@@ -135,6 +135,7 @@ class UpstoxTradingBot:
                 f"{23 - token_age_h:.1f}h. Run: bash scripts/auto_login.sh"
             )
 
+        self._check_ml_models()
         await self._load_historical_data()
         await self._train_or_load_models()
 
@@ -148,6 +149,22 @@ class UpstoxTradingBot:
 
         logger.info("Starting real-time WebSocket feed...")
         await self.feed.start(self.all_symbols, mode="full")
+
+    def _check_ml_models(self) -> None:
+        models_dir = Path(__file__).resolve().parent / "models"
+        missing = [
+            sym for sym in self.equity_symbols
+            if not (models_dir / f"{sym}_ensemble.pkl").exists()
+        ]
+        if missing:
+            logger.warning(
+                f"No ML models for: {', '.join(missing[:5])}"
+                f"{'...' if len(missing) > 5 else ''}. "
+                "MLClassifierStrategy will be skipped for these symbols. "
+                "Run: python main.py --mode train"
+            )
+        else:
+            logger.info(f"ML models found for all {len(self.equity_symbols)} equity symbols")
 
     async def _load_historical_data(self) -> None:
         lookback = self.cfg.get("data", {}).get("lookback_days", 365)

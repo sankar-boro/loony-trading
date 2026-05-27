@@ -48,11 +48,20 @@ class Backtester:
     Runs MetaStrategyEngine bar-by-bar on historical OHLCV data.
     """
 
-    def __init__(self, cfg: dict, initial_capital: float = 10_000):
+    def __init__(self, cfg: dict, initial_capital: float = 10_000,
+                 product: str = "CNC"):
         self.cfg = cfg
         self.initial_capital = initial_capital
-        self.commission_pct = cfg.get("execution", {}).get("commission", 0.001)
-        self.slippage_pct = cfg.get("execution", {}).get("slippage_pct", 0.001)
+        self.product = product  # "CNC" (delivery) or "MIS" (intraday)
+        ex = cfg.get("execution", {})
+        # Use per-product commission if available, else legacy fallback
+        if product == "MIS":
+            self.commission_pct = ex.get("commission_intraday",
+                                         ex.get("commission", 0.00055))
+        else:
+            self.commission_pct = ex.get("commission_delivery",
+                                         ex.get("commission", 0.0021))
+        self.slippage_pct = ex.get("slippage_pct", 0.0005)
         self.risk_per_trade = cfg.get("risk", {}).get("max_risk_per_trade", 0.01)
         self.warmup_bars = cfg.get("data", {}).get("warmup_bars", 200)
 

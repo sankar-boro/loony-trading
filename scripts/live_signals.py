@@ -497,6 +497,19 @@ def main():
     if fb_err and not args.no_features:
         print(f"{Y}FeatureBuilder error: {fb_err} — running without features{E}")
 
+    # ML model existence check
+    models_dir = ROOT / "models"
+    missing_models = [
+        sym for sym, _ in resolved
+        if not sym.startswith("NIFTY") and not sym.startswith("BANK")
+        and not (models_dir / f"{sym}_ensemble.pkl").exists()
+    ]
+    if missing_models:
+        print(f"\n{Y}No ML models for: {', '.join(missing_models[:6])}"
+              f"{'...' if len(missing_models) > 6 else ''}{E}")
+        print(f"  MLClassifierStrategy disabled for these symbols.")
+        print(f"  Run: python main.py --mode train\n")
+
     def _run_scan():
         from datetime import datetime
         from utils.timeutils import is_market_session, minutes_to_market_close
