@@ -283,11 +283,21 @@ def main():
     try:
         while True:
             t0 = time.time()
+            from utils.timeutils import is_market_session, next_market_open, minutes_to_market_close
+            if not is_market_session():
+                nxt = next_market_open()
+                status = yellow(f"Market closed  •  Next open: {nxt.strftime('%a %H:%M IST')}")
+            else:
+                mins_left = minutes_to_market_close()
+                raw_status = _market_status(token)
+                if mins_left <= 30:
+                    status = f"{raw_status}  {yellow(f'Closes in {mins_left} min')}"
+                else:
+                    status = raw_status
             data = _get_quotes(token, keys)
             if not data:
                 data = {k.replace("|", ":"): {"last_price": v.get("last_price")}
                         for k, v in _get_ltp(token, keys).items()}
-            status = _market_status(token)
             _render(instruments, data, prev_data, status)
 
             elapsed = time.time() - t0

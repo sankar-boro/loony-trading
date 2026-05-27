@@ -93,6 +93,8 @@ DEFAULT_SYMBOLS = [
     "SBIN", "BAJFINANCE", "AXISBANK",
 ]
 
+STATE_FILE = ROOT / "data" / "live_positions.json"
+
 _TF_CONFIG = {
     "1d":  ("day",      365),
     "1h":  ("60minute", 90),
@@ -116,22 +118,44 @@ def _load_env():
                 os.environ[k] = v
 
 
-def _get_token(explicit: str = None) -> str:
-    if explicit:
-        return explicit
-    t = os.environ.get("UPSTOX_ACCESS_TOKEN", "").strip()
-    if t:
-        return t
+def _get_token(explicit: str = None) -> tuple[str, float]:
+    """
+    Returns (token, age_hours).
+    age_hours = -1 means unknown (env var with no matching token file).
+    Raises SystemExit if token is expired (>23h) or missing.
+    """
     tf = ROOT / "data" / "upstox_token.json"
+
+    file_token, file_age = "", -1.0
     if tf.exists():
         try:
             d = json.loads(tf.read_text())
-            age = (time.time() - d.get("obtained_at", 0)) / 3600
-            if d.get("access_token") and age < 23:
-                return d["access_token"]
+            file_age = (time.time() - d.get("obtained_at", 0)) / 3600
+            if d.get("access_token"):
+                file_token = d["access_token"]
         except Exception:
             pass
-    return ""
+
+    token = explicit or os.environ.get("UPSTOX_ACCESS_TOKEN", "").strip() or file_token
+
+    if not token:
+        print(f"\n{R}No token found.{E}")
+        print("Run: python scripts/upstox_login.py")
+        sys.exit(1)
+
+    age = file_age if file_token and token == file_token else -1.0
+
+    if age >= 23:
+        print(f"\n{R}Token expired{E} (age {age:.1f}h — Upstox tokens last 23h).")
+        print("Run: python scripts/upstox_login.py --force")
+        print("Or set up auto-renewal: bash scripts/auto_login.sh")
+        sys.exit(1)
+
+    if 0 <= age >= 20:
+        print(f"{Y}Token is {age:.1f}h old — expires in {23 - age:.1f}h.{E}")
+        print("  Consider running: bash scripts/auto_login.sh")
+
+    return token, age
 
 
 # ── Upstox API helpers ────────────────────────────────────────────────────────
@@ -427,6 +451,82 @@ class PaperPortfolio:
         return wins / len(self.closed_trades) * 100 if self.closed_trades else 0.0
 
 
+# ── State persistence ─────────────────────────────────────────────────────────
+
+def _save_state(portfolio: PaperPortfolio) -> None:
+    """Snapshot portfolio to disk so a crash/restart can resume the session."""
+    state = {
+        "saved_at": time.time(),
+        "initial_capital": portfolio.initial_capital,
+        "cash": portfolio.cash,
+        "positions": [
+            {
+                "symbol": p.symbol,
+                "direction": p.direction,
+                "size": p.size,
+                "entry_price": p.entry_price,
+                "stop_loss": p.stop_loss,
+                "take_profit": p.take_profit,
+                "trailing_stop_pct": p.trailing_stop_pct,
+                "strategy": p.strategy,
+                "entry_time": p.entry_time,
+                "peak_price": p.peak_price,
+                "current_price": p.current_price,
+                "unrealised_pnl": p.unrealised_pnl,
+            }
+            for p in portfolio.positions.values()
+        ],
+        "closed_trades": [
+            {
+                "symbol": t.symbol,
+                "direction": t.direction,
+                "entry_price": t.entry_price,
+                "exit_price": t.exit_price,
+                "size": t.size,
+                "pnl": t.pnl,
+                "reason": t.reason,
+                "strategy": t.strategy,
+                "entry_time": t.entry_time,
+                "exit_time": t.exit_time,
+            }
+            for t in portfolio.closed_trades
+        ],
+        "signal_log": portfolio.signal_log[-200:],  # keep last 200 entries
+    }
+    try:
+        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        STATE_FILE.write_text(json.dumps(state, indent=2))
+    except Exception:
+        pass
+
+
+def _load_state(portfolio: PaperPortfolio, max_age_hours: float = 1.0) -> int:
+    """
+    Restore positions from the last snapshot if it is fresh (<max_age_hours old)
+    and was created with the same initial capital. Returns the number of positions
+    restored (0 means nothing was loaded).
+    """
+    if not STATE_FILE.exists():
+        return 0
+    try:
+        state = json.loads(STATE_FILE.read_text())
+        age_h = (time.time() - state.get("saved_at", 0)) / 3600
+        if age_h > max_age_hours:
+            return 0
+        if abs(state.get("initial_capital", 0) - portfolio.initial_capital) > 1:
+            return 0  # different session — don't restore
+        portfolio.cash = float(state.get("cash", portfolio.cash))
+        portfolio.closed_trades = [
+            ClosedTrade(**t) for t in state.get("closed_trades", [])
+        ]
+        portfolio.signal_log = list(state.get("signal_log", []))
+        for pd in state.get("positions", []):
+            portfolio.positions[pd["symbol"]] = VirtualPosition(**pd)
+        return len(portfolio.positions)
+    except Exception:
+        return 0
+
+
 # ── Dashboard rendering ───────────────────────────────────────────────────────
 
 def _render_dashboard(portfolio: PaperPortfolio, prices: dict[str, float],
@@ -538,10 +638,7 @@ def main():
     args = parser.parse_args()
 
     _load_env()
-    token = _get_token(args.token)
-    if not token:
-        print(f"\n{R}No token found.{E}  Run: python scripts/upstox_login.py")
-        sys.exit(1)
+    token, token_age = _get_token(args.token)   # exits on expired/missing
 
     raw_syms = [s.strip().upper() for s in args.symbols.split(",") if s.strip()] \
                if args.symbols else DEFAULT_SYMBOLS
@@ -588,6 +685,10 @@ def main():
         trailing_stop_pct=0.02,
     )
 
+    restored = _load_state(portfolio)
+    if restored:
+        print(f"{G}Restored {restored} open position(s) from previous session snapshot.{E}")
+
     interval, days = _TF_CONFIG[args.timeframe]
 
     # Pre-load historical data for all symbols
@@ -615,6 +716,24 @@ def main():
     log_file = open(args.log_file, "a") if args.log_file else None
     session_start = datetime.now().strftime("%H:%M:%S")
     tick_no = 0
+    _mis_squaredoff = False   # ensure squareoff fires only once per session
+
+    # ── Market hours guard ────────────────────────────────────────────────────
+    from utils.timeutils import is_market_session, next_market_open, minutes_to_market_open
+
+    if not is_market_session():
+        nxt = next_market_open()
+        mins = minutes_to_market_open()
+        print(f"\n{Y}Market is currently closed.{E}")
+        print(f"  Next open: {nxt.strftime('%A %Y-%m-%d %H:%M IST')}  ({mins} min)")
+        print(f"  Paper trade will run on stale historical prices until market opens.")
+        if mins > 60:
+            print(f"\n  {DIM}Sleeping until {nxt.strftime('%H:%M IST')} — press Ctrl+C to start immediately.{E}")
+            try:
+                sleep_until = mins * 60 - 120  # wake 2 min before open
+                time.sleep(max(0, sleep_until))
+            except KeyboardInterrupt:
+                print(f"\n  {DIM}Starting immediately.{E}\n")
 
     print(f"\n{bold('Paper trading started.')}")
     print(f"  Symbols: {', '.join(syms)}")
@@ -630,6 +749,21 @@ def main():
 
             # Fetch live prices
             prices = _fetch_ltp(token, ikeys)
+
+            # ── MIS squareoff at 3:14 PM IST ─────────────────────────────────
+            from utils.timeutils import should_squareoff_mis
+            if should_squareoff_mis() and not _mis_squaredoff:
+                _mis_squaredoff = True
+                mis_syms = list(portfolio.positions.keys())
+                if mis_syms:
+                    print(f"\n  {yellow('MIS SQUAREOFF 3:14 PM')} — closing {len(mis_syms)} position(s)")
+                    for sym in mis_syms:
+                        ikey = INSTRUMENTS.get(sym, "")
+                        ltp = prices.get(ikey, 0.0) or portfolio.positions[sym].entry_price
+                        msg = portfolio._close_position(sym, ltp, "mis_squareoff_3:14pm")
+                        print(f"  {msg}")
+                else:
+                    print(f"  {dim('3:14 PM — no open MIS positions to square off.')}")
 
             # Update positions → check SL/TP
             close_events = portfolio.update_prices(prices)
@@ -660,6 +794,12 @@ def main():
             all_events = close_events + signal_events
             next_signal_in = args.signal_every - (tick_no % args.signal_every)
 
+            from utils.timeutils import minutes_to_market_close, is_market_session
+            if is_market_session():
+                mins_left = minutes_to_market_close()
+                if 0 < mins_left <= 20:
+                    all_events = [f"{Y}Market closes in {mins_left} min  (MIS squareoff at 3:14 PM){E}"] + all_events
+
             _render_dashboard(portfolio, prices, tick_no, next_signal_in,
                                all_events, session_start)
 
@@ -668,6 +808,8 @@ def main():
                     log_file.write(json.dumps(entry) + "\n")
                 log_file.flush()
 
+            _save_state(portfolio)
+
             elapsed = time.perf_counter() - t0
             sleep_sec = max(0.5, args.tick - elapsed)
             time.sleep(sleep_sec)
@@ -675,6 +817,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        _save_state(portfolio)
         if log_file:
             log_file.close()
 

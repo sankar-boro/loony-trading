@@ -123,20 +123,47 @@ def _load_env():
                 os.environ[k] = v
 
 
-def _get_token() -> str:
-    t = os.environ.get("UPSTOX_ACCESS_TOKEN", "").strip()
-    if t:
-        return t
+def _get_token(explicit: str = None) -> tuple[str, float]:
+    """
+    Returns (token, age_hours).
+    age_hours = -1 means unknown (env var with no token file).
+    Raises SystemExit if token is expired (>23h) or missing.
+    """
     tf = ROOT / "data" / "upstox_token.json"
+
+    # Always try the token file first — it carries obtained_at for age tracking
+    file_token, file_age = "", -1.0
     if tf.exists():
         try:
             d = json.loads(tf.read_text())
-            age = (time.time() - d.get("obtained_at", 0)) / 3600
-            if d.get("access_token") and age < 23:
-                return d["access_token"]
+            file_age = (time.time() - d.get("obtained_at", 0)) / 3600
+            if d.get("access_token"):
+                file_token = d["access_token"]
         except Exception:
             pass
-    return ""
+
+    # Explicit --token arg takes priority but we still report age from file
+    token = explicit or os.environ.get("UPSTOX_ACCESS_TOKEN", "").strip() or file_token
+
+    if not token:
+        print(f"\n{R}No token found.{E}")
+        print("Run: python scripts/upstox_login.py")
+        sys.exit(1)
+
+    # Age check — only knowable from the token file
+    age = file_age if file_token and token == file_token else -1.0
+
+    if age >= 23:
+        print(f"\n{R}Token expired{E} (age {age:.1f}h — Upstox tokens last 23h).")
+        print("Run: python scripts/upstox_login.py --force")
+        print("Or set up auto-renewal: bash scripts/auto_login.sh")
+        sys.exit(1)
+
+    if 0 <= age >= 20:
+        print(f"{Y}Token is {age:.1f}h old — expires in {23 - age:.1f}h.{E}")
+        print(f"  Consider running: bash scripts/auto_login.sh")
+
+    return token, age
 
 
 # ── Upstox data fetching ──────────────────────────────────────────────────────
@@ -427,10 +454,7 @@ def main():
     args = parser.parse_args()
 
     _load_env()
-    token = args.token or _get_token()
-    if not token:
-        print(f"\n{R}No token found.{E}  Run: python scripts/upstox_login.py")
-        sys.exit(1)
+    token, token_age = _get_token(args.token)   # exits on expired/missing
 
     # Resolve symbols
     raw_syms = [s.strip().upper() for s in args.symbols.split(",") if s.strip()] \
@@ -475,8 +499,23 @@ def main():
 
     def _run_scan():
         from datetime import datetime
+        from utils.timeutils import is_market_session, minutes_to_market_close
+
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         t0 = time.perf_counter()
+
+        if not is_market_session():
+            from utils.timeutils import next_market_open
+            nxt = next_market_open()
+            print(CLEAR, end="")
+            print(bold(f"\n  Live Signal Scanner  •  {now_str}"))
+            print(f"  {Y}Market is closed.{E}  Next open: {nxt.strftime('%A %Y-%m-%d %H:%M IST')}")
+            print(f"  Historical signals shown (may not reflect current conditions).\n")
+        else:
+            mins_left = minutes_to_market_close()
+            if mins_left <= 30:
+                print(f"\n  {Y}Market closes in {mins_left} min.{E}  "
+                      f"(MIS squareoff at 3:14 PM IST)\n")
 
         results = []
         for sym, ikey in resolved:
@@ -496,6 +535,16 @@ def main():
         try:
             while True:
                 _run_scan()
+                from utils.timeutils import is_market_session, minutes_to_market_open
+                if not is_market_session():
+                    mins = minutes_to_market_open()
+                    if mins > args.refresh:
+                        # Sleep in chunks, waking to show a countdown
+                        sleep_chunk = min(args.refresh, 300)
+                        print(f"  {dim(f'Market closed — {mins} min to open.  '
+                                       f'Checking again in {sleep_chunk}s  •  Ctrl+C to exit')}")
+                        time.sleep(sleep_chunk)
+                        continue
                 print(f"  {dim(f'Next scan in {args.refresh}s  •  Ctrl+C to exit')}")
                 time.sleep(args.refresh)
         except KeyboardInterrupt:

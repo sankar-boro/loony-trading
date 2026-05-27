@@ -16,6 +16,7 @@ Usage:
 import asyncio
 import argparse
 import sys
+import time
 from pathlib import Path
 
 from config import settings
@@ -104,6 +105,7 @@ class UpstoxTradingBot:
         self._trainer = ModelTrainer(cfg)
         self._df_cache: dict = {}   # symbol → DataFrame
         self._tick_counter: dict = {}
+        self._mis_squaredoff: bool = False
 
     # ── Startup ────────────────────────────────────────────────────────────────
 
@@ -113,9 +115,25 @@ class UpstoxTradingBot:
         logger.info(f"Loony Trading Bot starting [{self.mode.upper()}] — Indian Markets (Upstox)")
         logger.info(f"Symbols: {', '.join(self.all_symbols[:10])}{'...' if len(self.all_symbols) > 10 else ''}")
 
-        if not self.auth.is_valid() and self.mode == "live":
-            logger.error("No valid Upstox token. Run: python main.py --mode auth")
-            return
+        # Token age check — hard block for live, warning for paper
+        token_age_h = (time.time() - self.auth._token_data.get("obtained_at", 0)) / 3600
+        if not self.auth.is_valid():
+            if self.mode == "live":
+                logger.error(
+                    f"Upstox token is expired or missing (age {token_age_h:.1f}h). "
+                    "Run: python main.py --mode auth  OR  bash scripts/auto_login.sh"
+                )
+                return
+            else:
+                logger.warning(
+                    f"Upstox token is expired (age {token_age_h:.1f}h). "
+                    "Paper mode continuing but API calls may fail."
+                )
+        elif token_age_h >= 20:
+            logger.warning(
+                f"Upstox token is {token_age_h:.1f}h old — expires in "
+                f"{23 - token_age_h:.1f}h. Run: bash scripts/auto_login.sh"
+            )
 
         await self._load_historical_data()
         await self._train_or_load_models()
@@ -173,10 +191,17 @@ class UpstoxTradingBot:
     # ── Tick handler (real-time) ────────────────────────────────────────────────
 
     async def _on_tick(self, event: dict) -> None:
+        from utils.timeutils import should_squareoff_mis
         symbol = event.get("symbol", "")
         price  = float(event.get("close", event.get("ltp", 0)))
         if price <= 0:
             return
+
+        # MIS squareoff at 3:14 PM IST — fires exactly once per session
+        if should_squareoff_mis() and not self._mis_squaredoff:
+            self._mis_squaredoff = True
+            logger.info("MIS squareoff triggered at 3:14 PM IST — closing all intraday positions")
+            asyncio.create_task(self.executor.squareoff_all_mis())
 
         self.portfolio.update_price(symbol, price)
 

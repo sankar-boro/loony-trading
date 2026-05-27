@@ -482,6 +482,73 @@ class UpstoxExecutor:
                     f"{order.instrument_key.split('|')[-1]} @ ₹{fill_price:.2f} "
                     f"charges=₹{total_charges:.2f}")
 
+    # ── MIS squareoff ─────────────────────────────────────────────────────────
+
+    async def squareoff_all_mis(self) -> list[str]:
+        """
+        Close every open MIS (intraday) position with a market order.
+        Called at 3:14 PM IST — before Upstox's forced squareoff at 3:20 PM.
+        Returns list of symbols that were closed.
+        """
+        closed: list[str] = []
+
+        if self.paper:
+            # In paper mode, nothing to do via API — caller handles virtual positions
+            logger.info("[PAPER] squareoff_all_mis called — no real orders to cancel")
+            return closed
+
+        positions = self.get_positions()
+        for pos in positions:
+            product = pos.get("product", "")
+            qty = int(pos.get("quantity", 0))
+            symbol = pos.get("trading_symbol", "")
+            ikey   = pos.get("instrument_token", "")
+
+            if product != "MIS" or qty == 0:
+                continue
+
+            # qty > 0 means long → close with SELL; qty < 0 means short → close with BUY
+            txn_type = "SELL" if qty > 0 else "BUY"
+            close_qty = abs(qty)
+
+            order = UpstoxOrder(
+                instrument_key=ikey or symbol,
+                quantity=close_qty,
+                product=UpstoxProduct.MIS,
+                order_type=UpstoxOrderType.MARKET,
+                transaction_type=txn_type,
+                tag="mis_squareoff",
+            )
+            try:
+                resp = self._post("/order/place", {
+                    "quantity":          order.quantity,
+                    "product":           order.product.value,
+                    "validity":          "DAY",
+                    "price":             0,
+                    "tag":               order.tag,
+                    "instrument_token":  order.instrument_key,
+                    "order_type":        order.order_type.value,
+                    "transaction_type":  order.transaction_type,
+                    "disclosed_quantity": 0,
+                    "trigger_price":     0,
+                    "is_amo":            False,
+                })
+                order_id = resp.get("data", {}).get("order_id", "")
+                logger.info(
+                    f"MIS squareoff: {txn_type} {close_qty} {symbol} "
+                    f"(market) → order_id={order_id}"
+                )
+                closed.append(symbol)
+            except Exception as e:
+                logger.error(f"MIS squareoff failed for {symbol}: {e}")
+
+        if closed:
+            logger.info(f"MIS squareoff complete: {len(closed)} position(s) closed")
+        else:
+            logger.info("MIS squareoff: no open MIS positions found")
+
+        return closed
+
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _resolve_key(self, symbol: str) -> Optional[str]:
