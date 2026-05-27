@@ -3,30 +3,29 @@
 Upstox Login Script
 ===================
 
-Handles the complete Upstox OAuth 2.0 authentication flow interactively.
+Handles three authentication methods:
 
-How it works:
-  1. Checks for an existing valid token (reuses it, no browser needed)
-  2. If expired/missing:
-     - Builds the authorization URL
-     - Starts a local HTTP server on port 8888 to capture the redirect
-     - Opens the Upstox login page in your browser
-     - You log in with mobile / PIN / TOTP on the Upstox page
-     - The redirect code is captured automatically
-     - Exchanges the code for an access token and saves it
-  3. If browser isn't available (headless server):
-     - Prints the URL for you to open manually
-     - Asks you to paste the auth code from the redirect URL
+Method 1 — Standard OAuth 2.0 (default):
+  Browser login with mobile / PIN / TOTP → local callback → 24h token.
+  Also saves the extended_token (1-year read-only) if returned.
 
-TOTP / OTP:
-  Upstox asks for a 6-digit TOTP during browser login.
-  Use your authenticator app (Google Authenticator, etc.) OR run:
-      python scripts/generate_totp.py --secret YOUR_32_CHAR_SECRET
+Method 2 — Access Token Request API (--token-request):
+  No browser, no TOTP. Upstox sends a WhatsApp + in-app push notification.
+  You tap Approve on your phone → script receives token via local webhook.
+  Pre-requisite: configure Notifier URL in your app settings to
+    http://localhost:<PORT>/callback
+
+Method 3 — Sandbox token (--sandbox):
+  Sandbox tokens are portal-generated. No OAuth needed.
+  Steps: account.upstox.com/developer/apps#sandbox → Generate → paste below.
 
 Usage:
-    python scripts/upstox_login.py
-    python scripts/upstox_login.py --force    # force re-auth even if token is valid
-    python scripts/upstox_login.py --env .env # specify env file
+    python scripts/upstox_login.py                   # Method 1: OAuth
+    python scripts/upstox_login.py --token-request   # Method 2: WhatsApp/in-app
+    python scripts/upstox_login.py --sandbox         # Method 3: Sandbox token
+    python scripts/upstox_login.py --force           # force re-auth
+    python scripts/upstox_login.py --no-browser      # print URL, paste manually
+    python scripts/upstox_login.py --env .env        # specify env file
 """
 
 from __future__ import annotations
@@ -229,16 +228,219 @@ def get_profile(token: str) -> dict:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+def _decode_jwt_expiry(token: str) -> str:
+    """Decode JWT payload and return expiry info (no signature verification)."""
+    import base64
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return ""
+        payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64).decode("utf-8"))
+        exp = payload.get("exp")
+        sub = payload.get("sub", "")
+        if exp:
+            import datetime
+            exp_dt = datetime.datetime.fromtimestamp(exp)
+            remaining = (exp_dt - datetime.datetime.now()).total_seconds() / 3600
+            return f"sub={sub}  exp={exp_dt.strftime('%Y-%m-%d %H:%M')}  ({remaining:.1f}h remaining)"
+        return f"sub={sub}"
+    except Exception:
+        return ""
+
+
+def _save_sandbox_token(token: str, env_file: str) -> None:
+    """Save a portal-generated sandbox token."""
+    sb_file = ROOT / "data" / "upstox_sandbox_token.json"
+    save_token(sb_file, {"access_token": token, "token_type": "Bearer",
+                         "obtained_at": time.time()})
+    _update_env_key(env_file, "UPSTOX_SANDBOX_TOKEN", token)
+    print(f"  Sandbox token saved → {sb_file}")
+
+
+def _update_env_key(env_file: str, key: str, value: str) -> None:
+    env_path = ROOT / env_file
+    if not env_path.exists():
+        return
+    with open(env_path) as f:
+        lines = f.readlines()
+    found = False
+    new_lines = []
+    for line in lines:
+        if line.startswith(f"{key}="):
+            new_lines.append(f"{key}={value}\n")
+            found = True
+        else:
+            new_lines.append(line)
+    if not found:
+        new_lines.append(f"{key}={value}\n")
+    with open(env_path, "w") as f:
+        f.writelines(new_lines)
+    print(f"  .env updated: {key} written")
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Upstox OAuth login")
-    parser.add_argument("--force", action="store_true", help="Force re-auth even if token is valid")
-    parser.add_argument("--env", default=".env", help="Path to .env file (default: .env)")
-    parser.add_argument("--port", type=int, default=8888, help="Local callback port (default: 8888)")
-    parser.add_argument("--no-browser", action="store_true", help="Print URL instead of auto-opening browser")
+    parser = argparse.ArgumentParser(description="Upstox login (3 methods)")
+    parser.add_argument("--force",         action="store_true", help="Force re-auth even if token is valid")
+    parser.add_argument("--env",           default=".env",      help="Path to .env file (default: .env)")
+    parser.add_argument("--port",          type=int, default=8888, help="Callback/webhook port (default: 8888)")
+    parser.add_argument("--no-browser",    action="store_true", help="Print URL instead of auto-opening browser")
+    parser.add_argument("--token-request", action="store_true", help="Method 2: WhatsApp/in-app approval")
+    parser.add_argument("--sandbox",       action="store_true", help="Method 3: paste sandbox portal token")
     args = parser.parse_args()
 
-    _banner("Upstox Login")
     _load_env(args.env)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # Method 3: Sandbox token (portal-generated, paste it in)
+    # ══════════════════════════════════════════════════════════════════════════
+    if args.sandbox:
+        _banner("Upstox Sandbox Token")
+        sb_file = ROOT / "data" / "upstox_sandbox_token.json"
+        if not args.force and sb_file.exists():
+            try:
+                d = json.load(open(sb_file))
+                age_h = (time.time() - d.get("obtained_at", 0)) / 3600
+                tok = d.get("access_token", "")
+                if tok and age_h < 720:
+                    print(f"\n[OK] Found valid sandbox token (age: {age_h:.1f}h)")
+                    print(f"     Token: {tok[:40]}...")
+                    print("\n     Use --force to replace it.")
+                    return
+            except Exception:
+                pass
+        print("\n  Sandbox tokens are generated in the Upstox developer portal.")
+        print("  No browser or OAuth flow needed.\n")
+        print("  Steps:")
+        print("    1. Open: https://account.upstox.com/developer/apps#sandbox")
+        print("    2. Open your sandbox app → click  Generate")
+        print("    3. Copy the 30-day token and paste below\n")
+        import getpass
+        pasted = getpass.getpass("  Paste sandbox token (input hidden): ").strip()
+        if not pasted:
+            print("[ERROR] No token provided."); sys.exit(1)
+        _save_sandbox_token(pasted, args.env)
+        print("\n  Sandbox ready. Run order tests:")
+        print("    python scripts/order.py --sandbox")
+        print("    python scripts/test_upstox.py --sandbox")
+        return
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # Method 2: Access Token Request API (WhatsApp / in-app notification)
+    # ══════════════════════════════════════════════════════════════════════════
+    if args.token_request:
+        _banner("Upstox Login — Token Request (Method 2)")
+        token_file = ROOT / "data" / "upstox_token.json"
+        if not args.force:
+            token, token_data = load_existing_token(token_file)
+            if token:
+                age_h = (time.time() - token_data.get("obtained_at", 0)) / 3600
+                print(f"\n[OK] Found valid token (age: {age_h:.1f}h). Use --force to re-auth.\n")
+                return
+
+        print("\n[Step 1/3] Loading credentials...")
+        api_key    = _require_env("UPSTOX_API_KEY", "Upstox API Key")
+        api_secret = _require_env("UPSTOX_API_SECRET", "Upstox API Secret")
+        print(f"  API Key: {api_key[:8]}...")
+        print(f"\n  Pre-requisite: your app's Notifier URL must be set to:")
+        print(f"    http://localhost:{args.port}/callback")
+        print(f"  Configure at: account.upstox.com/developer/apps → your app → Settings")
+        input("\n  Press Enter once Notifier URL is configured... ")
+
+        print("\n[Step 2/3] Sending token request (triggers WhatsApp + in-app push)...")
+        import requests as _req
+        from http.server import BaseHTTPRequestHandler, HTTPServer as _HTTPServer
+
+        # Start webhook listener for POST /callback
+        received: dict = {}
+
+        class _WebhookHandler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(length)
+                try:
+                    data = json.loads(body)
+                    if data.get("access_token"):
+                        received["data"] = data
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json")
+                        self.end_headers()
+                        self.wfile.write(b'{"status":"ok"}')
+                    else:
+                        self.send_response(400); self.end_headers()
+                except Exception:
+                    self.send_response(400); self.end_headers()
+            def do_GET(self):
+                self.send_response(200); self.end_headers()
+                self.wfile.write(b'{"status":"waiting"}')
+            def log_message(self, *a): pass
+
+        srv = _HTTPServer(("localhost", args.port), _WebhookHandler)
+        srv.timeout = 1
+
+        # Trigger the request
+        try:
+            tr = _req.post(
+                f"https://api.upstox.com/v3/login/auth/token/request/{api_key}",
+                json={"client_secret": api_secret},
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
+                timeout=15,
+            )
+            if tr.status_code != 200:
+                print(f"\n[ERROR] Token request failed (HTTP {tr.status_code}):")
+                print(f"  {tr.text[:300]}")
+                print("\n  Common errors:")
+                print("    UDAPI100069 — wrong API key / secret")
+                print("    UDAPI1123   — Notifier URL not configured in app settings")
+                sys.exit(1)
+            tr_data = tr.json().get("data", {})
+            print(f"\n[OK] Token request sent!")
+            print(f"  Notifier URL: {tr_data.get('notifier_url', '?')}")
+        except Exception as e:
+            print(f"\n[ERROR] {e}"); sys.exit(1)
+
+        print("\n  Check your phone:")
+        print("    → WhatsApp message from Upstox")
+        print("    → OR in-app notification in the Upstox app")
+        print("    → Tap  Approve  to generate the token")
+        print(f"\n[Step 3/3] Waiting for webhook callback (up to 5 min)...")
+
+        deadline = time.time() + 300
+        while time.time() < deadline and not received:
+            srv.handle_request()
+            elapsed = int(time.time() - (deadline - 300))
+            if elapsed % 30 == 0 and elapsed > 0:
+                print(f"  ... {elapsed}s elapsed")
+
+        srv.server_close()
+
+        if not received:
+            print("\n[ERROR] No approval received in 5 minutes.")
+            print("  Check the Notifier URL in your app settings.")
+            sys.exit(1)
+
+        data = received["data"]
+        access_token = data.get("access_token", "")
+        data["obtained_at"] = time.time()
+        save_token(token_file, data)
+        _update_env_key(args.env, "UPSTOX_ACCESS_TOKEN", access_token)
+
+        _banner("Authentication Successful — Token Request")
+        print(f"\n  Access token: {access_token[:40]}...")
+        jwt_info = _decode_jwt_expiry(access_token)
+        if jwt_info:
+            print(f"  JWT info:     {jwt_info}")
+        ltp_data = verify_token(access_token)
+        if ltp_data:
+            nifty = ltp_data.get("NSE_INDEX:Nifty 50", {})
+            print(f"  Nifty 50 LTP: ₹{nifty.get('last_price', 'N/A')}")
+        print("\n  Run tests:  python scripts/test_upstox.py\n")
+        return
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # Method 1: Standard OAuth 2.0
+    # ══════════════════════════════════════════════════════════════════════════
+    _banner("Upstox Login — OAuth (Method 1)")
 
     token_file = ROOT / "data" / "upstox_token.json"
 
@@ -342,11 +544,31 @@ def main() -> None:
 
     save_token(token_file, token_data)
 
+    # Save extended_token if present (1-year read-only token)
+    extended_token = token_data.get("extended_token", "")
+    if extended_token:
+        ext_file = ROOT / "data" / "upstox_extended_token.json"
+        save_token(ext_file, {
+            "access_token": extended_token,
+            "token_type": "extended",
+            "obtained_at": time.time(),
+        })
+        env_path = ROOT / args.env
+        if env_path.exists():
+            _update_env_key(args.env, "UPSTOX_EXTENDED_TOKEN", extended_token)
+
     # ── Summary ───────────────────────────────────────────────────────────────
     _banner("Authentication Successful")
-    print(f"\n  Access token: {token[:40]}...")
-    print(f"  Expires:      ~23 hours from now")
-    print(f"  Saved to:     {token_file}")
+    print(f"\n  Access token:   {token[:40]}...")
+    jwt_info = _decode_jwt_expiry(token)
+    if jwt_info:
+        print(f"  JWT info:       {jwt_info}")
+    else:
+        print(f"  Expires:        ~23 hours from now (3:30 AM tomorrow)")
+    print(f"  Saved to:       {token_file}")
+    if extended_token:
+        print(f"  Extended token: {extended_token[:40]}...  (1-year read-only)")
+        print(f"  Saved to:       {ROOT / 'data' / 'upstox_extended_token.json'}")
 
     # Verify with a market data call
     print("\n  Verifying token against Upstox API...")
