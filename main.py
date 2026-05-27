@@ -1,0 +1,456 @@
+#!/usr/bin/env python3
+"""
+Loony Trading Bot — Main Entry Point
+
+Primary market: Upstox (Indian equities & F&O)
+Secondary market: Binance (crypto)
+
+Usage:
+  python main.py                         # paper trade Indian markets
+  python main.py --mode live             # live trade (requires Upstox token)
+  python main.py --mode backtest         # backtest on historical data
+  python main.py --mode backtest --market crypto
+  python main.py --mode train            # retrain ML models
+  python main.py --mode auth             # run Upstox OAuth flow
+"""
+import asyncio
+import argparse
+import sys
+from pathlib import Path
+
+from config import settings
+from utils.logger import get_logger
+from utils.notifier import Notifier
+from utils.trade_logger import TradeLogger
+
+logger = get_logger("main", level=settings.get("system.log_level", "INFO"))
+
+
+# ── Upstox Bot ─────────────────────────────────────────────────────────────────
+
+class UpstoxTradingBot:
+    """
+    Upstox-first trading bot for Indian equity and F&O markets.
+    Uses WebSocket feed for real-time prices and the full strategy stack.
+    """
+
+    def __init__(self, cfg: dict, mode: str = "paper"):
+        from data_engine.upstox import UpstoxAuth, InstrumentRegistry, UpstoxDataEngine, UpstoxFeed
+        from execution_engine.upstox_executor import UpstoxExecutor, UpstoxProduct
+        from risk_manager import RiskManager
+        from portfolio_manager import PortfolioManager
+        from strategies.meta_engine import MetaStrategyEngine
+        from ml_models import ModelTrainer
+
+        self.cfg = cfg
+        self.mode = mode
+        self.notifier = Notifier(cfg.get("notifications", {}))
+        self.trade_logger = TradeLogger()
+
+        # Capital in INR
+        initial_capital = cfg.get("portfolio", {}).get("initial_capital", 500_000)
+
+        # Symbols
+        self.equity_symbols: list[str] = cfg.get("assets", {}).get("india_equity", [])
+        self.index_symbols:  list[str] = cfg.get("assets", {}).get("india_indices", [])
+        self.all_symbols = self.equity_symbols + self.index_symbols
+        self.primary_tf = cfg.get("timeframes", {}).get("primary", "1d")
+        self.intraday_tf = cfg.get("timeframes", {}).get("intraday", "15m")
+
+        # Auth
+        up_cfg = cfg.get("exchanges", {}).get("upstox", {})
+        self.auth = UpstoxAuth(
+            api_key=up_cfg.get("api_key", ""),
+            api_secret=up_cfg.get("api_secret", ""),
+            redirect_uri=up_cfg.get("redirect_uri", "http://localhost:8888/callback"),
+            token_file=up_cfg.get("token_file", "data/upstox_token.json"),
+        )
+
+        # Try loading existing token first
+        token = self.auth.load_token()
+        if not token and up_cfg.get("access_token"):
+            # Token passed via env var
+            from data_engine.upstox.auth import _AUTH_BASE
+            import time
+            self.auth._token_data = {
+                "access_token": up_cfg["access_token"],
+                "obtained_at": time.time(),
+            }
+
+        # Instrument registry
+        self.registry = InstrumentRegistry()
+        self.registry.load(exchanges=["NSE_EQ", "NSE_FO", "NSE_INDEX"])
+
+        # Data engine
+        self.data_engine = UpstoxDataEngine(self.auth, self.registry)
+
+        # WebSocket feed
+        self.feed = UpstoxFeed(self.auth, self.registry, mode="full")
+        self.feed.subscribe(self._on_tick)
+
+        # Risk + portfolio
+        self.risk_manager = RiskManager(cfg, initial_capital)
+        self.portfolio = PortfolioManager(cfg, initial_capital)
+
+        # Execution
+        product = UpstoxProduct(up_cfg.get("default_product", "CNC"))
+        self.executor = UpstoxExecutor(
+            self.auth, self.registry, self.risk_manager, cfg, mode=mode
+        )
+        self.executor.on_fill(self._on_fill)
+
+        # Strategy engine + ML
+        self.meta_engine = MetaStrategyEngine(cfg, ml_model=None)
+        self._trainer = ModelTrainer(cfg)
+        self._df_cache: dict = {}   # symbol → DataFrame
+        self._tick_counter: dict = {}
+
+    # ── Startup ────────────────────────────────────────────────────────────────
+
+    async def start(self) -> None:
+        from data_engine.upstox.market_hours import is_market_open, next_market_open, now_ist
+
+        logger.info(f"Loony Trading Bot starting [{self.mode.upper()}] — Indian Markets (Upstox)")
+        logger.info(f"Symbols: {', '.join(self.all_symbols[:10])}{'...' if len(self.all_symbols) > 10 else ''}")
+
+        if not self.auth.is_valid() and self.mode == "live":
+            logger.error("No valid Upstox token. Run: python main.py --mode auth")
+            return
+
+        await self._load_historical_data()
+        await self._train_or_load_models()
+
+        if not is_market_open():
+            nxt = next_market_open()
+            logger.info(f"Market is closed. Next open: {nxt.strftime('%Y-%m-%d %H:%M IST')}")
+            if self.mode == "paper":
+                logger.info("Paper mode: starting polling on cached data for testing")
+                await self._run_paper_simulation()
+                return
+
+        logger.info("Starting real-time WebSocket feed...")
+        await self.feed.start(self.all_symbols, mode="full")
+
+    async def _load_historical_data(self) -> None:
+        lookback = self.cfg.get("data", {}).get("lookback_days", 365)
+        logger.info(f"Loading historical data ({lookback} days) for {len(self.all_symbols)} symbols...")
+        for sym in self.all_symbols:
+            df = self.data_engine.fetch_ohlcv(sym, self.primary_tf, lookback_days=lookback)
+            if not df.empty:
+                self._df_cache[sym] = df
+                logger.info(f"  {sym}: {len(df)} bars ({self.primary_tf})")
+
+        # Also fetch intraday for equity symbols
+        if self.intraday_tf != self.primary_tf:
+            for sym in self.equity_symbols[:5]:   # first 5 to avoid rate limiting
+                df_intra = self.data_engine.fetch_ohlcv(sym, self.intraday_tf,
+                                                         lookback_days=60)
+                if not df_intra.empty:
+                    self._df_cache[f"{sym}_{self.intraday_tf}"] = df_intra
+
+    async def _train_or_load_models(self) -> None:
+        from ml_models import XGBoostModel, LightGBMModel, EnsembleModel
+
+        xgb  = XGBoostModel(self.cfg)
+        lgbm = LightGBMModel(self.cfg)
+        if xgb.load() and lgbm.load():
+            model = EnsembleModel([xgb, lgbm])
+            self.meta_engine.update_ml_model(model)
+            logger.info("Loaded pretrained ML models")
+            return
+
+        train_sym = self.equity_symbols[0] if self.equity_symbols else None
+        if train_sym and train_sym in self._df_cache:
+            df = self._df_cache[train_sym]
+            if len(df) > 300:
+                logger.info(f"Training ML models on {train_sym}...")
+                loop = asyncio.get_event_loop()
+                ensemble = await loop.run_in_executor(None, self._trainer.train_all, df)
+                if ensemble:
+                    self.meta_engine.update_ml_model(ensemble)
+                    logger.info("ML models trained")
+
+    # ── Tick handler (real-time) ────────────────────────────────────────────────
+
+    async def _on_tick(self, event: dict) -> None:
+        symbol = event.get("symbol", "")
+        price  = float(event.get("close", event.get("ltp", 0)))
+        if price <= 0:
+            return
+
+        self.portfolio.update_price(symbol, price)
+
+        # Check stops on every tick
+        to_close = self.risk_manager.update_all({symbol: price})
+        for pos, reason in to_close:
+            order = await self.executor.close_position(pos, price, reason)
+            if order:
+                pnl = pos.mark(price)
+                self.trade_logger.log_position_close(pos, price, pnl, reason)
+                self.portfolio.record_trade(symbol, pnl, pos.strategy)
+                await self.notifier.send(
+                    f"🔴 Closed {symbol} | {reason} | PnL: ₹{pnl:+.2f}"
+                )
+
+        # Only generate strategy signals on candle close (not every tick)
+        self._tick_counter[symbol] = self._tick_counter.get(symbol, 0) + 1
+        if self._tick_counter[symbol] % 15 != 0:  # ~every 15 ticks for 15m candles
+            return
+
+        df = self._df_cache.get(symbol) or self._df_cache.get(f"{symbol}_{self.intraday_tf}")
+        if df is None or len(df) < 60:
+            return
+
+        if self.portfolio.is_correlated(symbol, list(self.risk_manager.positions.keys())):
+            return
+
+        signals = self.meta_engine.generate_signals(symbol, df)
+        if not signals:
+            return
+
+        best = max(signals, key=lambda s: s.confidence)
+        from strategies.base import SignalType
+        if best.signal_type not in (SignalType.BUY, SignalType.SELL):
+            return
+
+        order = await self.executor.execute_signal(best)
+        if order and order.status == "complete":
+            await self.notifier.send(
+                f"🟢 {best.signal_type.value} {symbol} @ ₹{best.price:.2f} "
+                f"| {best.strategy} | conf={best.confidence:.0%}"
+            )
+
+    async def _on_fill(self, order) -> None:
+        from utils.trade_logger import TradeLogger
+        self.trade_logger._append({
+            "ts": order.created_at,
+            "type": "order",
+            "symbol": order.instrument_key.split("|")[-1],
+            "side": order.transaction_type,
+            "quantity": order.quantity,
+            "price": order.avg_price,
+            "product": order.product.value,
+            "strategy": order.tag,
+        })
+
+    # ── Paper simulation ────────────────────────────────────────────────────────
+
+    async def _run_paper_simulation(self) -> None:
+        """Replay cached daily bars through the strategy engine (paper mode)."""
+        from strategies.base import SignalType
+        logger.info("Running paper simulation on cached historical data...")
+        for symbol, df in self._df_cache.items():
+            if "_" in symbol and symbol.count("_") > 1:
+                continue  # skip intraday cache keys
+            if len(df) < 60:
+                continue
+            signals = self.meta_engine.generate_signals(symbol, df)
+            if signals:
+                best = max(signals, key=lambda s: s.confidence)
+                if best.signal_type in (SignalType.BUY, SignalType.SELL):
+                    await self.executor.execute_signal(best)
+        metrics = self.portfolio.metrics()
+        logger.info(f"Paper simulation metrics: {metrics}")
+
+    async def stop(self) -> None:
+        await self.feed.stop()
+        logger.info("Bot stopped")
+
+
+# ── Crypto Bot (Binance secondary) ─────────────────────────────────────────────
+
+class CryptoBotAddon:
+    """Thin wrapper that adds Binance crypto trading alongside the Upstox bot."""
+
+    def __init__(self, cfg: dict, risk_manager, portfolio, meta_engine,
+                 executor, trade_logger):
+        from data_engine import MarketDataEngine
+
+        self.cfg = cfg
+        self.data_engine = MarketDataEngine(cfg)
+        self.symbols: list[str] = cfg.get("assets", {}).get("crypto", [])
+        self.primary_tf = cfg.get("timeframes", {}).get("primary", "1h")
+
+        ex_cfg = cfg.get("exchanges", {}).get("binance", {})
+        if ex_cfg.get("api_key"):
+            self.data_engine.init_exchange(
+                "binance",
+                api_key=ex_cfg["api_key"],
+                api_secret=ex_cfg["api_secret"],
+                sandbox=ex_cfg.get("sandbox", True),
+            )
+        self._risk_manager = risk_manager
+        self._portfolio    = portfolio
+        self._meta_engine  = meta_engine
+        self._executor     = executor
+        self._trade_logger = trade_logger
+        self._df_cache: dict = {}
+        self.data_engine.subscribe(self._on_candle)
+
+    async def load_data(self) -> None:
+        for sym in self.symbols:
+            df = self.data_engine.fetch_ohlcv(sym, self.primary_tf)
+            if not df.empty:
+                self._df_cache[sym] = df
+
+    async def start(self) -> None:
+        await self.load_data()
+        await self.data_engine.start_streaming(self.symbols, "1m")
+
+    async def _on_candle(self, event: dict) -> None:
+        from strategies.base import SignalType
+        symbol = event["symbol"]
+        price  = float(event["close"])
+        df = self._df_cache.get(symbol)
+        if df is None or len(df) < 60:
+            return
+        signals = self._meta_engine.generate_signals(symbol, df)
+        if not signals:
+            return
+        best = max(signals, key=lambda s: s.confidence)
+        if best.signal_type in (SignalType.BUY, SignalType.SELL):
+            await self._executor.execute_signal(best)
+
+
+# ── Backtesting ────────────────────────────────────────────────────────────────
+
+def run_backtest(cfg: dict, market: str = "india") -> None:
+    from backtester import Backtester
+    from strategies.meta_engine import MetaStrategyEngine
+
+    engine = MetaStrategyEngine(cfg)
+    backtester = Backtester(cfg, initial_capital=cfg.get("portfolio", {}).get("initial_capital", 500_000))
+
+    if market == "india":
+        from data_engine.upstox import UpstoxAuth, InstrumentRegistry, UpstoxDataEngine
+
+        up_cfg = cfg.get("exchanges", {}).get("upstox", {})
+        auth = UpstoxAuth(
+            api_key=up_cfg.get("api_key", ""),
+            api_secret=up_cfg.get("api_secret", ""),
+            redirect_uri=up_cfg.get("redirect_uri", "http://localhost:8888/callback"),
+        )
+        auth.load_token()
+        registry = InstrumentRegistry()
+        registry.load()
+        data_engine = UpstoxDataEngine(auth, registry)
+        symbols = (cfg.get("assets", {}).get("india_equity", []) +
+                   cfg.get("assets", {}).get("india_indices", []))
+        tf = cfg.get("timeframes", {}).get("primary", "1d")
+    else:
+        from data_engine import MarketDataEngine
+        data_engine = MarketDataEngine(cfg)
+        ex_cfg = cfg.get("exchanges", {}).get("binance", {})
+        if ex_cfg.get("api_key"):
+            data_engine.init_exchange("binance", ex_cfg["api_key"], ex_cfg["api_secret"])
+        symbols = cfg.get("assets", {}).get("crypto", ["BTC/USDT"])
+        tf = "1h"
+
+    print(f"\nBacktest — {market.upper()} market | {len(symbols)} symbols | timeframe={tf}")
+    print("=" * 70)
+    for sym in symbols:
+        df = data_engine.fetch_ohlcv(sym, tf)
+        if df is None or (hasattr(df, 'empty') and df.empty) or len(df) < 100:
+            logger.warning(f"Insufficient data for {sym}")
+            continue
+        result = backtester.run(df, sym, engine=engine)
+        print(result.summary())
+    print("=" * 70)
+
+
+# ── ML training ────────────────────────────────────────────────────────────────
+
+def run_training(cfg: dict) -> None:
+    from ml_models import ModelTrainer
+    from data_engine.upstox import UpstoxAuth, InstrumentRegistry, UpstoxDataEngine
+
+    up_cfg = cfg.get("exchanges", {}).get("upstox", {})
+    auth = UpstoxAuth(
+        api_key=up_cfg.get("api_key", ""),
+        api_secret=up_cfg.get("api_secret", ""),
+        redirect_uri=up_cfg.get("redirect_uri", ""),
+    )
+    auth.load_token()
+    registry = InstrumentRegistry()
+    registry.load()
+    data_engine = UpstoxDataEngine(auth, registry)
+    trainer = ModelTrainer(cfg)
+
+    symbols = cfg.get("assets", {}).get("india_equity", ["RELIANCE"])
+    lookback = cfg.get("ml", {}).get("train_lookback_days", 365)
+
+    for sym in symbols[:3]:   # train on top 3 liquid stocks
+        df = data_engine.fetch_ohlcv(sym, "1d", lookback_days=lookback)
+        if df is not None and len(df) > 300:
+            logger.info(f"Training on {sym} ({len(df)} bars)...")
+            ensemble = trainer.train_all(df)
+            if ensemble:
+                logger.info(f"  {sym} — done")
+                break  # single model trained on most liquid stock is fine
+
+
+# ── Upstox OAuth flow ──────────────────────────────────────────────────────────
+
+def run_auth(cfg: dict) -> None:
+    from data_engine.upstox.auth import UpstoxAuth, UpstoxAuthServer
+
+    up_cfg = cfg.get("exchanges", {}).get("upstox", {})
+    auth = UpstoxAuth(
+        api_key=up_cfg.get("api_key", ""),
+        api_secret=up_cfg.get("api_secret", ""),
+        redirect_uri=up_cfg.get("redirect_uri", "http://localhost:8888/callback"),
+        token_file=up_cfg.get("token_file", "data/upstox_token.json"),
+    )
+
+    existing = auth.load_token()
+    if existing:
+        print("✅ Valid Upstox token already exists. No re-authentication needed.")
+        print(f"   Token age: check {up_cfg.get('token_file', 'data/upstox_token.json')}")
+        return
+
+    port = up_cfg.get("auth_port", 8888)
+    server = UpstoxAuthServer(auth, port=port)
+    token = server.start_and_wait(timeout=300)
+    if token:
+        print(f"\n✅ Authentication successful! Token saved.")
+        print(f"   You can also set UPSTOX_ACCESS_TOKEN={token[:20]}... in .env")
+    else:
+        print("\n❌ Authentication failed or timed out.")
+        print(f"   Open this URL manually: {auth.auth_url()}")
+
+
+# ── CLI ────────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Loony Trading Bot — Upstox (India) + Binance (Crypto)"
+    )
+    parser.add_argument("--mode", choices=["paper", "live", "backtest", "train", "auth"],
+                        default=settings.get("system.mode", "paper"))
+    parser.add_argument("--market", choices=["india", "crypto"],
+                        default="india",
+                        help="Market to use for backtest/train")
+    args = parser.parse_args()
+
+    cfg = settings.as_dict()
+
+    if args.mode == "auth":
+        run_auth(cfg)
+
+    elif args.mode == "backtest":
+        run_backtest(cfg, market=args.market)
+
+    elif args.mode == "train":
+        run_training(cfg)
+
+    else:
+        bot = UpstoxTradingBot(cfg, mode=args.mode)
+        try:
+            asyncio.run(bot.start())
+        except KeyboardInterrupt:
+            asyncio.run(bot.stop())
+            logger.info("Shutdown complete")
+
+
+if __name__ == "__main__":
+    main()
