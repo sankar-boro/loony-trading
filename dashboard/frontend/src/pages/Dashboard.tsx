@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import useSWR from 'swr'
 import { fetcher } from '../api'
 import type {
@@ -11,38 +11,47 @@ import {
 } from 'recharts'
 import clsx from 'clsx'
 
-// ── Format helpers ─────────────────────────────────────────────────────────────
+// ── Shared helpers ─────────────────────────────────────────────────────────────
 
-const fmt = (n: number) =>
-  n >= 0
-    ? `+₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
-    : `-₹${Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+const inr   = (n: number) => `₹${Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+const pnl   = (n: number) => `${n >= 0 ? '+' : '-'}${inr(n)}`
+const pct   = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`
+const price = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-const fmtPct = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`
+// ── Panel chrome ──────────────────────────────────────────────────────────────
 
-const fmtPrice = (n: number) =>
-  n.toLocaleString('en-IN', { maximumFractionDigits: 2 })
-
-// ── KPI Card ───────────────────────────────────────────────────────────────────
-
-function KPI({
-  label, value, sub, up,
-}: {
-  label: string
-  value: string
-  sub?: string
-  up?: boolean
+function Panel({ title, right, children, className = '' }: {
+  title: React.ReactNode
+  right?: React.ReactNode
+  children: React.ReactNode
+  className?: string
 }) {
   return (
-    <div className="bg-surface border border-border rounded-xl p-4">
-      <div className="text-xs text-dim mb-1">{label}</div>
-      <div className="text-2xl font-mono font-medium truncate">{value}</div>
+    <div className={clsx('bg-surface border border-border rounded-xl flex flex-col min-h-0 overflow-hidden', className)}>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+        <span className="text-sm font-medium text-primary">{title}</span>
+        {right && <span className="text-xs text-dim">{right}</span>}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+// ── KPI card ──────────────────────────────────────────────────────────────────
+
+function KPI({ label, value, sub, up }: {
+  label: string; value: string; sub?: string; up?: boolean
+}) {
+  return (
+    <div className="bg-surface border border-border rounded-xl px-4 py-3">
+      <div className="text-xs text-dim mb-1 uppercase tracking-wide">{label}</div>
+      <div className={clsx('text-lg font-mono font-semibold truncate',
+        up === true ? 'text-green' : up === false ? 'text-red' : 'text-primary')}>
+        {value}
+      </div>
       {sub && (
-        <div
-          className={clsx(
-            'text-xs mt-1 font-mono',
-            up === true ? 'text-green' : up === false ? 'text-red' : 'text-dim',
-          )}>
+        <div className={clsx('text-xs font-mono mt-0.5',
+          up === true ? 'text-green/70' : up === false ? 'text-red/70' : 'text-dim')}>
           {sub}
         </div>
       )}
@@ -50,169 +59,103 @@ function KPI({
   )
 }
 
-// ── Tooltip ────────────────────────────────────────────────────────────────────
-
-function EqTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="bg-surface border border-border rounded-lg px-3 py-2 text-xs font-mono shadow-lg">
-      <div className="text-dim mb-1">{label}</div>
-      {payload.map((p: any) => (
-        <div key={p.name} style={{ color: p.color }}>
-          {p.name}: ₹{Number(p.value).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function PnlTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null
-  const v = payload[0]?.value ?? 0
-  return (
-    <div className="bg-surface border border-border rounded-lg px-3 py-2 text-xs font-mono shadow-lg">
-      <div className="text-dim mb-1">{label}</div>
-      <div className={v >= 0 ? 'text-green' : 'text-red'}>{fmt(v)}</div>
-    </div>
-  )
-}
-
 // ── SSE live-price hook ────────────────────────────────────────────────────────
-// Single EventSource shared between MarketBar and WatchlistPanel via state
-// lifted into Dashboard. Both components receive props instead of fetching.
 
-interface PriceSnap {
-  watchlist: WatchlistResponse
-  market: MarketResponse
-  ts: number
-}
+interface PriceSnap { watchlist: WatchlistResponse; market: MarketResponse; ts: number }
 
-function useLivePrices(): { snap: PriceSnap | null; live: boolean } {
+function useLivePrices() {
   const [snap, setSnap] = useState<PriceSnap | null>(null)
-  const [live, setLive]  = useState(false)
-
+  const [live, setLive] = useState(false)
   useEffect(() => {
     const es = new EventSource('/api/stream/prices')
     es.onopen    = () => setLive(true)
     es.onerror   = () => setLive(false)
-    es.onmessage = (e) => {
-      try {
-        const d = JSON.parse(e.data)
-        if (d && d.watchlist) setSnap(d as PriceSnap)
-      } catch { /* ignore malformed frames */ }
-    }
+    es.onmessage = (e) => { try { const d = JSON.parse(e.data); if (d?.watchlist) setSnap(d) } catch {} }
     return () => es.close()
   }, [])
-
   return { snap, live }
 }
 
-// ── Market Bar ─────────────────────────────────────────────────────────────────
+// ── Market Ticker ─────────────────────────────────────────────────────────────
 
-function MarketBar({ market, live }: { market: MarketResponse | null; live: boolean }) {
-  if (!market || Object.keys(market).length === 0) {
-    return (
-      <div className="bg-surface border border-border rounded-xl px-4 py-2.5 flex items-center gap-6 text-xs font-mono text-dim">
-        <span className="animate-pulse">Fetching index data…</span>
-      </div>
-    )
-  }
-
-  const order = ['NIFTY50', 'BANKNIFTY', 'NIFTYIT']
+function MarketTicker({ market, live }: { market: MarketResponse | null; live: boolean }) {
+  const indices = ['NIFTY50', 'BANKNIFTY', 'NIFTYIT']
   return (
-    <div className="bg-surface border border-border rounded-xl px-4 py-2.5 flex items-center gap-6 text-xs font-mono overflow-x-auto">
-      {order.map(sym => {
-        const d = market[sym]
-        if (!d) return null
-        const up = d.change_pct >= 0
+    <div className="h-10 bg-surface border border-border rounded-xl px-4 flex items-center gap-6 text-xs font-mono shrink-0 overflow-x-auto">
+      {indices.map(sym => {
+        const d = market?.[sym]
+        const up = (d?.change_pct ?? 0) >= 0
         return (
           <div key={sym} className="flex items-center gap-2 whitespace-nowrap">
             <span className="text-dim">{sym}</span>
-            <span className="text-primary font-medium">{fmtPrice(d.ltp)}</span>
-            <span className={up ? 'text-green' : 'text-red'}>
-              {fmtPct(d.change_pct)}
-            </span>
+            {d && d.ltp > 0 ? (
+              <>
+                <span className="text-primary font-medium">{price(d.ltp)}</span>
+                <span className={up ? 'text-green' : 'text-red'}>{pct(d.change_pct)}</span>
+              </>
+            ) : (
+              <span className="text-dim">—</span>
+            )}
           </div>
         )
       })}
-      <span className={clsx('ml-auto text-xs', live ? 'text-green' : 'text-dim')}>
-        {live ? '● live' : '○ connecting'}
-      </span>
+      <div className="ml-auto flex items-center gap-1.5 shrink-0">
+        <span className={clsx('w-1.5 h-1.5 rounded-full', live ? 'bg-green animate-pulse' : 'bg-muted')} />
+        <span className="text-dim">{live ? 'live' : 'connecting'}</span>
+      </div>
     </div>
   )
 }
 
-// ── Watchlist Panel ────────────────────────────────────────────────────────────
-// Groups stocks by sector using /api/universe metadata + live SSE prices.
+// ── Watchlist Panel ───────────────────────────────────────────────────────────
 
 function WatchlistPanel({ watchlist }: { watchlist: WatchlistResponse | null }) {
   const { data: universe } = useSWR<UniverseResponse>('/api/universe', fetcher, {
-    revalidateOnFocus: false,
-    revalidateOnReconnect: false,
+    revalidateOnFocus: false, revalidateOnReconnect: false,
+  })
+  const [activeTab, setActiveTab] = useState('Watchlist')
+  const [search,    setSearch]    = useState('')
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+
+  const tabs = ['Watchlist', ...(universe?.sectors.map(s => s.sector) ?? [])]
+
+  const toggle = (s: string) => setCollapsed(p => {
+    const n = new Set(p); n.has(s) ? n.delete(s) : n.add(s); return n
   })
 
-  const [activeTab, setActiveTab]     = useState<string>('Watchlist')
-  const [collapsed, setCollapsed]     = useState<Set<string>>(new Set())
-  const [search, setSearch]           = useState('')
-
-  const toggleCollapse = (sector: string) =>
-    setCollapsed(prev => {
-      const next = new Set(prev)
-      next.has(sector) ? next.delete(sector) : next.add(sector)
-      return next
-    })
-
-  // Tabs: "Watchlist" (default 30 stocks) + one per sector
-  const tabs: string[] = ['Watchlist']
-  if (universe) universe.sectors.forEach(s => tabs.push(s.sector))
-
-  // Stocks to display for selected tab
   const displaySectors = (() => {
     if (!universe) return []
     if (activeTab === 'Watchlist') {
-      const wlSet = new Set(universe.watchlist)
-      // Group watchlist stocks by sector
+      const wl = new Set(universe.watchlist)
       const grouped: Record<string, typeof universe.sectors[0]['stocks']> = {}
       universe.sectors.forEach(sec => {
-        const stocks = sec.stocks.filter(st => wlSet.has(st.symbol))
+        const stocks = sec.stocks.filter(st => wl.has(st.symbol))
         if (stocks.length) grouped[sec.sector] = stocks
       })
-      return Object.entries(grouped).map(([sector, stocks]) => {
-        const sec = universe.sectors.find(s => s.sector === sector)
-        return { sector, color: sec?.color ?? '#64748b', stocks }
-      })
+      return Object.entries(grouped).map(([sector, stocks]) => ({
+        sector, color: universe.sectors.find(s => s.sector === sector)?.color ?? '#64748b', stocks,
+      }))
     }
     return universe.sectors.filter(s => s.sector === activeTab)
   })()
 
-  const filterLower = search.toLowerCase()
-  const filteredSectors = displaySectors.map(sec => ({
+  const q = search.toLowerCase()
+  const filtered = displaySectors.map(sec => ({
     ...sec,
-    stocks: filterLower
-      ? sec.stocks.filter(st =>
-          st.symbol.toLowerCase().includes(filterLower) ||
-          st.name.toLowerCase().includes(filterLower))
+    stocks: q
+      ? sec.stocks.filter(st => st.symbol.toLowerCase().includes(q) || st.name.toLowerCase().includes(q))
       : sec.stocks,
   })).filter(sec => sec.stocks.length > 0)
 
-  const priceFor = (sym: string) => watchlist?.[sym]
-
   return (
-    <div className="bg-surface border border-border rounded-xl flex flex-col h-full">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-border shrink-0">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium">Universe</span>
-          <span className="text-xs text-dim">
-            {universe ? `${universe.total_stocks} stocks · ${universe.sectors.length} sectors` : 'Loading…'}
-          </span>
-        </div>
-        {/* Search */}
+    <Panel title="Universe" right={universe ? `${universe.total_stocks} stocks` : undefined} className="h-full">
+      {/* Search */}
+      <div className="px-3 py-2 border-b border-border shrink-0">
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search symbol or company…"
-          className="w-full text-xs bg-bg border border-border rounded px-2 py-1.5 focus:outline-none focus:border-blue placeholder:text-dim"
+          placeholder="Symbol or company…"
+          className="w-full text-xs bg-bg border border-border rounded px-2.5 py-1.5 focus:outline-none focus:border-blue placeholder:text-dim"
         />
       </div>
 
@@ -225,86 +168,63 @@ function WatchlistPanel({ watchlist }: { watchlist: WatchlistResponse | null }) 
               key={tab}
               onClick={() => { setActiveTab(tab); setSearch('') }}
               className={clsx(
-                'px-3 py-2 text-xs whitespace-nowrap transition-colors shrink-0 border-b-2',
+                'px-3 py-2 text-xs whitespace-nowrap shrink-0 border-b-2 transition-colors',
                 activeTab === tab
                   ? 'border-blue text-primary font-medium'
-                  : 'border-transparent text-dim hover:text-primary'
+                  : 'border-transparent text-dim hover:text-primary',
               )}
             >
-              {tab === 'Watchlist' ? '⭐ Watchlist' : tab}
-              {sec && (
-                <span className="ml-1 text-[10px] text-dim">
-                  ({sec.stocks.length})
-                </span>
-              )}
+              {tab === 'Watchlist' ? '⭐' : ''} {tab}
+              {sec && <span className="ml-1 text-[9px] text-dim">({sec.stocks.length})</span>}
             </button>
           )
         })}
       </div>
 
-      {/* Stock list */}
-      <div className="flex-1 overflow-y-auto">
-        {filteredSectors.length === 0 ? (
-          <div className="px-4 py-8 text-xs text-dim text-center">
-            {universe ? 'No matches' : 'Loading universe…'}
+      {/* Stock rows */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {filtered.length === 0 ? (
+          <div className="flex items-center justify-center h-24 text-xs text-dim">
+            {universe ? 'No matches' : 'Loading…'}
           </div>
         ) : (
-          filteredSectors.map(sec => (
+          filtered.map(sec => (
             <div key={sec.sector}>
-              {/* Sector header (only shown when multiple sectors visible) */}
-              {filteredSectors.length > 1 && (
+              {filtered.length > 1 && (
                 <button
-                  onClick={() => toggleCollapse(sec.sector)}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-border/10 transition-colors"
+                  onClick={() => toggle(sec.sector)}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 bg-bg/40 hover:bg-bg/60 transition-colors"
                 >
-                  <span
-                    className="inline-block w-2 h-2 rounded-full shrink-0"
-                    style={{ background: sec.color }}
-                  />
-                  <span className="text-xs font-medium text-dim">{sec.sector}</span>
-                  <span className="text-[10px] text-dim ml-1">({sec.stocks.length})</span>
-                  <span className="ml-auto text-dim text-xs">
-                    {collapsed.has(sec.sector) ? '▶' : '▼'}
-                  </span>
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: sec.color }} />
+                  <span className="text-[10px] font-medium text-dim uppercase tracking-wide">{sec.sector}</span>
+                  <span className="text-[9px] text-dim ml-1">({sec.stocks.length})</span>
+                  <span className="ml-auto text-[10px] text-dim">{collapsed.has(sec.sector) ? '▶' : '▼'}</span>
                 </button>
               )}
-
-              {/* Stock rows */}
               {!collapsed.has(sec.sector) && sec.stocks.map(st => {
-                const price = priceFor(st.symbol)
-                const up = (price?.change_pct ?? 0) >= 0
+                const p = watchlist?.[st.symbol]
+                const up = (p?.change_pct ?? 0) >= 0
                 return (
-                  <div
-                    key={st.symbol}
-                    className="flex items-center px-3 py-2 hover:bg-border/20 transition-colors border-b border-border/40 last:border-0"
-                  >
-                    {/* Left: symbol + name */}
+                  <div key={st.symbol}
+                    className="flex items-center px-3 py-2 hover:bg-white/3 border-b border-border/30 last:border-0 transition-colors">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-mono font-semibold text-primary">{st.symbol}</span>
-                        {st.fno && (
-                          <span className="text-[9px] px-1 rounded bg-blue/10 text-blue font-medium">F&O</span>
-                        )}
-                        {st.nifty50 && (
-                          <span className="text-[9px] px-1 rounded bg-amber-500/10 text-amber-400 font-medium">N50</span>
-                        )}
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs font-mono font-semibold">{st.symbol}</span>
+                        {st.fno   && <span className="text-[8px] px-1 rounded bg-blue/10 text-blue leading-tight">F&O</span>}
+                        {st.nifty50 && <span className="text-[8px] px-1 rounded bg-amber/10 text-amber leading-tight">N50</span>}
                       </div>
                       <div className="text-[10px] text-dim truncate">{st.name}</div>
                     </div>
-
-                    {/* Right: price */}
                     <div className="text-right ml-2 shrink-0">
-                      {price && price.ltp > 0 ? (
+                      {p && p.ltp > 0 ? (
                         <>
-                          <div className="text-xs font-mono font-medium text-primary">
-                            ₹{fmtPrice(price.ltp)}
-                          </div>
-                          <div className={clsx('text-[10px] font-mono', up ? 'text-green-400' : 'text-red-400')}>
-                            {fmtPct(price.change_pct)}
+                          <div className="text-xs font-mono">₹{price(p.ltp)}</div>
+                          <div className={clsx('text-[10px] font-mono', up ? 'text-green' : 'text-red')}>
+                            {pct(p.change_pct)}
                           </div>
                         </>
                       ) : (
-                        <div className="text-xs text-dim">—</div>
+                        <span className="text-xs text-dim">—</span>
                       )}
                     </div>
                   </div>
@@ -314,126 +234,103 @@ function WatchlistPanel({ watchlist }: { watchlist: WatchlistResponse | null }) 
           ))
         )}
       </div>
-    </div>
+    </Panel>
   )
 }
 
-// ── Signals Feed ───────────────────────────────────────────────────────────────
+// ── Signals feed ──────────────────────────────────────────────────────────────
 
 function SignalsFeed() {
-  const { data } = useSWR<SignalItem[]>('/api/signals', fetcher, {
-    refreshInterval: 60_000,
-  })
-
+  const { data } = useSWR<SignalItem[]>('/api/signals', fetcher, { refreshInterval: 60_000 })
   const signals = data ?? []
 
   return (
-    <div className="bg-surface border border-border rounded-xl flex flex-col h-full">
-      <div className="px-4 py-3 border-b border-border text-sm font-medium flex items-center justify-between">
-        <span>Live Signals</span>
-        <span className="text-xs text-dim">{signals.length} active</span>
-      </div>
-      <div className="flex-1 overflow-y-auto divide-y divide-border">
+    <Panel title="Live Signals" right={`${signals.length} active`}>
+      <div className="divide-y divide-border overflow-y-auto max-h-56">
         {signals.length === 0 ? (
           <div className="px-4 py-6 text-xs text-dim text-center">
-            No signals — market may be closed.
+            No signals above threshold — scan runs every 60s
           </div>
         ) : (
-          signals.slice(0, 10).map((s, i) => {
+          signals.map((s, i) => {
             const isBuy = s.signal === 'BUY'
             return (
-              <div key={i} className="px-4 py-2.5 hover:bg-border/20 transition-colors">
-                <div className="flex items-center gap-2 mb-1">
-                  <span
-                    className={clsx(
-                      'text-xs font-semibold px-1.5 py-0.5 rounded',
-                      isBuy ? 'bg-green/10 text-green' : 'bg-red/10 text-red',
-                    )}>
-                    {s.signal}
-                  </span>
-                  <span className="text-sm font-mono font-medium">{s.symbol}</span>
-                  <span className="ml-auto text-xs text-dim">{s.ts.slice(11, 19)}</span>
-                </div>
-                <div className="text-xs text-dim mb-1.5">{s.strategy}</div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-primary">
-                    ₹{fmtPrice(s.price)}
-                  </span>
-                  <div className="flex-1 h-1.5 rounded-full bg-border overflow-hidden">
-                    <div
-                      className={clsx('h-full rounded-full', isBuy ? 'bg-green' : 'bg-red')}
-                      style={{ width: `${Math.min(100, s.confidence * 100)}%` }}
-                    />
-                  </div>
-                  <span className="text-xs text-dim">{(s.confidence * 100).toFixed(0)}%</span>
+              <div key={i} className="px-4 py-2.5 flex items-center gap-3 hover:bg-white/3 transition-colors">
+                <span className={clsx(
+                  'text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0',
+                  isBuy ? 'bg-green/15 text-green' : 'bg-red/15 text-red',
+                )}>{s.signal}</span>
+                <span className="text-xs font-mono font-semibold">{s.symbol}</span>
+                <span className="text-xs text-dim truncate flex-1">{s.strategy}</span>
+                <div className="text-right shrink-0">
+                  <div className="text-xs font-mono">₹{price(s.price)}</div>
+                  <div className="text-[10px] text-dim">{(s.confidence * 100).toFixed(0)}%</div>
                 </div>
               </div>
             )
           })
         )}
       </div>
-    </div>
+    </Panel>
   )
 }
 
-// ── Main Dashboard ─────────────────────────────────────────────────────────────
+// ── Main Dashboard ────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
   const { data: equity }    = useSWR<EquityPoint[]>('/api/equity', fetcher, { refreshInterval: 30_000 })
   const { data: positions } = useSWR<PositionsResponse>('/api/positions', fetcher, { refreshInterval: 15_000 })
   const { data: trades }    = useSWR<TradesResponse>('/api/trades?source=paper', fetcher, { refreshInterval: 60_000 })
   const { data: daily }     = useSWR<DailyResponse>('/api/daily', fetcher, { refreshInterval: 120_000 })
-  const { snap: priceSnap, live: priceLive } = useLivePrices()
+  const { snap, live }      = useLivePrices()
 
-  const eqArr  = equity ?? []
-  const latest = eqArr[eqArr.length - 1]
+  const eqArr   = equity ?? []
+  const latest  = eqArr[eqArr.length - 1]
   const capital = positions?.initial_capital ?? 500_000
-
   const totalReturn = latest ? (latest.equity - capital) / capital * 100 : 0
-
+  const todayPnl = positions
+    ? (positions.cash - positions.initial_capital)
+      + (positions.positions ?? []).reduce((s, p) => s + p.unrealised_pnl, 0)
+    : null
   const stats   = trades?.stats
   const summary = daily?.summary
 
-  // Today P&L
-  const todayPnl = positions
-    ? (positions.cash - positions.initial_capital) +
-      (positions.positions ?? []).reduce((s, p) => s + p.unrealised_pnl, 0)
-    : null
+  // Equity chart — sample to ≤150 points
+  const eqSample = eqArr.length > 150
+    ? eqArr.filter((_, i) => i % Math.ceil(eqArr.length / 150) === 0)
+    : eqArr
+  const chartData = eqSample.map(p => ({ ts: p.ts.slice(0, 10), equity: p.equity }))
+  const eqColor   = totalReturn >= 0 ? '#10b981' : '#f43f5e'
 
-  // Equity chart data — last 180 points, sample every N if too many
-  const eqSample = eqArr.length > 200 ? eqArr.filter((_, i) => i % Math.ceil(eqArr.length / 200) === 0) : eqArr
-  const chartData = eqSample.map(p => ({
-    ts:     p.ts.slice(0, 10),
-    equity: p.equity,
-  }))
-
-  const eqColor = totalReturn >= 0 ? '#10b981' : '#f43f5e'
-
-  // Daily P&L bar chart — last 30 days
+  // Daily PnL last 30 days
   const last30 = (daily?.days ?? []).slice(-30)
 
-  return (
-    <div className="p-6 space-y-4">
-      {/* Market bar */}
-      <MarketBar market={priceSnap?.market ?? null} live={priceLive} />
+  // Tooltip styles
+  const ttStyle = { background: '#161b27', border: '1px solid #252d3d', borderRadius: 8, fontSize: 11 }
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+  return (
+    <div className="flex flex-col h-full p-4 gap-3 overflow-hidden">
+
+      {/* Row 1: Market ticker */}
+      <MarketTicker market={snap?.market ?? null} live={live} />
+
+      {/* Row 2: KPIs */}
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-3 shrink-0">
         <KPI
-          label="Portfolio Value"
-          value={latest ? `₹${latest.equity.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '—'}
-          sub={fmtPct(totalReturn)}
+          label="Portfolio"
+          value={latest ? `₹${(latest.equity / 1000).toFixed(1)}k` : '—'}
+          sub={pct(totalReturn)}
           up={totalReturn >= 0}
         />
         <KPI
           label="Today P&L"
-          value={todayPnl != null ? fmt(todayPnl) : '—'}
+          value={todayPnl != null ? pnl(todayPnl) : '—'}
           up={todayPnl != null ? todayPnl >= 0 : undefined}
         />
         <KPI
           label="Total Return"
-          value={fmtPct(totalReturn)}
-          sub={latest ? `₹${latest.equity.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : undefined}
+          value={pct(totalReturn)}
+          sub={latest ? inr(latest.equity) : undefined}
           up={totalReturn >= 0}
         />
         <KPI
@@ -443,178 +340,97 @@ export default function Dashboard() {
           up={stats ? stats.win_rate >= 50 : undefined}
         />
         <KPI
-          label="Open Positions"
-          value={positions ? String(positions.positions.length) : '—'}
-          sub={positions ? `${positions.positions.length} active` : undefined}
+          label="Positions"
+          value={String(positions?.positions.length ?? 0)}
+          sub={positions ? `${((capital - (positions.cash ?? capital)) / capital * 100).toFixed(1)}% deployed` : undefined}
         />
         <KPI
-          label="Sharpe (ann.)"
+          label="Sharpe"
           value={summary ? summary.sharpe_ann.toFixed(2) : '—'}
           sub={summary ? `${summary.total_trades} trades` : undefined}
           up={summary ? summary.sharpe_ann >= 1 : undefined}
         />
       </div>
 
-      {/* Middle row: Equity curve (2/3) + Watchlist (1/3) */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4" style={{ minHeight: 320 }}>
-        {/* Equity curve */}
-        <div className="xl:col-span-2 bg-surface border border-border rounded-xl p-5">
-          <div className="text-sm font-medium mb-4 flex items-center justify-between">
-            <span>Equity Curve</span>
-            <span className={clsx('text-xs font-mono', totalReturn >= 0 ? 'text-green' : 'text-red')}>
-              {fmtPct(totalReturn)}
-            </span>
-          </div>
-          {chartData.length > 1 ? (
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor={eqColor} stopOpacity={0.18} />
-                    <stop offset="95%" stopColor={eqColor} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="#252d3d" strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="ts"
-                  tick={{ fill: '#8892a4', fontSize: 10 }}
-                  tickFormatter={v => v.slice(5)}
-                  interval="preserveStartEnd"
-                />
-                <YAxis
-                  tick={{ fill: '#8892a4', fontSize: 10 }}
-                  tickFormatter={v => `₹${(v / 1000).toFixed(0)}k`}
-                  width={55}
-                />
-                <ReferenceLine y={capital} stroke="#8892a4" strokeDasharray="4 4" strokeWidth={1} label={{ value: 'Capital', fill: '#8892a4', fontSize: 9 }} />
-                <Tooltip content={<EqTooltip />} />
-                <Area
-                  type="monotone"
-                  dataKey="equity"
-                  name="Equity"
-                  stroke={eqColor}
-                  strokeWidth={2}
-                  fill="url(#eqGrad)"
-                  dot={false}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex items-center justify-center h-64 text-dim text-sm">
-              No equity data yet — run the seed script first.
-            </div>
-          )}
-        </div>
+      {/* Row 3: Main content — fills remaining height */}
+      <div className="flex-1 grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-3 min-h-0 overflow-hidden">
 
-        {/* Watchlist */}
-        <div className="xl:col-span-1" style={{ minHeight: 320 }}>
-          <WatchlistPanel watchlist={priceSnap?.watchlist ?? null} />
-        </div>
-      </div>
+        {/* Left column */}
+        <div className="flex flex-col gap-3 min-h-0 overflow-hidden">
 
-      {/* Lower row: Open Positions (1/2) + Signals (1/2) */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4" style={{ minHeight: 260 }}>
-        {/* Open positions */}
-        <div className="bg-surface border border-border rounded-xl overflow-hidden">
-          <div className="px-5 py-3 border-b border-border text-sm font-medium flex items-center justify-between">
-            <span>Open Positions ({positions?.positions.length ?? 0})</span>
-            {(positions?.positions.length ?? 0) > 0 && (
-              <span className={clsx(
-                'text-sm font-mono',
-                (positions!.positions.reduce((s, p) => s + p.unrealised_pnl, 0)) >= 0
-                  ? 'text-green' : 'text-red',
-              )}>
-                {fmt(positions!.positions.reduce((s, p) => s + p.unrealised_pnl, 0))} unrealised
-              </span>
+          {/* Equity curve */}
+          <Panel
+            title="Equity Curve"
+            right={<span className={clsx('font-mono', totalReturn >= 0 ? 'text-green' : 'text-red')}>{pct(totalReturn)}</span>}
+            className="shrink-0"
+          >
+            {chartData.length > 1 ? (
+              <div className="p-4">
+                <ResponsiveContainer width="100%" height={160}>
+                  <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                    <defs>
+                      <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%"  stopColor={eqColor} stopOpacity={0.15} />
+                        <stop offset="95%" stopColor={eqColor} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="#252d3d" strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="ts" tick={{ fill: '#8892a4', fontSize: 9 }} tickLine={false} axisLine={false}
+                           interval="preserveStartEnd" />
+                    <YAxis tick={{ fill: '#8892a4', fontSize: 9 }} tickLine={false} axisLine={false}
+                           width={48} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                    <ReferenceLine y={capital} stroke="#4b5563" strokeDasharray="4 2" />
+                    <Tooltip formatter={(v: any) => [inr(Number(v)), 'Equity']} contentStyle={ttStyle}
+                             labelStyle={{ color: '#8892a4' }} />
+                    <Area type="monotone" dataKey="equity" stroke={eqColor} strokeWidth={2}
+                          fill="url(#eqGrad)" dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-44 text-xs text-dim">
+                No equity data — run <code className="mx-1 text-blue">python scripts/seed_dashboard_data.py</code>
+              </div>
             )}
+          </Panel>
+
+          {/* Bottom row: daily bars + signal feed */}
+          <div className="flex-1 grid grid-cols-1 md:grid-cols-[1fr_260px] gap-3 min-h-0 overflow-hidden">
+
+            {/* Daily P&L bars */}
+            <Panel title="Daily P&L" right={last30.length ? `${last30.length} days` : undefined} className="min-h-0">
+              {last30.length > 0 ? (
+                <div className="flex-1 p-4 min-h-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={last30} barCategoryGap="25%" margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                      <CartesianGrid stroke="#252d3d" strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="date" tick={{ fill: '#8892a4', fontSize: 9 }} tickLine={false} axisLine={false}
+                             tickFormatter={v => v.slice(5)} interval="preserveStartEnd" />
+                      <YAxis tick={{ fill: '#8892a4', fontSize: 9 }} tickLine={false} axisLine={false}
+                             width={44} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                      <ReferenceLine y={0} stroke="#4b5563" />
+                      <Tooltip formatter={(v: any) => [pnl(Number(v)), 'P&L']} contentStyle={ttStyle} />
+                      <Bar dataKey="realised" radius={[2, 2, 0, 0]} maxBarSize={20}>
+                        {last30.map((d, i) => (
+                          <Cell key={i} fill={d.realised >= 0 ? '#10b981' : '#f43f5e'} fillOpacity={0.85} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center flex-1 text-xs text-dim">No daily data yet</div>
+              )}
+            </Panel>
+
+            {/* Signals feed */}
+            <SignalsFeed />
           </div>
-          {(positions?.positions.length ?? 0) > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs font-mono">
-                <thead>
-                  <tr className="text-dim border-b border-border">
-                    {['Symbol', 'Side', 'Qty', 'Entry ₹', 'CMP ₹', 'P&L ₹', 'Strategy'].map(h => (
-                      <th key={h} className="text-left px-4 py-2.5 font-medium whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {positions!.positions.map((p, i) => {
-                    const pnlPct = p.entry_price
-                      ? p.unrealised_pnl / (p.entry_price * Math.abs(p.size)) * 100 : 0
-                    return (
-                      <tr key={i} className="hover:bg-border/20 transition-colors">
-                        <td className="px-4 py-2.5 font-semibold">{p.symbol}</td>
-                        <td className={clsx('px-4 py-2.5 font-semibold',
-                          p.direction === 1 ? 'text-green' : 'text-red')}>
-                          {p.direction === 1 ? '▲ LONG' : '▼ SHORT'}
-                        </td>
-                        <td className="px-4 py-2.5">{Math.round(p.size)}</td>
-                        <td className="px-4 py-2.5">{p.entry_price.toFixed(2)}</td>
-                        <td className="px-4 py-2.5">{p.current_price.toFixed(2)}</td>
-                        <td className={clsx('px-4 py-2.5 font-semibold',
-                          p.unrealised_pnl >= 0 ? 'text-green' : 'text-red')}>
-                          {fmt(p.unrealised_pnl)}
-                          <span className="text-dim ml-1">({fmtPct(pnlPct)})</span>
-                        </td>
-                        <td className="px-4 py-2.5 text-dim">{p.strategy.slice(0, 18)}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="px-5 py-8 text-center text-dim text-sm">
-              {positions ? 'No open positions.' : 'No position data — bot not running.'}
-            </div>
-          )}
         </div>
 
-        {/* Signals */}
-        <SignalsFeed />
+        {/* Right column: Watchlist */}
+        <WatchlistPanel watchlist={snap?.watchlist ?? null} />
       </div>
-
-      {/* Daily P&L bar chart — last 30 days */}
-      {last30.length > 0 ? (
-        <div className="bg-surface border border-border rounded-xl p-5">
-          <div className="text-sm font-medium mb-4 flex items-center justify-between">
-            <span>Daily P&L — Last 30 Days</span>
-            {summary && (
-              <span className={clsx('text-xs font-mono', summary.total_realised >= 0 ? 'text-green' : 'text-red')}>
-                Total {fmt(summary.total_realised)}
-              </span>
-            )}
-          </div>
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={last30} barCategoryGap="20%">
-              <CartesianGrid stroke="#252d3d" strokeDasharray="3 3" />
-              <XAxis
-                dataKey="date"
-                tick={{ fill: '#8892a4', fontSize: 10 }}
-                tickFormatter={v => v.slice(5)}
-                interval="preserveStartEnd"
-              />
-              <YAxis
-                tick={{ fill: '#8892a4', fontSize: 10 }}
-                tickFormatter={v => `₹${(v / 1000).toFixed(0)}k`}
-                width={55}
-              />
-              <ReferenceLine y={0} stroke="#4b5563" />
-              <Tooltip content={<PnlTooltip />} />
-              <Bar dataKey="realised" name="Realised P&L" radius={[3, 3, 0, 0]}>
-                {last30.map((d, i) => (
-                  <Cell key={i} fill={d.realised >= 0 ? '#10b981' : '#f43f5e'} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      ) : (
-        <div className="bg-surface border border-border rounded-xl p-8 text-center text-dim text-sm">
-          No daily P&L data yet — run <code className="text-blue">python scripts/seed_dashboard_data.py</code>
-        </div>
-      )}
     </div>
   )
 }
