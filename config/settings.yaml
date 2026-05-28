@@ -106,8 +106,11 @@ strategies:
     - donchian_breakout     # +₹15K on TCS, +₹6K on RELIANCE
     - zscore_reversion      # Sharpe +0.6/+2.6 on RELIANCE/ICICIBANK
     - rsi_momentum          # Most consistent: positive on 3/5 symbols
-    - candlestick_pattern   # High frequency; positive on RELIANCE+SBIN
+    - candle_patterns       # High frequency; positive on RELIANCE+SBIN
     - volume_momentum       # Sharpe +8.2 on RELIANCE, +3.9 on TCS
+    - vix_strategy          # India VIX spike/divergence — NIFTY/BANKNIFTY only
+    - gift_nifty_gap        # Pre-market GIFT Nifty gap — NIFTY/BANKNIFTY only, intraday
+    - fii_dii               # Institutional flow bias — NIFTY/BANKNIFTY only
     # Excluded: ema_crossover (Sharpe -19), multi_tf_trend (needs multi-TF frames),
     #           rsi_mean_reversion (-16), sr_breakout (-8), macd_momentum (-7),
     #           range_breakout (-3), supertrend (0 trades on daily data)
@@ -118,7 +121,10 @@ strategies:
     zscore_reversion: 1.0
     rsi_momentum: 1.0
     volume_momentum: 0.9
-    candlestick_pattern: 0.7
+    candle_patterns: 0.7
+    vix_strategy: 1.1      # macro signal — high quality when VIX regime fires
+    gift_nifty_gap: 1.0    # intraday open window only; returns None otherwise
+    fii_dii: 0.8           # daily flow bias; supporting signal weight
 
 regime_detection:
   adx_trend_threshold: 25

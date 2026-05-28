@@ -24,6 +24,27 @@ from strategies.candlestick import CandlestickPatternStrategy
 from strategies.ml_based import MLClassifierStrategy
 from utils.logger import get_logger
 
+# Optional strategies — imported lazily so a missing data dependency (e.g. NSE
+# is unreachable at import time) never prevents the engine from starting.
+def _try_import_extra_strategies(cfg: dict) -> list:
+    """Load data-dependent strategies; skip any that fail to import or init."""
+    extras = []
+    loaders = [
+        ("strategies.volatility.vix_strategy",   "VIXStrategy",         "vix_strategy"),
+        ("strategies.gap.gift_nifty_gap",         "GIFTNiftyGapStrategy","gift_nifty_gap"),
+        ("strategies.institutional.fii_dii_strategy", "FIIDIIStrategy",  "fii_dii"),
+    ]
+    for module_path, class_name, strat_name in loaders:
+        try:
+            import importlib
+            mod = importlib.import_module(module_path)
+            cls = getattr(mod, class_name)
+            extras.append(cls(cfg))
+            logger.debug("Loaded extra strategy: %s", strat_name)
+        except Exception as exc:
+            logger.info("Optional strategy %s skipped: %s", strat_name, exc)
+    return extras
+
 logger = get_logger("meta_engine")
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -82,6 +103,9 @@ class MetaStrategyEngine:
             OrderBookImbalanceStrategy(cfg),
             CandlestickPatternStrategy(cfg),
         ]
+
+        # Data-dependent strategies (VIX, GIFT Nifty gap, FII/DII flow)
+        all_strategies.extend(_try_import_extra_strategies(cfg))
 
         # Auto-load trained ensemble from disk if no model was passed explicitly
         if ml_model is None:
