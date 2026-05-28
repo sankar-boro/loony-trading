@@ -27,6 +27,7 @@ class FeatureBuilder:
     def _moving_averages(self, df: pd.DataFrame, c: pd.Series) -> pd.DataFrame:
         for p in [9, 20, 50, 200]:
             df[f"ema_{p}"] = TI.ema(c, p)
+        for p in [9, 20, 50]:           # sma_200 is unused and kills dropna on <200-bar sets
             df[f"sma_{p}"] = TI.sma(c, p)
         df["vwap"] = TI.vwap(df)
         df["ema_cross_9_20"] = (df["ema_9"] - df["ema_20"]).apply(np.sign)

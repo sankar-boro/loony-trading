@@ -126,7 +126,7 @@ def _journal_log(record: dict) -> None:
         pass
 
 _TF_CONFIG = {
-    "1d":  ("day",      365),
+    "1d":  ("day",      730),   # 2 years → ~500 trading days → ~450 usable after warmup
     "1h":  ("60minute", 90),
     "30m": ("30minute", 60),
     "15m": ("15minute", 45),
