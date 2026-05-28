@@ -103,7 +103,8 @@ def _fetch_ohlcv(token: str, instrument_key: str, days: int):
 # ── Backtest one strategy ─────────────────────────────────────────────────────
 
 def _backtest_strategy(strategy_cls, cfg: dict, data_map: dict[str, any]) -> float:
-    """Return average Sharpe across all symbols for one strategy class."""
+    """Return median Sharpe across all symbols for one strategy class."""
+    import statistics
     from backtester.backtester import Backtester
 
     sharpes = []
@@ -115,10 +116,11 @@ def _backtest_strategy(strategy_cls, cfg: dict, data_map: dict[str, any]) -> flo
             strat = strategy_cls(cfg)
             result = bt.run(df, sym, strategy=strat)
             sh = result.metrics.get("sharpe", 0.0)
-            sharpes.append(sh)
+            if result.metrics.get("n_trades", 0) >= 3:   # ignore near-zero-trade results
+                sharpes.append(sh)
         except Exception as exc:
             print(f"    {dim(f'{strategy_cls.__name__} on {sym}: {exc}')}")
-    return sum(sharpes) / len(sharpes) if sharpes else 0.0
+    return statistics.median(sharpes) if sharpes else 0.0
 
 
 # ── Weight normalisation ──────────────────────────────────────────────────────

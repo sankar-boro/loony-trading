@@ -129,12 +129,14 @@ class Backtester:
             if signal is None or signal.signal_type not in (SignalType.BUY, SignalType.SELL):
                 continue
 
-            # Size position
+            # Size position — cap at 25% of capital to prevent excessive leverage
             risk_amount = capital * self.risk_per_trade
             sl_dist = abs(signal.price - signal.stop_loss)
             size = risk_amount / sl_dist if sl_dist > 0 else 0
             if size <= 0:
                 continue
+            max_size = (capital * 0.25) / price
+            size = min(size, max_size)
 
             entry_price = self._apply_slippage(price, signal.direction)
             entry_cost = entry_price * size * self.commission_pct
@@ -176,12 +178,19 @@ class Backtester:
     def _compute_metrics(self, trades: List[Trade], equity: np.ndarray) -> dict:
         n = len(trades)
         if n == 0:
-            return {"n_trades": 0}
+            return {
+                "n_trades": 0, "win_rate": 0.0, "profit_factor": 0.0,
+                "sharpe": 0.0, "sortino": 0.0, "max_drawdown_pct": 0.0,
+                "total_return_pct": 0.0, "avg_win": 0.0, "avg_loss": 0.0,
+                "expectancy": 0.0, "cagr_pct": 0.0,
+            }
         pnls = np.array([t.pnl for t in trades])
         returns = pnls / self.initial_capital
         wins = pnls[pnls > 0]
         losses = pnls[pnls < 0]
         total_return = (equity[-1] - equity[0]) / equity[0]
+        n_years = len(equity) / 252 if len(equity) > 1 else 1.0
+        cagr = ((1 + total_return) ** (1 / n_years) - 1) * 100 if n_years > 0 else 0.0
         return {
             "n_trades": n,
             "win_rate": len(wins) / n * 100,
@@ -190,13 +199,15 @@ class Backtester:
             "sortino": sortino_ratio(returns),
             "max_drawdown_pct": max_drawdown(equity) * 100,
             "total_return_pct": total_return * 100,
+            "cagr_pct": cagr,
             "avg_win": float(np.mean(wins)) if len(wins) else 0,
             "avg_loss": float(np.mean(losses)) if len(losses) else 0,
             "expectancy": float(np.mean(pnls)),
         }
 
     def run_walk_forward(self, df: pd.DataFrame, symbol: str,
-                          strategy: BaseStrategy,
+                          strategy: Optional[BaseStrategy] = None,
+                          engine: Optional[MetaStrategyEngine] = None,
                           n_splits: int = 5) -> List[BacktestResult]:
         """Walk-forward validation to guard against overfitting."""
         results = []
@@ -207,6 +218,6 @@ class Backtester:
             test_df = df.iloc[test_start:test_end]
             if len(test_df) < self.warmup_bars + 10:
                 continue
-            r = self.run(test_df, symbol, strategy=strategy)
+            r = self.run(test_df, symbol, strategy=strategy, engine=engine)
             results.append(r)
         return results
