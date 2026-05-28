@@ -531,14 +531,25 @@ async def get_chart(
 
     key = ikey.replace("|", "%7C").replace(" ", "%20")
     to_d   = date.today().isoformat()
-    from_d = (date.today() - timedelta(days=days)).isoformat()
 
-    if interval == "day":
-        url = f"https://api.upstox.com/v2/historical-candle/{key}/day/{to_d}/{from_d}"
-    else:
-        url = f"https://api.upstox.com/v2/historical-candle/intraday/{key}/{interval}"
+    # Map requested interval → native Upstox interval + resample rule
+    # Upstox historical supports: 1minute, 30minute, day, week, month
+    _INTERVAL_MAP = {
+        "day":       ("day",       None,  days),
+        "60minute":  ("30minute",  "60T", min(days, 30)),
+        "30minute":  ("30minute",  None,  min(days, 30)),
+        "15minute":  ("1minute",   "15T", min(days, 7)),
+        "5minute":   ("1minute",   "5T",  min(days, 5)),
+        "1minute":   ("1minute",   None,  min(days, 3)),
+    }
+    native_interval, resample_rule, fetch_days = _INTERVAL_MAP.get(
+        interval, ("day", None, days)
+    )
+    from_d = (date.today() - timedelta(days=fetch_days)).isoformat()
 
-    async with httpx.AsyncClient(timeout=12) as client:
+    url = f"https://api.upstox.com/v2/historical-candle/{key}/{native_interval}/{to_d}/{from_d}"
+
+    async with httpx.AsyncClient(timeout=20) as client:
         resp = await client.get(url, headers={
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",
@@ -547,12 +558,12 @@ async def get_chart(
     if resp.status_code != 200:
         raise HTTPException(resp.status_code, f"Upstox API error: {resp.text[:200]}")
 
+    import datetime as dt
     raw = resp.json().get("data", {}).get("candles", [])
-    # Convert to lightweight-charts format: { time (unix), open, high, low, close, volume }
+
     candles = []
     for c in raw:
         try:
-            import datetime as dt
             ts = dt.datetime.fromisoformat(str(c[0]).replace("Z", "+00:00"))
             candles.append({
                 "time":   int(ts.timestamp()),
@@ -566,6 +577,32 @@ async def get_chart(
             pass
 
     candles.sort(key=lambda c: c["time"])
+
+    # Resample if native granularity is finer than requested interval
+    if resample_rule and candles:
+        import pandas as _pd
+        df_r = _pd.DataFrame(candles).set_index(
+            _pd.to_datetime([c["time"] for c in candles], unit="s", utc=True)
+        )
+        df_r = df_r.resample(resample_rule, label="left", closed="left").agg({
+            "open":   "first",
+            "high":   "max",
+            "low":    "min",
+            "close":  "last",
+            "volume": "sum",
+        }).dropna(subset=["open"])
+        candles = [
+            {
+                "time":   int(idx.timestamp()),
+                "open":   round(row["open"],   2),
+                "high":   round(row["high"],   2),
+                "low":    round(row["low"],    2),
+                "close":  round(row["close"],  2),
+                "volume": round(row["volume"], 0),
+            }
+            for idx, row in df_r.iterrows()
+        ]
+
     return {"symbol": symbol, "interval": interval, "candles": candles}
 
 

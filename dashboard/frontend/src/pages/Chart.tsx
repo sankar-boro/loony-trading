@@ -13,8 +13,9 @@ const SYMBOLS = [
 
 const INTERVALS = [
   { label: '1D',  value: 'day',       days: 365 },
-  { label: '1H',  value: '60minute',  days: 7   },
-  { label: '15M', value: '30minute',  days: 3   },
+  { label: '1H',  value: '60minute',  days: 30  },
+  { label: '15M', value: '15minute',  days: 7   },
+  { label: '5M',  value: '5minute',   days: 5   },
 ]
 
 export default function Chart() {
@@ -29,7 +30,7 @@ export default function Chart() {
   const candleRef    = useRef<ISeriesApi<'Candlestick'> | null>(null)
   const volRef       = useRef<ISeriesApi<'Histogram'> | null>(null)
 
-  // Fetch data
+  // Fetch data whenever symbol or interval changes
   useEffect(() => {
     setLoading(true)
     setError('')
@@ -39,64 +40,62 @@ export default function Chart() {
       .finally(() => setLoading(false))
   }, [symbol, interval])
 
-  // Build / update chart
+  // Build chart once; wire ResizeObserver to fill container height
   useEffect(() => {
     if (!containerRef.current) return
 
-    // Create chart once
-    if (!chartRef.current) {
-      const chart = createChart(containerRef.current, {
-        layout: {
-          background: { type: ColorType.Solid, color: '#161b27' },
-          textColor: '#8892a4',
-        },
-        grid: {
-          vertLines: { color: '#252d3d' },
-          horzLines: { color: '#252d3d' },
-        },
-        crosshair: { mode: CrosshairMode.Normal },
-        rightPriceScale: { borderColor: '#252d3d' },
-        timeScale: {
-          borderColor: '#252d3d',
-          timeVisible: true,
-          secondsVisible: false,
-        },
-        width:  containerRef.current.clientWidth,
-        height: 480,
-      })
+    const el = containerRef.current
+    const chart = createChart(el, {
+      layout: {
+        background: { type: ColorType.Solid, color: '#161b27' },
+        textColor: '#8892a4',
+      },
+      grid: {
+        vertLines: { color: '#252d3d' },
+        horzLines: { color: '#252d3d' },
+      },
+      crosshair: { mode: CrosshairMode.Normal },
+      rightPriceScale: { borderColor: '#252d3d' },
+      timeScale: {
+        borderColor: '#252d3d',
+        timeVisible: true,
+        secondsVisible: false,
+      },
+      width:  el.clientWidth,
+      height: el.clientHeight || 600,
+    })
 
-      candleRef.current = chart.addCandlestickSeries({
-        upColor:         '#10b981',
-        downColor:       '#f43f5e',
-        borderVisible:   false,
-        wickUpColor:     '#10b981',
-        wickDownColor:   '#f43f5e',
-      })
+    candleRef.current = chart.addCandlestickSeries({
+      upColor:       '#10b981',
+      downColor:     '#f43f5e',
+      borderVisible: false,
+      wickUpColor:   '#10b981',
+      wickDownColor: '#f43f5e',
+    })
 
-      volRef.current = chart.addHistogramSeries({
-        color:        '#3b82f6',
-        priceFormat:  { type: 'volume' },
-        priceScaleId: 'vol',
-      })
+    volRef.current = chart.addHistogramSeries({
+      color:        '#3b82f6',
+      priceFormat:  { type: 'volume' },
+      priceScaleId: 'vol',
+    })
 
-      chart.priceScale('vol').applyOptions({
-        scaleMargins: { top: 0.85, bottom: 0 },
-      })
+    chart.priceScale('vol').applyOptions({
+      scaleMargins: { top: 0.85, bottom: 0 },
+    })
 
-      chartRef.current = chart
+    chartRef.current = chart
 
-      const handleResize = () => {
-        if (containerRef.current)
-          chart.applyOptions({ width: containerRef.current.clientWidth })
-      }
-      window.addEventListener('resize', handleResize)
-      return () => {
-        window.removeEventListener('resize', handleResize)
-        chart.remove()
-        chartRef.current = null
-        candleRef.current = null
-        volRef.current = null
-      }
+    const ro = new ResizeObserver(() => {
+      if (el) chart.applyOptions({ width: el.clientWidth, height: el.clientHeight })
+    })
+    ro.observe(el)
+
+    return () => {
+      ro.disconnect()
+      chart.remove()
+      chartRef.current = null
+      candleRef.current = null
+      volRef.current = null
     }
   }, [])
 
@@ -127,9 +126,9 @@ export default function Chart() {
   const chg  = last && prev ? (last.close - prev.close) / prev.close * 100 : 0
 
   return (
-    <div className="p-6 space-y-4">
-      {/* Controls */}
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="flex flex-col h-full p-4 gap-3">
+      {/* Controls row */}
+      <div className="flex flex-wrap items-center gap-3 shrink-0">
         <select
           value={symbol}
           onChange={e => setSymbol(e.target.value)}
@@ -156,35 +155,34 @@ export default function Chart() {
         </div>
 
         {loading && <span className="text-xs text-dim animate-pulse">Loading…</span>}
-        {error && <span className="text-xs text-red">{error}</span>}
+        {error && <span className="text-xs text-red-400">{error}</span>}
       </div>
 
-      {/* Stats strip */}
+      {/* OHLCV stats strip */}
       {last && (
-        <div className="flex gap-6 text-sm font-mono">
-          <span className="font-semibold text-lg">
+        <div className="flex flex-wrap gap-4 text-sm font-mono shrink-0">
+          <span className="font-semibold text-base text-primary">
             ₹{last.close.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
           </span>
-          <span className={chg >= 0 ? 'text-green' : 'text-red'}>
+          <span className={chg >= 0 ? 'text-green-400' : 'text-red-400'}>
             {chg >= 0 ? '+' : ''}{chg.toFixed(2)}%
           </span>
-          <span className="text-dim">O: ₹{last.open.toFixed(2)}</span>
-          <span className="text-green">H: ₹{last.high.toFixed(2)}</span>
-          <span className="text-red">L: ₹{last.low.toFixed(2)}</span>
-          <span className="text-dim">Vol: {(last.volume / 1_000).toFixed(0)}K</span>
+          <span className="text-dim">O <span className="text-primary">{last.open.toFixed(2)}</span></span>
+          <span className="text-dim">H <span className="text-green-400">{last.high.toFixed(2)}</span></span>
+          <span className="text-dim">L <span className="text-red-400">{last.low.toFixed(2)}</span></span>
+          <span className="text-dim">Vol <span className="text-primary">{(last.volume / 1_000).toFixed(0)}K</span></span>
+          <span className="text-dim ml-auto">{data?.candles.length ?? 0} bars</span>
         </div>
       )}
 
-      {/* Chart container */}
-      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      {/* Chart — fills remaining height */}
+      <div className="bg-surface border border-border rounded-xl overflow-hidden flex-1 min-h-0">
         {error ? (
-          <div className="flex items-center justify-center h-48 text-dim text-sm">
-            {error.includes('422') || error.includes('404')
-              ? 'Intraday data unavailable outside market hours'
-              : `Error: ${error}`}
+          <div className="flex items-center justify-center h-full text-dim text-sm">
+            {error}
           </div>
         ) : (
-          <div ref={containerRef} className="w-full" />
+          <div ref={containerRef} className="w-full h-full" />
         )}
       </div>
     </div>
