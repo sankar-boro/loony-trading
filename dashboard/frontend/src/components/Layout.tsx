@@ -9,7 +9,6 @@ const NAV = [
   { to: '/chart',      label: 'Chart',      icon: '◌' },
   { to: '/positions',  label: 'Positions',  icon: '◎' },
   { to: '/trades',     label: 'Trades',     icon: '≡' },
-  { to: '/daily',      label: 'Daily P&L',  icon: '▤' },
   { to: '/strategies', label: 'Strategies', icon: '◇' },
   { to: '/backtest',   label: 'Backtest',   icon: '▷' },
 ]
