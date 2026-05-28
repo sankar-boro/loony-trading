@@ -2,6 +2,7 @@ import type {
   StatusResponse, PositionsResponse, EquityPoint,
   TradesResponse, DailyResponse, ChartResponse,
   ConfigResponse, BacktestRequest, BacktestJobResponse,
+  UniverseResponse,
 } from './types'
 
 const BASE = '/api'
@@ -38,6 +39,7 @@ export const api = {
     post('/backtest', req),
   pollBacktest: (jobId: string): Promise<BacktestJobResponse> =>
     get(`/backtest/${jobId}`),
+  universe: (): Promise<UniverseResponse> => get('/universe'),
 }
 
 // SWR fetcher

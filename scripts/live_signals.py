@@ -48,54 +48,16 @@ def bold(s):   return f"{B}{s}{E}"
 def dim(s):    return f"{DIM}{s}{E}"
 
 
-# ── Instrument key registry ───────────────────────────────────────────────────
+# ── Instrument key registry (central — from config/instruments.py) ────────────
+from config.instruments import INSTRUMENTS, get_nifty50_symbols, get_fno_symbols
 
-# symbol → Upstox instrument_key
-INSTRUMENTS: dict[str, str] = {
-    # Indices
-    "NIFTY50":     "NSE_INDEX|Nifty 50",
-    "NIFTY":       "NSE_INDEX|Nifty 50",
-    "BANKNIFTY":   "NSE_INDEX|Nifty Bank",
-    "FINNIFTY":    "NSE_INDEX|Nifty Fin Service",
-    "MIDCAP":      "NSE_INDEX|NIFTY MIDCAP 150",
-    "VIXINDIA":    "NSE_INDEX|India VIX",
-    "NIFTYIT":     "NSE_INDEX|Nifty IT",
-    # Large-cap equities (ISIN-keyed)
-    "RELIANCE":    "NSE_EQ|INE002A01018",
-    "TCS":         "NSE_EQ|INE467B01029",
-    "HDFCBANK":    "NSE_EQ|INE040A01034",
-    "INFY":        "NSE_EQ|INE009A01021",
-    "ICICIBANK":   "NSE_EQ|INE090A01021",
-    "SBIN":        "NSE_EQ|INE062A01020",
-    "BAJFINANCE":  "NSE_EQ|INE296A01024",
-    "BHARTIARTL":  "NSE_EQ|INE397D01024",
-    "KOTAKBANK":   "NSE_EQ|INE237A01028",
-    "LT":          "NSE_EQ|INE018A01030",
-    "AXISBANK":    "NSE_EQ|INE238A01034",
-    "WIPRO":       "NSE_EQ|INE075A01022",
-    "TATAMOTORS":  "NSE_EQ|INE155A01022",
-    "HCLTECH":     "NSE_EQ|INE860A01027",
-    "ITC":         "NSE_EQ|INE154A01025",
-    "SUNPHARMA":   "NSE_EQ|INE044A01036",
-    "ONGC":        "NSE_EQ|INE213A01029",
-    "MARUTI":      "NSE_EQ|INE585B01010",
-    "NTPC":        "NSE_EQ|INE733E01010",
-    "POWERGRID":   "NSE_EQ|INE752E01010",
-    "TITAN":       "NSE_EQ|INE280A01028",
-    "ULTRACEMCO":  "NSE_EQ|INE481G01011",
-    "ADANIPORTS":  "NSE_EQ|INE742F01042",
-    "JSWSTEEL":    "NSE_EQ|INE019A01038",
-    "TATASTEEL":   "NSE_EQ|INE081A01020",
-    "HINDUNILVR":  "NSE_EQ|INE030A01027",
-    "NESTLEIND":   "NSE_EQ|INE239A01024",
-    "ASIANPAINT":  "NSE_EQ|INE021A01026",
-}
-
-# Default watchlist
+# Default watchlist — top liquid stocks + key indices
 DEFAULT_SYMBOLS = [
     "NIFTY50", "BANKNIFTY",
     "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK",
-    "SBIN", "BAJFINANCE", "AXISBANK",
+    "SBIN", "BAJFINANCE", "AXISBANK", "KOTAKBANK", "BHARTIARTL",
+    "TITAN", "ITC", "HCLTECH", "WIPRO", "SUNPHARMA", "TATAMOTORS",
+    "MARUTI", "HINDUNILVR", "LT", "ULTRACEMCO",
 ]
 
 # Timeframe → Upstox interval string and lookback days

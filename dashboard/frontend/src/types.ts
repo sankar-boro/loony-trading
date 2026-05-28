@@ -186,3 +186,24 @@ export interface SignalItem {
   take_profit: number
   ts: string
 }
+
+export interface UniverseStock {
+  symbol: string
+  name: string
+  industry: string
+  market_cap: string
+  fno: boolean
+  nifty50: boolean
+}
+
+export interface UniverseSector {
+  sector: string
+  color: string
+  stocks: UniverseStock[]
+}
+
+export interface UniverseResponse {
+  sectors: UniverseSector[]
+  total_stocks: number
+  watchlist: string[]
+}

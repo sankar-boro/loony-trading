@@ -54,37 +54,11 @@ def pct_s(v: float) -> str:
     return green(s) if v > 0 else (red(s) if v < 0 else s)
 
 
-# ── Instrument registry ───────────────────────────────────────────────────────
+# ── Instrument registry (central — from config/instruments.py) ───────────────
+from config.instruments import INSTRUMENTS, get_nifty50_symbols
 
-INSTRUMENTS: dict[str, str] = {
-    "NIFTY50":    "NSE_INDEX|Nifty 50",
-    "NIFTY":      "NSE_INDEX|Nifty 50",
-    "BANKNIFTY":  "NSE_INDEX|Nifty Bank",
-    "FINNIFTY":   "NSE_INDEX|Nifty Fin Service",
-    "RELIANCE":   "NSE_EQ|INE002A01018",
-    "TCS":        "NSE_EQ|INE467B01029",
-    "HDFCBANK":   "NSE_EQ|INE040A01034",
-    "INFY":       "NSE_EQ|INE009A01021",
-    "ICICIBANK":  "NSE_EQ|INE090A01021",
-    "SBIN":       "NSE_EQ|INE062A01020",
-    "BAJFINANCE": "NSE_EQ|INE296A01024",
-    "BHARTIARTL": "NSE_EQ|INE397D01024",
-    "KOTAKBANK":  "NSE_EQ|INE237A01028",
-    "LT":         "NSE_EQ|INE018A01030",
-    "AXISBANK":   "NSE_EQ|INE238A01034",
-    "WIPRO":      "NSE_EQ|INE075A01022",
-    "TATAMOTORS": "NSE_EQ|INE155A01022",
-    "HCLTECH":    "NSE_EQ|INE860A01027",
-    "ITC":        "NSE_EQ|INE154A01025",
-    "SUNPHARMA":  "NSE_EQ|INE044A01036",
-    "ONGC":       "NSE_EQ|INE213A01029",
-    "MARUTI":     "NSE_EQ|INE585B01010",
-    "TITAN":      "NSE_EQ|INE280A01028",
-    "HINDUNILVR": "NSE_EQ|INE030A01027",
-    "ASIANPAINT": "NSE_EQ|INE021A01026",
-}
-
-DEFAULT_SYMBOLS = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK"]
+DEFAULT_SYMBOLS = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK",
+                   "SBIN", "AXISBANK", "KOTAKBANK", "WIPRO", "HCLTECH"]
 
 _TF_CONFIG = {
     "1d":  ("day",      365),

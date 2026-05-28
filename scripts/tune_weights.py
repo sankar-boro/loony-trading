@@ -43,18 +43,10 @@ def dim(s):    return f"{DIM}{s}{E}"
 def yellow(s): return f"{Y}{s}{E}"
 
 
-INSTRUMENTS = {
-    "RELIANCE":   "NSE_EQ|INE002A01018",
-    "TCS":        "NSE_EQ|INE467B01029",
-    "HDFCBANK":   "NSE_EQ|INE040A01034",
-    "INFY":       "NSE_EQ|INE009A01021",
-    "ICICIBANK":  "NSE_EQ|INE090A01021",
-    "SBIN":       "NSE_EQ|INE062A01020",
-    "AXISBANK":   "NSE_EQ|INE238A01034",
-    "NIFTY50":    "NSE_INDEX|Nifty 50",
-}
+from config.instruments import INSTRUMENTS
 
-DEFAULT_SYMBOLS = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK"]
+DEFAULT_SYMBOLS = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK",
+                   "SBIN", "AXISBANK", "KOTAKBANK", "WIPRO", "HCLTECH"]
 SETTINGS_FILE   = ROOT / "config" / "settings.yaml"
 
 

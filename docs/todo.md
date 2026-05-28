@@ -43,6 +43,13 @@ Items are ordered by priority. Check off as completed.
 
 ---
 
+- [x] **Stock universe too small** — only 12 hardcoded stocks across all scripts and dashboard;
+  replaced with `config/instruments.py` (91 stocks, 18 sectors, F&O flags, ISINs);
+  all scripts import from central registry; watchlist expanded to 30 stocks;
+  `/api/universe` endpoint added; Dashboard watchlist panel shows sector tabs + search
+
+---
+
 ## 🟡 Medium
 
 - [ ] **Re-train ML with full dataset** — last run used 2 symbols × 365 days (396 samples);

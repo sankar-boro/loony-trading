@@ -311,29 +311,17 @@ def get_config() -> dict:
 
 # ── Chart (OHLCV proxy) ────────────────────────────────────────────────────────
 
-_IKEYS: dict[str, str] = {
-    "RELIANCE":   "NSE_EQ|INE002A01018",
-    "TCS":        "NSE_EQ|INE467B01029",
-    "HDFCBANK":   "NSE_EQ|INE040A01034",
-    "INFY":       "NSE_EQ|INE009A01021",
-    "ICICIBANK":  "NSE_EQ|INE090A01021",
-    "SBIN":       "NSE_EQ|INE062A01020",
-    "BAJFINANCE": "NSE_EQ|INE296A01024",
-    "AXISBANK":   "NSE_EQ|INE238A01034",
-    "WIPRO":      "NSE_EQ|INE075A01022",
-    "TATAMOTORS": "NSE_EQ|INE155A01022",
-    "ITC":        "NSE_EQ|INE154A01025",
-    "KOTAKBANK":  "NSE_EQ|INE237A01028",
-    "LT":         "NSE_EQ|INE018A01030",
-    "NIFTY50":    "NSE_INDEX|Nifty 50",
-    "BANKNIFTY":  "NSE_INDEX|Nifty Bank",
-    "NIFTYIT":    "NSE_INDEX|Nifty IT",
-}
+# Central instrument registry — imports all 90+ stocks and indices
+from config.instruments import INSTRUMENTS as _IKEYS, STOCK_UNIVERSE, get_sector_map, SECTOR_COLORS
 
+# Default dashboard watchlist — 30 most liquid large-cap F&O stocks
 _WATCHLIST_SYMS = [
     "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK",
-    "SBIN", "BAJFINANCE", "AXISBANK", "WIPRO", "TATAMOTORS",
-    "ITC", "KOTAKBANK",
+    "SBIN", "BAJFINANCE", "AXISBANK", "KOTAKBANK", "BHARTIARTL",
+    "WIPRO", "HCLTECH", "TATAMOTORS", "MARUTI", "ITC",
+    "SUNPHARMA", "DRREDDY", "TITAN", "ASIANPAINT", "ULTRACEMCO",
+    "LT", "NTPC", "POWERGRID", "ONGC", "JSWSTEEL",
+    "HINDUNILVR", "NESTLEIND", "APOLLOHOSP", "ADANIPORTS", "ZOMATO",
 ]
 
 
@@ -466,6 +454,38 @@ async def get_market() -> dict:
     tasks = [_fetch_index(s) for s in indices]
     results = await _aio.gather(*tasks)
     return {sym: data for sym, data in results if data}
+
+
+@app.get("/api/universe")
+def get_universe() -> dict:
+    """
+    Full tradable stock universe grouped by sector.
+    Static — no Upstox call needed. Used by the dashboard to render
+    sector tabs and stock categories.
+    """
+    sectors = []
+    for sector_name, symbols in get_sector_map().items():
+        stocks = []
+        for sym in symbols:
+            info = STOCK_UNIVERSE.get(sym, {})
+            stocks.append({
+                "symbol":     sym,
+                "name":       info.get("name", sym),
+                "industry":   info.get("industry", ""),
+                "market_cap": info.get("market_cap", ""),
+                "fno":        info.get("fno", False),
+                "nifty50":    info.get("nifty50", False),
+            })
+        sectors.append({
+            "sector": sector_name,
+            "color":  SECTOR_COLORS.get(sector_name, "#64748b"),
+            "stocks": stocks,
+        })
+    return {
+        "sectors":       sectors,
+        "total_stocks":  sum(len(s["stocks"]) for s in sectors),
+        "watchlist":     _WATCHLIST_SYMS,
+    }
 
 
 @app.get("/api/signals")

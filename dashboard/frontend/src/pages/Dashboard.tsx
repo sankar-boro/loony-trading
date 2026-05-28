@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import useSWR from 'swr'
 import { fetcher } from '../api'
 import type {
   EquityPoint, PositionsResponse, TradesResponse, DailyResponse,
-  WatchlistResponse, MarketResponse, SignalItem,
+  WatchlistResponse, MarketResponse, SignalItem, UniverseResponse,
 } from '../types'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis,
@@ -143,36 +143,175 @@ function MarketBar({ market, live }: { market: MarketResponse | null; live: bool
 }
 
 // ── Watchlist Panel ────────────────────────────────────────────────────────────
+// Groups stocks by sector using /api/universe metadata + live SSE prices.
 
 function WatchlistPanel({ watchlist }: { watchlist: WatchlistResponse | null }) {
-  const items = watchlist ? Object.entries(watchlist) : []
+  const { data: universe } = useSWR<UniverseResponse>('/api/universe', fetcher, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+  })
+
+  const [activeTab, setActiveTab]     = useState<string>('Watchlist')
+  const [collapsed, setCollapsed]     = useState<Set<string>>(new Set())
+  const [search, setSearch]           = useState('')
+
+  const toggleCollapse = (sector: string) =>
+    setCollapsed(prev => {
+      const next = new Set(prev)
+      next.has(sector) ? next.delete(sector) : next.add(sector)
+      return next
+    })
+
+  // Tabs: "Watchlist" (default 30 stocks) + one per sector
+  const tabs: string[] = ['Watchlist']
+  if (universe) universe.sectors.forEach(s => tabs.push(s.sector))
+
+  // Stocks to display for selected tab
+  const displaySectors = (() => {
+    if (!universe) return []
+    if (activeTab === 'Watchlist') {
+      const wlSet = new Set(universe.watchlist)
+      // Group watchlist stocks by sector
+      const grouped: Record<string, typeof universe.sectors[0]['stocks']> = {}
+      universe.sectors.forEach(sec => {
+        const stocks = sec.stocks.filter(st => wlSet.has(st.symbol))
+        if (stocks.length) grouped[sec.sector] = stocks
+      })
+      return Object.entries(grouped).map(([sector, stocks]) => {
+        const sec = universe.sectors.find(s => s.sector === sector)
+        return { sector, color: sec?.color ?? '#64748b', stocks }
+      })
+    }
+    return universe.sectors.filter(s => s.sector === activeTab)
+  })()
+
+  const filterLower = search.toLowerCase()
+  const filteredSectors = displaySectors.map(sec => ({
+    ...sec,
+    stocks: filterLower
+      ? sec.stocks.filter(st =>
+          st.symbol.toLowerCase().includes(filterLower) ||
+          st.name.toLowerCase().includes(filterLower))
+      : sec.stocks,
+  })).filter(sec => sec.stocks.length > 0)
+
+  const priceFor = (sym: string) => watchlist?.[sym]
 
   return (
     <div className="bg-surface border border-border rounded-xl flex flex-col h-full">
-      <div className="px-4 py-3 border-b border-border text-sm font-medium flex items-center justify-between">
-        <span>Watchlist</span>
-        <span className="text-xs text-dim">SSE stream</span>
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-border shrink-0">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-medium">Universe</span>
+          <span className="text-xs text-dim">
+            {universe ? `${universe.total_stocks} stocks · ${universe.sectors.length} sectors` : 'Loading…'}
+          </span>
+        </div>
+        {/* Search */}
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search symbol or company…"
+          className="w-full text-xs bg-bg border border-border rounded px-2 py-1.5 focus:outline-none focus:border-blue placeholder:text-dim"
+        />
       </div>
-      <div className="flex-1 overflow-y-auto divide-y divide-border">
-        {items.length === 0 ? (
-          <div className="px-4 py-6 text-xs text-dim text-center">Loading…</div>
+
+      {/* Sector tabs */}
+      <div className="flex overflow-x-auto border-b border-border shrink-0 scrollbar-thin">
+        {tabs.map(tab => {
+          const sec = universe?.sectors.find(s => s.sector === tab)
+          return (
+            <button
+              key={tab}
+              onClick={() => { setActiveTab(tab); setSearch('') }}
+              className={clsx(
+                'px-3 py-2 text-xs whitespace-nowrap transition-colors shrink-0 border-b-2',
+                activeTab === tab
+                  ? 'border-blue text-primary font-medium'
+                  : 'border-transparent text-dim hover:text-primary'
+              )}
+            >
+              {tab === 'Watchlist' ? '⭐ Watchlist' : tab}
+              {sec && (
+                <span className="ml-1 text-[10px] text-dim">
+                  ({sec.stocks.length})
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Stock list */}
+      <div className="flex-1 overflow-y-auto">
+        {filteredSectors.length === 0 ? (
+          <div className="px-4 py-8 text-xs text-dim text-center">
+            {universe ? 'No matches' : 'Loading universe…'}
+          </div>
         ) : (
-          items.map(([sym, d]) => {
-            const up = d.change_pct >= 0
-            return (
-              <div key={sym} className="px-4 py-2.5 flex items-center justify-between hover:bg-border/20 transition-colors">
-                <div className="text-sm font-medium font-mono">{sym}</div>
-                <div className="text-right">
-                  <div className="text-sm font-mono font-medium">
-                    {d.ltp > 0 ? `₹${fmtPrice(d.ltp)}` : '—'}
+          filteredSectors.map(sec => (
+            <div key={sec.sector}>
+              {/* Sector header (only shown when multiple sectors visible) */}
+              {filteredSectors.length > 1 && (
+                <button
+                  onClick={() => toggleCollapse(sec.sector)}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-border/10 transition-colors"
+                >
+                  <span
+                    className="inline-block w-2 h-2 rounded-full shrink-0"
+                    style={{ background: sec.color }}
+                  />
+                  <span className="text-xs font-medium text-dim">{sec.sector}</span>
+                  <span className="text-[10px] text-dim ml-1">({sec.stocks.length})</span>
+                  <span className="ml-auto text-dim text-xs">
+                    {collapsed.has(sec.sector) ? '▶' : '▼'}
+                  </span>
+                </button>
+              )}
+
+              {/* Stock rows */}
+              {!collapsed.has(sec.sector) && sec.stocks.map(st => {
+                const price = priceFor(st.symbol)
+                const up = (price?.change_pct ?? 0) >= 0
+                return (
+                  <div
+                    key={st.symbol}
+                    className="flex items-center px-3 py-2 hover:bg-border/20 transition-colors border-b border-border/40 last:border-0"
+                  >
+                    {/* Left: symbol + name */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-mono font-semibold text-primary">{st.symbol}</span>
+                        {st.fno && (
+                          <span className="text-[9px] px-1 rounded bg-blue/10 text-blue font-medium">F&O</span>
+                        )}
+                        {st.nifty50 && (
+                          <span className="text-[9px] px-1 rounded bg-amber-500/10 text-amber-400 font-medium">N50</span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-dim truncate">{st.name}</div>
+                    </div>
+
+                    {/* Right: price */}
+                    <div className="text-right ml-2 shrink-0">
+                      {price && price.ltp > 0 ? (
+                        <>
+                          <div className="text-xs font-mono font-medium text-primary">
+                            ₹{fmtPrice(price.ltp)}
+                          </div>
+                          <div className={clsx('text-[10px] font-mono', up ? 'text-green-400' : 'text-red-400')}>
+                            {fmtPct(price.change_pct)}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-xs text-dim">—</div>
+                      )}
+                    </div>
                   </div>
-                  <div className={clsx('text-xs font-mono', up ? 'text-green' : 'text-red')}>
-                    {fmtPct(d.change_pct)}
-                  </div>
-                </div>
-              </div>
-            )
-          })
+                )
+              })}
+            </div>
+          ))
         )}
       </div>
     </div>
