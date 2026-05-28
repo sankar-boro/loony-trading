@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+from pathlib import Path
 from typing import Dict, List, Optional
 import pandas as pd
 
@@ -24,6 +25,27 @@ from strategies.ml_based import MLClassifierStrategy
 from utils.logger import get_logger
 
 logger = get_logger("meta_engine")
+
+_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _load_ensemble_model():
+    """Load pre-trained ensemble from models/ensemble.pkl if it exists."""
+    import pickle
+    ens_path = _ROOT / "models" / "ensemble.pkl"
+    if not ens_path.exists():
+        return None
+    try:
+        with open(ens_path, "rb") as f:
+            data = pickle.load(f)
+        ensemble = data.get("model") or data  # handle both dict and direct object
+        if hasattr(ensemble, "predict_proba"):
+            logger.info("ML ensemble loaded from %s (%d samples)",
+                        ens_path, data.get("n_samples", 0))
+            return ensemble
+    except Exception as exc:
+        logger.warning("Could not load ML ensemble: %s", exc)
+    return None
 
 
 class MetaStrategyEngine:
@@ -61,6 +83,9 @@ class MetaStrategyEngine:
             CandlestickPatternStrategy(cfg),
         ]
 
+        # Auto-load trained ensemble from disk if no model was passed explicitly
+        if ml_model is None:
+            ml_model = _load_ensemble_model()
         ml_strategy = MLClassifierStrategy(cfg, model=ml_model)
         all_strategies.append(ml_strategy)
 

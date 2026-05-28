@@ -18,9 +18,9 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -43,7 +43,10 @@ app = FastAPI(title="Loony Trading API", docs_url="/api/docs")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:5173", "http://localhost:5174",
+        "http://localhost:5175", "http://localhost:3000",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -512,7 +515,58 @@ async def get_signals() -> list:
     await _aio.gather(*[_scan_sym(s) for s in scan_symbols])
 
     signals_out.sort(key=lambda x: x["confidence"], reverse=True)
-    return signals_out[:10]
+    top = signals_out[:10]
+
+    # Push high-confidence signals (≥0.65) to Telegram asynchronously
+    if top:
+        try:
+            from utils.telegram_alerts import TelegramAlerter
+            alerter = TelegramAlerter()
+            if alerter.enabled:
+                strong = [s for s in top if s["confidence"] >= 0.65]
+                if strong:
+                    lines = [f"🔔 <b>Signal Scanner — {len(strong)} signal(s)</b>"]
+                    for s in strong[:5]:
+                        emoji = "🟢" if s["signal"] == "BUY" else "🔴"
+                        lines.append(
+                            f"{emoji} {s['symbol']} {s['signal']} @ ₹{s['price']:,.2f} "
+                            f"({s['strategy']} · {s['confidence']:.0%})"
+                        )
+                    alerter.send("\n".join(lines))
+        except Exception:
+            pass
+
+    return top
+
+
+# ── Telegram test endpoint ─────────────────────────────────────────────────────
+
+@app.get("/api/telegram/test")
+def test_telegram() -> dict:
+    """
+    Verify Telegram connectivity.  Returns {enabled, reachable, chat_id_set}.
+    Sends a test message if the bot is configured.
+    """
+    try:
+        from utils.telegram_alerts import TelegramAlerter
+        alerter = TelegramAlerter()
+        enabled  = alerter.enabled
+        reachable = alerter.status_check() if enabled else False
+        if enabled:
+            alerter.send(
+                "✅ <b>Loony Trading — Telegram test</b>\n"
+                "Dashboard is connected and notifications are working.",
+            )
+        return {
+            "enabled":     enabled,
+            "reachable":   reachable,
+            "chat_id_set": bool(alerter.chat_id),
+            "token_set":   bool(alerter.bot_token),
+            "message":     "Test message sent" if enabled else
+                           "Telegram disabled — set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID",
+        }
+    except Exception as exc:
+        raise HTTPException(500, str(exc))
 
 
 @app.get("/api/chart/{symbol}")
@@ -638,6 +692,109 @@ async def get_ltp(symbols: str = Query(...)) -> dict[str, float]:
         if ltp is not None:
             result[sym] = float(ltp)
     return result
+
+
+# ── SSE live price stream ──────────────────────────────────────────────────────
+# Streams watchlist + index prices as Server-Sent Events every 2 seconds.
+# Falls back to last-known prices outside market hours (Upstox LTP returns empty
+# outside 9:15–15:30 IST, so we cache the previous values).
+
+_SSE_SYMS    = list(_WATCHLIST_SYMS)                                 # 12 equity symbols
+_SSE_INDICES = ["NSE_INDEX%7CNifty%2050", "NSE_INDEX%7CNifty%20Bank",
+                "NSE_INDEX%7CNifty%20IT"]
+_price_cache: dict[str, dict] = {}   # last known prices for SSE fallback
+
+
+async def _fetch_sse_snapshot(token: str) -> dict:
+    """Fetch LTP for watchlist + indices in one call; merge with cache on miss."""
+    all_keys = [_IKEYS[s] for s in _SSE_SYMS if s in _IKEYS]
+    all_keys += [k.replace("%7C", "|").replace("%20", " ") for k in _SSE_INDICES]
+    encoded = ",".join(k.replace("|", "%7C").replace(" ", "%20") for k in all_keys)
+
+    watchlist: dict = {}
+    market: dict = {}
+
+    try:
+        async with httpx.AsyncClient(timeout=6) as client:
+            r = await client.get(
+                f"https://api.upstox.com/v2/market-quote/ltp?instrument_key={encoded}",
+                headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+            )
+        if r.status_code == 200:
+            data = r.json().get("data", {})
+            # Equity watchlist
+            for sym in _SSE_SYMS:
+                ikey = _IKEYS.get(sym, "")
+                entry = data.get(ikey.replace("|", ":"), {})
+                ltp = entry.get("last_price")
+                if ltp:
+                    prev = _price_cache.get(sym, {}).get("ltp", float(ltp))
+                    chg_pct = (float(ltp) - prev) / prev * 100 if prev else 0
+                    _price_cache[sym] = {"ltp": float(ltp), "change_pct": round(chg_pct, 2)}
+            # Indices
+            _idx_map = {
+                "NSE_INDEX|Nifty 50":    "NIFTY50",
+                "NSE_INDEX|Nifty Bank":  "BANKNIFTY",
+                "NSE_INDEX|Nifty IT":    "NIFTYIT",
+            }
+            for ikey, name in _idx_map.items():
+                entry = data.get(ikey.replace("|", ":"), {})
+                ltp = entry.get("last_price")
+                if ltp:
+                    prev = _price_cache.get(name, {}).get("ltp", float(ltp))
+                    chg_pct = (float(ltp) - prev) / prev * 100 if prev else 0
+                    _price_cache[name] = {"ltp": float(ltp), "change_pct": round(chg_pct, 2)}
+    except Exception:
+        pass
+
+    # Build output from cache (live or last-known)
+    for sym in _SSE_SYMS:
+        cached = _price_cache.get(sym, {})
+        watchlist[sym] = {
+            "ltp":        cached.get("ltp", 0),
+            "change_pct": cached.get("change_pct", 0),
+        }
+    for name in ("NIFTY50", "BANKNIFTY", "NIFTYIT"):
+        cached = _price_cache.get(name, {})
+        market[name] = {
+            "ltp":        cached.get("ltp", 0),
+            "change_pct": cached.get("change_pct", 0),
+        }
+
+    return {"watchlist": watchlist, "market": market, "ts": int(time.time())}
+
+
+@app.get("/api/stream/prices")
+async def stream_prices(request: Request):
+    """SSE endpoint — pushes price updates every 2 seconds."""
+    token, age_h = _get_token()
+
+    async def generator():
+        # Send an initial snapshot immediately
+        snap = await _fetch_sse_snapshot(token)
+        yield f"data: {json.dumps(snap)}\n\n"
+
+        interval = 2 if (token and age_h <= 23) else 10
+        while True:
+            if await request.is_disconnected():
+                break
+            await asyncio.sleep(interval)
+            if await request.is_disconnected():
+                break
+            try:
+                snap = await _fetch_sse_snapshot(token)
+                yield f"data: {json.dumps(snap)}\n\n"
+            except Exception:
+                yield f"data: {{}}\n\n"
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # ── Backtest ───────────────────────────────────────────────────────────────────

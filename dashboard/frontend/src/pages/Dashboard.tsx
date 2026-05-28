@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import useSWR from 'swr'
 import { fetcher } from '../api'
 import type {
@@ -76,14 +77,40 @@ function PnlTooltip({ active, payload, label }: any) {
   )
 }
 
+// ── SSE live-price hook ────────────────────────────────────────────────────────
+// Single EventSource shared between MarketBar and WatchlistPanel via state
+// lifted into Dashboard. Both components receive props instead of fetching.
+
+interface PriceSnap {
+  watchlist: WatchlistResponse
+  market: MarketResponse
+  ts: number
+}
+
+function useLivePrices(): { snap: PriceSnap | null; live: boolean } {
+  const [snap, setSnap] = useState<PriceSnap | null>(null)
+  const [live, setLive]  = useState(false)
+
+  useEffect(() => {
+    const es = new EventSource('/api/stream/prices')
+    es.onopen    = () => setLive(true)
+    es.onerror   = () => setLive(false)
+    es.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data)
+        if (d && d.watchlist) setSnap(d as PriceSnap)
+      } catch { /* ignore malformed frames */ }
+    }
+    return () => es.close()
+  }, [])
+
+  return { snap, live }
+}
+
 // ── Market Bar ─────────────────────────────────────────────────────────────────
 
-function MarketBar() {
-  const { data } = useSWR<MarketResponse>('/api/market', fetcher, {
-    refreshInterval: 30_000,
-  })
-
-  if (!data || Object.keys(data).length === 0) {
+function MarketBar({ market, live }: { market: MarketResponse | null; live: boolean }) {
+  if (!market || Object.keys(market).length === 0) {
     return (
       <div className="bg-surface border border-border rounded-xl px-4 py-2.5 flex items-center gap-6 text-xs font-mono text-dim">
         <span className="animate-pulse">Fetching index data…</span>
@@ -95,7 +122,7 @@ function MarketBar() {
   return (
     <div className="bg-surface border border-border rounded-xl px-4 py-2.5 flex items-center gap-6 text-xs font-mono overflow-x-auto">
       {order.map(sym => {
-        const d = data[sym]
+        const d = market[sym]
         if (!d) return null
         const up = d.change_pct >= 0
         return (
@@ -108,24 +135,23 @@ function MarketBar() {
           </div>
         )
       })}
+      <span className={clsx('ml-auto text-xs', live ? 'text-green' : 'text-dim')}>
+        {live ? '● live' : '○ connecting'}
+      </span>
     </div>
   )
 }
 
 // ── Watchlist Panel ────────────────────────────────────────────────────────────
 
-function WatchlistPanel() {
-  const { data } = useSWR<WatchlistResponse>('/api/watchlist', fetcher, {
-    refreshInterval: 15_000,
-  })
-
-  const items = data ? Object.entries(data) : []
+function WatchlistPanel({ watchlist }: { watchlist: WatchlistResponse | null }) {
+  const items = watchlist ? Object.entries(watchlist) : []
 
   return (
     <div className="bg-surface border border-border rounded-xl flex flex-col h-full">
       <div className="px-4 py-3 border-b border-border text-sm font-medium flex items-center justify-between">
         <span>Watchlist</span>
-        <span className="text-xs text-dim">Live</span>
+        <span className="text-xs text-dim">SSE stream</span>
       </div>
       <div className="flex-1 overflow-y-auto divide-y divide-border">
         {items.length === 0 ? (
@@ -135,17 +161,10 @@ function WatchlistPanel() {
             const up = d.change_pct >= 0
             return (
               <div key={sym} className="px-4 py-2.5 flex items-center justify-between hover:bg-border/20 transition-colors">
-                <div>
-                  <div className="text-sm font-medium font-mono">{sym}</div>
-                  <div className="text-xs text-dim">
-                    Vol {d.volume > 0
-                      ? (d.volume / 1_000_000).toFixed(1) + 'M'
-                      : '—'}
-                  </div>
-                </div>
+                <div className="text-sm font-medium font-mono">{sym}</div>
                 <div className="text-right">
                   <div className="text-sm font-mono font-medium">
-                    ₹{fmtPrice(d.ltp)}
+                    {d.ltp > 0 ? `₹${fmtPrice(d.ltp)}` : '—'}
                   </div>
                   <div className={clsx('text-xs font-mono', up ? 'text-green' : 'text-red')}>
                     {fmtPct(d.change_pct)}
@@ -225,6 +244,7 @@ export default function Dashboard() {
   const { data: positions } = useSWR<PositionsResponse>('/api/positions', fetcher, { refreshInterval: 15_000 })
   const { data: trades }    = useSWR<TradesResponse>('/api/trades?source=paper', fetcher, { refreshInterval: 60_000 })
   const { data: daily }     = useSWR<DailyResponse>('/api/daily', fetcher, { refreshInterval: 120_000 })
+  const { snap: priceSnap, live: priceLive } = useLivePrices()
 
   const eqArr  = equity ?? []
   const latest = eqArr[eqArr.length - 1]
@@ -256,7 +276,7 @@ export default function Dashboard() {
   return (
     <div className="p-6 space-y-4">
       {/* Market bar */}
-      <MarketBar />
+      <MarketBar market={priceSnap?.market ?? null} live={priceLive} />
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
@@ -349,7 +369,7 @@ export default function Dashboard() {
 
         {/* Watchlist */}
         <div className="xl:col-span-1" style={{ minHeight: 320 }}>
-          <WatchlistPanel />
+          <WatchlistPanel watchlist={priceSnap?.watchlist ?? null} />
         </div>
       </div>
 

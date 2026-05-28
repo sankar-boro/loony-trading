@@ -497,18 +497,14 @@ def main():
     if fb_err and not args.no_features:
         print(f"{Y}FeatureBuilder error: {fb_err} — running without features{E}")
 
-    # ML model existence check
-    models_dir = ROOT / "models"
-    missing_models = [
-        sym for sym, _ in resolved
-        if not sym.startswith("NIFTY") and not sym.startswith("BANK")
-        and not (models_dir / f"{sym}_ensemble.pkl").exists()
-    ]
-    if missing_models:
-        print(f"\n{Y}No ML models for: {', '.join(missing_models[:6])}"
-              f"{'...' if len(missing_models) > 6 else ''}{E}")
-        print(f"  MLClassifierStrategy disabled for these symbols.")
-        print(f"  Run: python main.py --mode train\n")
+    # ML ensemble check
+    ens_path = ROOT / "models" / "ensemble.pkl"
+    if not ens_path.exists():
+        print(f"\n{Y}No trained ML ensemble found.{E}")
+        print(f"  MLClassifierStrategy will be skipped.")
+        print(f"  Run: python scripts/train_ml.py\n")
+    else:
+        print(f"  {dim('ML ensemble loaded from models/ensemble.pkl')}")
 
     from utils.telegram_alerts import TelegramAlerter
     alerter = TelegramAlerter()
