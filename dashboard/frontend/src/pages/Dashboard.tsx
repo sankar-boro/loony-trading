@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react'
 import useSWR from 'swr'
 import { fetcher } from '../api'
 import type {
-  EquityPoint, PositionsResponse, TradesResponse, DailyResponse,
+  EquityPoint, PositionsResponse, TradesResponse,
   WatchlistResponse, MarketResponse, SignalItem, UniverseResponse,
 } from '../types'
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis,
-  Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid, Cell,
+  AreaChart, Area, XAxis, YAxis,
+  Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid,
 } from 'recharts'
 import clsx from 'clsx'
 
@@ -281,7 +281,6 @@ export default function Dashboard() {
   const { data: equity }    = useSWR<EquityPoint[]>('/api/equity', fetcher, { refreshInterval: 30_000 })
   const { data: positions } = useSWR<PositionsResponse>('/api/positions', fetcher, { refreshInterval: 15_000 })
   const { data: trades }    = useSWR<TradesResponse>('/api/trades?source=paper', fetcher, { refreshInterval: 60_000 })
-  const { data: daily }     = useSWR<DailyResponse>('/api/daily', fetcher, { refreshInterval: 120_000 })
   const { snap, live }      = useLivePrices()
 
   const eqArr   = equity ?? []
@@ -292,8 +291,7 @@ export default function Dashboard() {
     ? (positions.cash - positions.initial_capital)
       + (positions.positions ?? []).reduce((s, p) => s + p.unrealised_pnl, 0)
     : null
-  const stats   = trades?.stats
-  const summary = daily?.summary
+  const stats = trades?.stats
 
   // Equity chart — sample to ≤150 points
   const eqSample = eqArr.length > 150
@@ -301,9 +299,6 @@ export default function Dashboard() {
     : eqArr
   const chartData = eqSample.map(p => ({ ts: p.ts.slice(0, 10), equity: p.equity }))
   const eqColor   = totalReturn >= 0 ? '#10b981' : '#f43f5e'
-
-  // Daily PnL last 30 days
-  const last30 = (daily?.days ?? []).slice(-30)
 
   // Tooltip styles
   const ttStyle = { background: '#161b27', border: '1px solid #252d3d', borderRadius: 8, fontSize: 11 }
@@ -345,10 +340,10 @@ export default function Dashboard() {
           sub={positions ? `${((capital - (positions.cash ?? capital)) / capital * 100).toFixed(1)}% deployed` : undefined}
         />
         <KPI
-          label="Sharpe"
-          value={summary ? summary.sharpe_ann.toFixed(2) : '—'}
-          sub={summary ? `${summary.total_trades} trades` : undefined}
-          up={summary ? summary.sharpe_ann >= 1 : undefined}
+          label="Total Trades"
+          value={stats ? String(stats.total) : '—'}
+          sub={stats ? `PF ${stats.profit_factor > 0 ? stats.profit_factor.toFixed(2) : '—'}` : undefined}
+          up={stats ? stats.profit_factor >= 1 : undefined}
         />
       </div>
 
@@ -394,36 +389,8 @@ export default function Dashboard() {
             )}
           </Panel>
 
-          {/* Bottom row: daily bars + signal feed */}
-          <div className="flex-1 grid grid-cols-1 md:grid-cols-[1fr_260px] gap-3 min-h-0 overflow-hidden">
-
-            {/* Daily P&L bars */}
-            <Panel title="Daily P&L" right={last30.length ? `${last30.length} days` : undefined} className="min-h-0">
-              {last30.length > 0 ? (
-                <div className="flex-1 p-4 min-h-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={last30} barCategoryGap="25%" margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                      <CartesianGrid stroke="#252d3d" strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="date" tick={{ fill: '#8892a4', fontSize: 9 }} tickLine={false} axisLine={false}
-                             tickFormatter={v => v.slice(5)} interval="preserveStartEnd" />
-                      <YAxis tick={{ fill: '#8892a4', fontSize: 9 }} tickLine={false} axisLine={false}
-                             width={44} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-                      <ReferenceLine y={0} stroke="#4b5563" />
-                      <Tooltip formatter={(v: any) => [pnl(Number(v)), 'P&L']} contentStyle={ttStyle} />
-                      <Bar dataKey="realised" radius={[2, 2, 0, 0]} maxBarSize={20}>
-                        {last30.map((d, i) => (
-                          <Cell key={i} fill={d.realised >= 0 ? '#10b981' : '#f43f5e'} fillOpacity={0.85} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center flex-1 text-xs text-dim">No daily data yet</div>
-              )}
-            </Panel>
-
-            {/* Signals feed */}
+          {/* Bottom row: signals feed */}
+          <div className="flex-1 min-h-0 overflow-hidden">
             <SignalsFeed />
           </div>
         </div>

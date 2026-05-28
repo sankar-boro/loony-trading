@@ -11,6 +11,7 @@ const NAV = [
   { to: '/trades',     label: 'Trades',     icon: '≡' },
   { to: '/strategies', label: 'Strategies', icon: '◇' },
   { to: '/backtest',   label: 'Backtest',   icon: '▷' },
+  { to: '/daily',      label: 'Daily P&L',  icon: '▤' },
 ]
 
 function Dot({ on, pulse }: { on: boolean; pulse?: boolean }) {
