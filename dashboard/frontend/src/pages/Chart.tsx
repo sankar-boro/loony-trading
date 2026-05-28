@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import { createChart, ColorType, CrosshairMode } from 'lightweight-charts'
 import type { IChartApi, ISeriesApi } from 'lightweight-charts'
 import { api } from '../api'
@@ -19,7 +20,9 @@ const INTERVALS = [
 ]
 
 export default function Chart() {
-  const [symbol,   setSymbol]   = useState('NIFTY50')
+  const location = useLocation()
+  const initialSymbol = (location.state as { symbol?: string } | null)?.symbol ?? 'NIFTY50'
+  const [symbol,   setSymbol]   = useState(initialSymbol)
   const [interval, setInterval] = useState(INTERVALS[0])
   const [data,     setData]     = useState<ChartResponse | null>(null)
   const [loading,  setLoading]  = useState(false)

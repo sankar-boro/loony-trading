@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import useSWR from 'swr'
 import { fetcher } from '../api'
 import type {
@@ -110,6 +111,7 @@ function MarketTicker({ market, live }: { market: MarketResponse | null; live: b
 // ── Watchlist Panel ───────────────────────────────────────────────────────────
 
 function WatchlistPanel({ watchlist }: { watchlist: WatchlistResponse | null }) {
+  const navigate = useNavigate()
   const { data: universe } = useSWR<UniverseResponse>('/api/universe', fetcher, {
     revalidateOnFocus: false, revalidateOnReconnect: false,
   })
@@ -205,12 +207,15 @@ function WatchlistPanel({ watchlist }: { watchlist: WatchlistResponse | null }) 
                 const p = watchlist?.[st.symbol]
                 const up = (p?.change_pct ?? 0) >= 0
                 return (
-                  <div key={st.symbol}
-                    className="flex items-center px-3 py-2 hover:bg-white/3 border-b border-border/30 last:border-0 transition-colors">
+                  <button
+                    key={st.symbol}
+                    onClick={() => navigate('/chart', { state: { symbol: st.symbol } })}
+                    className="w-full flex items-center px-3 py-2 hover:bg-blue/5 border-b border-border/30 last:border-0 transition-colors text-left group cursor-pointer"
+                  >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1">
-                        <span className="text-xs font-mono font-semibold">{st.symbol}</span>
-                        {st.fno   && <span className="text-[8px] px-1 rounded bg-blue/10 text-blue leading-tight">F&O</span>}
+                        <span className="text-xs font-mono font-semibold group-hover:text-blue transition-colors">{st.symbol}</span>
+                        {st.fno    && <span className="text-[8px] px-1 rounded bg-blue/10 text-blue leading-tight">F&O</span>}
                         {st.nifty50 && <span className="text-[8px] px-1 rounded bg-amber/10 text-amber leading-tight">N50</span>}
                       </div>
                       <div className="text-[10px] text-dim truncate">{st.name}</div>
@@ -227,7 +232,7 @@ function WatchlistPanel({ watchlist }: { watchlist: WatchlistResponse | null }) 
                         <span className="text-xs text-dim">—</span>
                       )}
                     </div>
-                  </div>
+                  </button>
                 )
               })}
             </div>
@@ -245,26 +250,46 @@ function SignalsFeed() {
   const signals = data ?? []
 
   return (
-    <Panel title="Live Signals" right={`${signals.length} active`}>
-      <div className="divide-y divide-border overflow-y-auto max-h-56">
+    <Panel title="Live Signals" right={`${signals.length} active`} className="h-full">
+      <div className="flex-1 divide-y divide-border overflow-y-auto min-h-0">
         {signals.length === 0 ? (
-          <div className="px-4 py-6 text-xs text-dim text-center">
-            No signals above threshold — scan runs every 60s
+          <div className="flex flex-col items-center justify-center h-full gap-2 text-dim">
+            <span className="text-2xl opacity-20">◎</span>
+            <span className="text-xs text-center px-4">No signals above threshold</span>
+            <span className="text-[10px] text-dim">Scan runs every 60s</span>
           </div>
         ) : (
           signals.map((s, i) => {
             const isBuy = s.signal === 'BUY'
+            const confPct = (s.confidence * 100).toFixed(0)
             return (
-              <div key={i} className="px-4 py-2.5 flex items-center gap-3 hover:bg-white/3 transition-colors">
-                <span className={clsx(
-                  'text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0',
-                  isBuy ? 'bg-green/15 text-green' : 'bg-red/15 text-red',
-                )}>{s.signal}</span>
-                <span className="text-xs font-mono font-semibold">{s.symbol}</span>
-                <span className="text-xs text-dim truncate flex-1">{s.strategy}</span>
-                <div className="text-right shrink-0">
-                  <div className="text-xs font-mono">₹{price(s.price)}</div>
-                  <div className="text-[10px] text-dim">{(s.confidence * 100).toFixed(0)}%</div>
+              <div key={i} className="px-4 py-3 hover:bg-white/3 transition-colors">
+                {/* Row 1: badge + symbol + price */}
+                <div className="flex items-center gap-2.5 mb-1.5">
+                  <span className={clsx(
+                    'text-[10px] font-bold px-2 py-0.5 rounded shrink-0',
+                    isBuy ? 'bg-green/15 text-green' : 'bg-red/15 text-red',
+                  )}>{s.signal}</span>
+                  <span className="text-sm font-mono font-bold flex-1">{s.symbol}</span>
+                  <span className="text-sm font-mono font-medium">₹{price(s.price)}</span>
+                </div>
+                {/* Row 2: strategy + confidence bar */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-dim truncate flex-1">{s.strategy}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="w-16 h-1.5 rounded-full bg-border overflow-hidden">
+                      <div
+                        className={clsx('h-full rounded-full', isBuy ? 'bg-green' : 'bg-red')}
+                        style={{ width: `${s.confidence * 100}%`, opacity: 0.7 }}
+                      />
+                    </div>
+                    <span className="text-[10px] font-mono text-dim w-8 text-right">{confPct}%</span>
+                  </div>
+                </div>
+                {/* Row 3: SL / TP */}
+                <div className="flex items-center gap-3 mt-1">
+                  <span className="text-[10px] text-dim">SL <span className="text-red font-mono">₹{price(s.stop_loss)}</span></span>
+                  <span className="text-[10px] text-dim">TP <span className="text-green font-mono">₹{price(s.take_profit)}</span></span>
                 </div>
               </div>
             )
@@ -348,9 +373,9 @@ export default function Dashboard() {
       </div>
 
       {/* Row 3: Main content — fills remaining height */}
-      <div className="flex-1 grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-3 min-h-0 overflow-hidden">
+      <div className="flex-1 grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-3 min-h-0 overflow-hidden">
 
-        {/* Left column */}
+        {/* Left column: equity curve (fixed) + universe (grows) */}
         <div className="flex flex-col gap-3 min-h-0 overflow-hidden">
 
           {/* Equity curve */}
@@ -389,14 +414,14 @@ export default function Dashboard() {
             )}
           </Panel>
 
-          {/* Bottom row: signals feed */}
+          {/* Universe — takes all remaining height */}
           <div className="flex-1 min-h-0 overflow-hidden">
-            <SignalsFeed />
+            <WatchlistPanel watchlist={snap?.watchlist ?? null} />
           </div>
         </div>
 
-        {/* Right column: Watchlist */}
-        <WatchlistPanel watchlist={snap?.watchlist ?? null} />
+        {/* Right column: signals feed */}
+        <SignalsFeed />
       </div>
     </div>
   )
