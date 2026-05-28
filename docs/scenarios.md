@@ -16,6 +16,7 @@ python scripts/check_token.py
 ```
 
 Expected output:
+
 ```
 Token age   : 5.2h  (valid for 17.8h more)
 Token source: data/upstox_token.json
@@ -23,6 +24,7 @@ Market      : CLOSED  (next open: Wednesday 2026-05-28 09:15 IST)
 ```
 
 If the token is expired (> 23h old), renew it:
+
 ```bash
 python scripts/upstox_login.py
 ```
@@ -64,15 +66,15 @@ Open **http://localhost:8000**.
 
 ### Pages and what to test
 
-| Page | URL | Works without bot running? | What to verify |
-|---|---|---|---|
-| Dashboard | `/` | Partial | KPI cards show `—` when no data; equity chart empty |
-| Chart | `/chart` | **Yes** | Pick RELIANCE → select 1D interval → candles load |
-| Positions | `/positions` | Partial | Empty table; signal log empty |
-| Trades | `/trades` | Partial | Empty until paper trades close |
-| Daily P&L | `/daily` | Partial | Empty until EOD report runs |
-| Strategies | `/strategies` | **Yes** | Weight bars load from `/api/config` |
-| Backtest | `/backtest` | **Yes** | Pick RELIANCE, 6 months, ema_crossover → Run Backtest → result appears |
+| Page       | URL           | Works without bot running? | What to verify                                                         |
+| ---------- | ------------- | -------------------------- | ---------------------------------------------------------------------- |
+| Dashboard  | `/`           | Partial                    | KPI cards show `—` when no data; equity chart empty                    |
+| Chart      | `/chart`      | **Yes**                    | Pick RELIANCE → select 1D interval → candles load                      |
+| Positions  | `/positions`  | Partial                    | Empty table; signal log empty                                          |
+| Trades     | `/trades`     | Partial                    | Empty until paper trades close                                         |
+| Daily P&L  | `/daily`      | Partial                    | Empty until EOD report runs                                            |
+| Strategies | `/strategies` | **Yes**                    | Weight bars load from `/api/config`                                    |
+| Backtest   | `/backtest`   | **Yes**                    | Pick RELIANCE, 6 months, ema_crossover → Run Backtest → result appears |
 
 ### API endpoints (verify directly)
 
@@ -98,10 +100,25 @@ open http://localhost:8000/api/docs
 ### Backtest via API
 
 ```bash
-# Submit job
+# Submit single-symbol backtest job
 curl -X POST http://localhost:8000/api/backtest \
   -H "Content-Type: application/json" \
   -d '{"symbol":"RELIANCE","strategy":"bollinger_reversion","days":365,"capital":500000}'
+
+# Submit batch backtest job using symbols list
+curl -X POST http://localhost:8000/api/backtest/batch \
+  -H "Content-Type: application/json" \
+  -d '{"symbols":["RELIANCE","TCS"],"strategies":["ema_crossover","rsi_mean_reversion"],"days":180,"capital":500000,"benchmark":true}'
+
+# Submit walk-forward backtest
+curl -X POST http://localhost:8000/api/backtest \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"RELIANCE","strategies":["ema_crossover"],"walk_forward":true,"walk_forward_splits":5}'
+
+# Optional explicit token override
+curl -X POST http://localhost:8000/api/backtest \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"RELIANCE","strategy":"bollinger_reversion","token":"YOUR_UPSTOX_TOKEN"}'
 
 # Poll result (replace JOB_ID)
 curl http://localhost:8000/api/backtest/JOB_ID | python -m json.tool
@@ -125,6 +142,7 @@ python scripts/paper_trade.py \
 ```
 
 What to look for:
+
 - "Strategy engine ready — 17 strategies" on startup
 - Historical data loads: `RELIANCE: 446 bars OK`
 - Signals fire within the first few ticks (e.g., `SELL 93 × RELIANCE @ ₹1,350.50`)
@@ -154,12 +172,12 @@ python scripts/paper_trade.py \
 
 ### Key files written during a session
 
-| File | Contents | Used by |
-|---|---|---|
-| `data/live_positions.json` | Open positions, cash, signal log | Dashboard `/api/positions` |
-| `data/equity_curve.jsonl` | One line per tick: `{ts, equity, cash, ...}` | Dashboard `/api/equity` |
-| `data/daily_pnl.jsonl` | One line per EOD (3:35 PM): daily stats | Dashboard `/api/daily` |
-| `logs/paper_trades.jsonl` | Every closed trade with full detail | Dashboard `/api/trades` |
+| File                       | Contents                                     | Used by                    |
+| -------------------------- | -------------------------------------------- | -------------------------- |
+| `data/live_positions.json` | Open positions, cash, signal log             | Dashboard `/api/positions` |
+| `data/equity_curve.jsonl`  | One line per tick: `{ts, equity, cash, ...}` | Dashboard `/api/equity`    |
+| `data/daily_pnl.jsonl`     | One line per EOD (3:35 PM): daily stats      | Dashboard `/api/daily`     |
+| `logs/paper_trades.jsonl`  | Every closed trade with full detail          | Dashboard `/api/trades`    |
 
 ### After running the bot, verify the dashboard shows live data
 
@@ -347,15 +365,15 @@ python scripts/test_upstox.py
 
 This script runs sequentially and prints pass/fail for each section:
 
-| Section | Tests | Notes |
-|---|---|---|
-| Token validation | Auth header, expiry | Fails if token > 23h |
-| LTP fetch | Single + bulk | Empty outside market hours |
-| Full quote | OHLC + bid/ask | Empty outside market hours |
-| Historical daily | 30d / 365d / 2y | Works anytime |
-| Historical intraday | 15m / 60m candles | Works anytime |
-| Instrument search | RELIANCE, TCS, HDFC | Works anytime |
-| WebSocket feed | Binary protobuf frame | Requires market hours |
+| Section             | Tests                 | Notes                      |
+| ------------------- | --------------------- | -------------------------- |
+| Token validation    | Auth header, expiry   | Fails if token > 23h       |
+| LTP fetch           | Single + bulk         | Empty outside market hours |
+| Full quote          | OHLC + bid/ask        | Empty outside market hours |
+| Historical daily    | 30d / 365d / 2y       | Works anytime              |
+| Historical intraday | 15m / 60m candles     | Works anytime              |
+| Instrument search   | RELIANCE, TCS, HDFC   | Works anytime              |
+| WebSocket feed      | Binary protobuf frame | Requires market hours      |
 
 ---
 
@@ -435,12 +453,12 @@ python scripts/tune_weights.py --days 730 --min-sharpe 0.3 --dry-run
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| `No token found` | Token file missing or expired | `python scripts/upstox_login.py` |
-| `FeatureBuilder returns 0 rows` | Fetching < 200 days of data | Use `--days 730` or `--days 365` minimum |
-| `Strategy engine load failed` | Import error in a strategy | `python -c "from strategies.meta_engine import MetaStrategyEngine"` |
-| Dashboard shows empty data | Bot has never run | Run `paper_trade.py` first to create data files |
-| LTP returns `{}` | Market is closed | Expected — LTP is live only 9:15–15:30 IST |
-| `Port 8000 already in use` | Previous backend still running | `pkill -f uvicorn` |
-| `Port 5173 already in use` | Previous Vite dev server running | `pkill -f vite` |
+| Symptom                         | Cause                            | Fix                                                                 |
+| ------------------------------- | -------------------------------- | ------------------------------------------------------------------- |
+| `No token found`                | Token file missing or expired    | `python scripts/upstox_login.py`                                    |
+| `FeatureBuilder returns 0 rows` | Fetching < 200 days of data      | Use `--days 730` or `--days 365` minimum                            |
+| `Strategy engine load failed`   | Import error in a strategy       | `python -c "from strategies.meta_engine import MetaStrategyEngine"` |
+| Dashboard shows empty data      | Bot has never run                | Run `paper_trade.py` first to create data files                     |
+| LTP returns `{}`                | Market is closed                 | Expected — LTP is live only 9:15–15:30 IST                          |
+| `Port 8000 already in use`      | Previous backend still running   | `pkill -f uvicorn`                                                  |
+| `Port 5173 already in use`      | Previous Vite dev server running | `pkill -f vite`                                                     |
