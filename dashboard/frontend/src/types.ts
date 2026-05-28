@@ -161,3 +161,28 @@ export interface BacktestJobResponse {
   result?: BacktestResult
   error?: string
 }
+
+export interface WatchlistItem {
+  ltp: number
+  change: number
+  change_pct: number
+  volume: number
+}
+export type WatchlistResponse = Record<string, WatchlistItem>
+
+export interface MarketIndex {
+  ltp: number
+  change_pct: number
+}
+export type MarketResponse = Record<string, MarketIndex>
+
+export interface SignalItem {
+  symbol: string
+  signal: string
+  strategy: string
+  confidence: number
+  price: number
+  stop_loss: number
+  take_profit: number
+  ts: string
+}

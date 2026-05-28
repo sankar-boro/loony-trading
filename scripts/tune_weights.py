@@ -159,44 +159,43 @@ def _normalise_weights(sharpe_map: dict[str, float],
 def _update_yaml_weights(weights: dict[str, float],
                          enabled: list[str]) -> None:
     """
-    Edit config/settings.yaml in-place — update only the strategies.weights
-    and strategies.enabled sections without disturbing other keys.
-    Uses a simple line-by-line rewriter to avoid requiring a YAML library.
+    Edit config/settings.yaml in-place — update ONLY the strategies.enabled
+    and strategies.weights blocks.  Tracks whether we are inside the
+    'strategies:' top-level key so we never touch telegram/email/rl enabled flags.
     """
     text = SETTINGS_FILE.read_text()
     lines = text.splitlines()
     out: list[str] = []
+    in_strategies = False
     i = 0
     while i < len(lines):
         line = lines[i]
         stripped = line.lstrip()
 
-        # Replace strategies.enabled block
-        if stripped.startswith("enabled:") and "  enabled:" in line:
+        # Track top-level section changes
+        if line and not line[0].isspace() and line.rstrip().endswith(":"):
+            in_strategies = line.startswith("strategies:")
+
+        # Replace strategies.enabled — only when inside strategies block
+        if in_strategies and line == "  enabled:":
             out.append("  enabled:")
             for name in enabled:
                 out.append(f"    - {name}")
-            # skip old enabled lines
             i += 1
-            while i < len(lines) and lines[i].startswith("    -"):
+            while i < len(lines) and (lines[i].startswith("    -") or
+                                       (lines[i].startswith("    #"))):
                 i += 1
             continue
 
-        # Replace strategies.weights block
-        if stripped.startswith("weights:") and "  weights:" in line:
+        # Replace strategies.weights — only when inside strategies block
+        if in_strategies and line == "  weights:":
             out.append("  weights:")
             for name, w in sorted(weights.items()):
                 if w > 0:
                     out.append(f"    {name}: {w}")
-            # skip old weight lines
             i += 1
-            while i < len(lines) and lines[i].startswith("    ") and ":" in lines[i]:
-                # Don't skip lines that start deeper-nested sections
-                stripped_next = lines[i].strip()
-                if stripped_next.startswith("#") or ":" in stripped_next:
-                    i += 1
-                else:
-                    break
+            while i < len(lines) and lines[i].startswith("    ") and ": " in lines[i]:
+                i += 1
             continue
 
         out.append(line)

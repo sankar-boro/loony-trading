@@ -277,9 +277,242 @@ _IKEYS: dict[str, str] = {
     "WIPRO":      "NSE_EQ|INE075A01022",
     "TATAMOTORS": "NSE_EQ|INE155A01022",
     "ITC":        "NSE_EQ|INE154A01025",
+    "KOTAKBANK":  "NSE_EQ|INE237A01028",
+    "LT":         "NSE_EQ|INE018A01030",
     "NIFTY50":    "NSE_INDEX|Nifty 50",
     "BANKNIFTY":  "NSE_INDEX|Nifty Bank",
+    "NIFTYIT":    "NSE_INDEX|Nifty IT",
 }
+
+_WATCHLIST_SYMS = [
+    "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK",
+    "SBIN", "BAJFINANCE", "AXISBANK", "WIPRO", "TATAMOTORS",
+    "ITC", "KOTAKBANK",
+]
+
+
+@app.get("/api/watchlist")
+async def get_watchlist() -> dict:
+    """Live prices + daily change% for 12 default symbols."""
+    token, age_h = _get_token()
+    if not token or age_h > 23:
+        return {}
+
+    # Fetch LTP for all watchlist symbols
+    keys = [_IKEYS[s] for s in _WATCHLIST_SYMS if s in _IKEYS]
+    encoded = ",".join(k.replace("|", "%7C").replace(" ", "%20") for k in keys)
+
+    async with httpx.AsyncClient(timeout=12) as client:
+        ltp_resp = await client.get(
+            f"https://api.upstox.com/v2/market-quote/ltp?instrument_key={encoded}",
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+        )
+
+    ltp_data = {}
+    if ltp_resp.status_code == 200:
+        raw = ltp_resp.json().get("data", {})
+        for sym in _WATCHLIST_SYMS:
+            ikey = _IKEYS.get(sym, "")
+            resp_key = ikey.replace("|", ":")
+            entry = raw.get(resp_key, {})
+            ltp = entry.get("last_price")
+            if ltp is not None:
+                ltp_data[sym] = float(ltp)
+
+    # Fetch 2-day candles for change%
+    result: dict[str, dict] = {}
+    to_d   = date.today().isoformat()
+    from_d = (date.today() - timedelta(days=5)).isoformat()
+
+    async def _fetch_candles(sym: str) -> tuple[str, list]:
+        ikey = _IKEYS.get(sym, "")
+        if not ikey:
+            return sym, []
+        key = ikey.replace("|", "%7C").replace(" ", "%20")
+        url = f"https://api.upstox.com/v2/historical-candle/{key}/day/{to_d}/{from_d}"
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.get(url, headers={
+                    "Authorization": f"Bearer {token}", "Accept": "application/json"
+                })
+            if r.status_code == 200:
+                return sym, r.json().get("data", {}).get("candles", [])
+        except Exception:
+            pass
+        return sym, []
+
+    import asyncio as _aio
+    candle_tasks = [_fetch_candles(s) for s in _WATCHLIST_SYMS]
+    candle_results = await _aio.gather(*candle_tasks)
+
+    for sym, candles in candle_results:
+        ltp = ltp_data.get(sym, 0.0)
+        change = 0.0
+        change_pct = 0.0
+        volume = 0
+
+        if candles and len(candles) >= 2:
+            # candles[0] is most recent
+            today_close     = float(candles[0][4])
+            yesterday_close = float(candles[1][4])
+            change     = round(today_close - yesterday_close, 2)
+            change_pct = round((today_close - yesterday_close) / yesterday_close * 100, 2) \
+                         if yesterday_close else 0.0
+            volume = int(candles[0][5]) if len(candles[0]) > 5 else 0
+            if ltp == 0.0:
+                ltp = today_close
+        elif candles:
+            ltp = ltp or float(candles[0][4])
+            volume = int(candles[0][5]) if len(candles[0]) > 5 else 0
+
+        result[sym] = {
+            "ltp":        round(ltp, 2),
+            "change":     change,
+            "change_pct": change_pct,
+            "volume":     volume,
+        }
+
+    # Fill any missing symbols with zeros
+    for sym in _WATCHLIST_SYMS:
+        if sym not in result:
+            result[sym] = {"ltp": 0.0, "change": 0.0, "change_pct": 0.0, "volume": 0}
+
+    return result
+
+
+@app.get("/api/market")
+async def get_market() -> dict:
+    """Index overview: NIFTY50, BANKNIFTY, NIFTYIT."""
+    token, age_h = _get_token()
+    if not token or age_h > 23:
+        return {}
+
+    indices = ["NIFTY50", "BANKNIFTY", "NIFTYIT"]
+    to_d   = date.today().isoformat()
+    from_d = (date.today() - timedelta(days=5)).isoformat()
+
+    async def _fetch_index(sym: str) -> tuple[str, dict]:
+        ikey = _IKEYS.get(sym, "")
+        if not ikey:
+            return sym, {}
+        key = ikey.replace("|", "%7C").replace(" ", "%20")
+        url = f"https://api.upstox.com/v2/historical-candle/{key}/day/{to_d}/{from_d}"
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.get(url, headers={
+                    "Authorization": f"Bearer {token}", "Accept": "application/json"
+                })
+            if r.status_code == 200:
+                candles = r.json().get("data", {}).get("candles", [])
+                if candles and len(candles) >= 2:
+                    ltp      = float(candles[0][4])
+                    prev     = float(candles[1][4])
+                    ch_pct   = round((ltp - prev) / prev * 100, 2) if prev else 0.0
+                    return sym, {"ltp": round(ltp, 2), "change_pct": ch_pct}
+                elif candles:
+                    ltp = float(candles[0][4])
+                    return sym, {"ltp": round(ltp, 2), "change_pct": 0.0}
+        except Exception:
+            pass
+        return sym, {}
+
+    import asyncio as _aio
+    tasks = [_fetch_index(s) for s in indices]
+    results = await _aio.gather(*tasks)
+    return {sym: data for sym, data in results if data}
+
+
+@app.get("/api/signals")
+async def get_signals() -> list:
+    """Run signal scanner on default symbols, return top 10 by confidence."""
+    token, age_h = _get_token()
+    if not token or age_h > 23:
+        return []
+
+    import importlib
+    import pandas as pd
+
+    scan_symbols = ["RELIANCE", "TCS", "HDFCBANK", "SBIN", "AXISBANK",
+                    "INFY", "ICICIBANK", "BAJFINANCE", "WIPRO", "TATAMOTORS"]
+
+    try:
+        from config.loader import Settings
+        cfg = Settings().as_dict()
+    except Exception:
+        cfg = {
+            "strategies": {"enabled": [], "weights": {}},
+            "risk": {"max_risk_per_trade": 0.01, "trailing_stop_pct": 0.02},
+            "execution": {"commission": 0.001, "slippage_pct": 0.001},
+            "data": {"warmup_bars": 50},
+        }
+
+    try:
+        from strategies.meta_engine import MetaStrategyEngine
+        from feature_engine.feature_builder import FeatureBuilder
+        engine = MetaStrategyEngine(cfg)
+        fb = FeatureBuilder()
+    except Exception as exc:
+        raise HTTPException(500, f"Engine load failed: {exc}")
+
+    to_d   = date.today().isoformat()
+    from_d = (date.today() - timedelta(days=730)).isoformat()
+
+    signals_out = []
+
+    async def _scan_sym(sym: str):
+        ikey = _IKEYS.get(sym, "")
+        if not ikey:
+            return
+        key = ikey.replace("|", "%7C").replace(" ", "%20")
+        url = f"https://api.upstox.com/v2/historical-candle/{key}/day/{to_d}/{from_d}"
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                r = await client.get(url, headers={
+                    "Authorization": f"Bearer {token}", "Accept": "application/json"
+                })
+            if r.status_code != 200:
+                return
+            candles = r.json().get("data", {}).get("candles", [])
+            if len(candles) < 60:
+                return
+
+            df = pd.DataFrame(candles,
+                              columns=["ts", "open", "high", "low", "close", "volume", "oi"])
+            df["ts"] = pd.to_datetime(df["ts"])
+            df = df.set_index("ts").sort_index()
+            for col in ["open", "high", "low", "close", "volume"]:
+                df[col] = df[col].apply(float)
+
+            try:
+                df = fb.build(df)
+            except Exception:
+                pass
+
+            if len(df) < 55:
+                return
+
+            sigs = engine.generate_signals(sym, df)
+            for s in (sigs or []):
+                if s.confidence >= 0.4:
+                    from strategies.base import SignalType
+                    signals_out.append({
+                        "symbol":     sym,
+                        "signal":     "BUY" if s.signal_type == SignalType.BUY else "SELL",
+                        "strategy":   s.strategy,
+                        "confidence": round(float(s.confidence), 3),
+                        "price":      round(float(s.price), 2),
+                        "stop_loss":  round(float(s.stop_loss), 2),
+                        "take_profit": round(float(s.take_profit), 2),
+                        "ts":         date.today().isoformat() + "T09:32:00",
+                    })
+        except Exception:
+            pass
+
+    import asyncio as _aio
+    await _aio.gather(*[_scan_sym(s) for s in scan_symbols])
+
+    signals_out.sort(key=lambda x: x["confidence"], reverse=True)
+    return signals_out[:10]
 
 
 @app.get("/api/chart/{symbol}")
@@ -428,9 +661,17 @@ def _run_backtest_sync(job_id: str, req: BacktestRequest) -> None:
             "ema_crossover":       ("strategies.trend",          "EmaCrossoverStrategy"),
             "rsi_mean_reversion":  ("strategies.mean_reversion", "RsiReversionStrategy"),
             "bollinger_reversion": ("strategies.mean_reversion", "BollingerReversionStrategy"),
+            "zscore_reversion":    ("strategies.mean_reversion", "ZscoreReversionStrategy"),
+            "vwap_reversion":      ("strategies.mean_reversion", "VwapReversionStrategy"),
             "macd_momentum":       ("strategies.momentum",       "MacdMomentumStrategy"),
+            "rsi_momentum":        ("strategies.momentum",       "RsiMomentumStrategy"),
+            "volume_momentum":     ("strategies.momentum",       "VolumeMomentumStrategy"),
             "breakout_atr":        ("strategies.breakout",       "AtrBreakoutStrategy"),
+            "sr_breakout":         ("strategies.breakout",       "SupportResistanceBreakoutStrategy"),
+            "range_breakout":      ("strategies.breakout",       "RangeBreakoutStrategy"),
             "supertrend":          ("strategies.trend",          "SupertrendStrategy"),
+            "donchian_breakout":   ("strategies.trend",          "DonchianBreakoutStrategy"),
+            "candlestick_pattern": ("strategies.candlestick",    "CandlestickPatternStrategy"),
         }
 
         strat_obj = None

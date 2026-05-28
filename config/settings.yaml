@@ -144,8 +144,7 @@ ml:
     n_estimators: 300
     learning_rate: 0.05
   reinforcement:
-  enabled:
-    - rsi_momentum
+    enabled: false
     algorithm: PPO
     total_timesteps: 100000
 
@@ -167,13 +166,11 @@ india_market:
 
 notifications:
   telegram:
-  enabled:
-    - rsi_momentum
+    enabled: true
     bot_token: "${TELEGRAM_BOT_TOKEN}"
     chat_id: "${TELEGRAM_CHAT_ID}"
   email:
-  enabled:
-    - rsi_momentum
+    enabled: false
     smtp_host: "${SMTP_HOST}"
     smtp_port: 587
     user: "${EMAIL_USER}"
