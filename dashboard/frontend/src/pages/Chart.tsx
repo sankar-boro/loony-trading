@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { createChart, ColorType, CrosshairMode } from 'lightweight-charts'
 import type { IChartApi, ISeriesApi } from 'lightweight-charts'
-import { api } from '../api'
-import type { ChartResponse, WatchlistResponse } from '../types'
+import useSWR from 'swr'
+import { api, fetcher } from '../api'
+import type { ChartResponse, WatchlistResponse, UniverseResponse } from '../types'
 import clsx from 'clsx'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -65,14 +66,6 @@ function useLiveWatchlist() {
 
 // ── Watchlist panel ───────────────────────────────────────────────────────────
 
-const WATCHLIST_SYMS = [
-  'NIFTY50', 'BANKNIFTY',
-  'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK',
-  'SBIN', 'AXISBANK', 'KOTAKBANK', 'BAJFINANCE', 'BHARTIARTL',
-  'WIPRO', 'HCLTECH', 'TITAN', 'ITC', 'SUNPHARMA',
-  'TATAMOTORS', 'MARUTI', 'ULTRACEMCO',
-]
-
 function WatchlistPanel({
   active, onSelect, prices,
 }: {
@@ -80,59 +73,124 @@ function WatchlistPanel({
   onSelect: (sym: string) => void
   prices: WatchlistResponse
 }) {
+  const { data: universe } = useSWR<UniverseResponse>('/api/universe', fetcher, {
+    revalidateOnFocus: false,
+  })
+  const [search, setSearch] = useState('')
+
+  // All symbols: indices first, then all sector stocks
+  const INDEX_SYMS = ['NIFTY50', 'BANKNIFTY', 'NIFTYIT', 'FINNIFTY']
+  const allStocks  = universe?.sectors.flatMap(s => s.stocks) ?? []
+
+  const q = search.toLowerCase()
+  const filteredIndices = INDEX_SYMS.filter(s =>
+    !q || s.toLowerCase().includes(q)
+  )
+  const filteredStocks = allStocks.filter(st =>
+    !q || st.symbol.toLowerCase().includes(q) || st.name.toLowerCase().includes(q)
+  )
+
+  const totalCount = INDEX_SYMS.length + allStocks.length
+
   return (
     <div className="w-52 shrink-0 flex flex-col bg-surface border-l border-border overflow-hidden">
       {/* Header */}
-      <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+      <div className="px-3 py-2 border-b border-border flex items-center justify-between shrink-0">
         <span className="text-xs font-semibold tracking-wide">MyStocks</span>
-        <span className="text-[10px] text-dim">∨</span>
+        <span className="text-[10px] text-dim">{totalCount}</span>
+      </div>
+
+      {/* Search */}
+      <div className="px-2 py-1.5 border-b border-border shrink-0">
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search…"
+          className="w-full text-[11px] bg-bg border border-border/50 rounded px-2 py-1 focus:outline-none focus:border-blue placeholder:text-dim"
+        />
       </div>
 
       {/* Column headers */}
-      <div className="grid grid-cols-[1fr_64px_52px] px-3 py-1.5 border-b border-border/50">
+      <div className="grid grid-cols-[1fr_60px_50px] px-3 py-1 border-b border-border/50 shrink-0">
         {['Symbol', 'LTP', 'Chg%'].map(h => (
           <span key={h} className="text-[9px] text-dim uppercase tracking-wide text-right first:text-left">{h}</span>
         ))}
       </div>
 
       {/* Stock rows */}
-      <div className="flex-1 overflow-y-auto">
-        {WATCHLIST_SYMS.map(sym => {
-          const p      = prices[sym]
-          const ltp    = p?.ltp ?? 0
-          const chgPct = p?.change_pct ?? 0
-          const up     = chgPct >= 0
-          const isActive = sym === active
+      <div className="flex-1 overflow-y-auto min-h-0">
 
+        {/* Indices */}
+        {filteredIndices.length > 0 && (
+          <>
+            <div className="px-3 py-1 text-[9px] text-dim uppercase tracking-wider bg-bg/40">Indices</div>
+            {filteredIndices.map(sym => <StockRow key={sym} sym={sym} name={sym} active={active} prices={prices} onSelect={onSelect} />)}
+          </>
+        )}
+
+        {/* Stocks grouped by sector */}
+        {universe?.sectors.map(sec => {
+          const rows = sec.stocks.filter(st =>
+            !q || st.symbol.toLowerCase().includes(q) || st.name.toLowerCase().includes(q)
+          )
+          if (!rows.length) return null
           return (
-            <button
-              key={sym}
-              onClick={() => onSelect(sym)}
-              className={clsx(
-                'w-full grid grid-cols-[1fr_64px_52px] items-center px-3 py-2 border-b border-border/30 last:border-0 transition-colors text-left',
-                isActive ? 'bg-blue/10' : 'hover:bg-white/3',
-              )}
-            >
-              <span className={clsx(
-                'text-xs font-mono font-medium truncate',
-                isActive ? 'text-blue' : 'text-primary',
-              )}>
-                {sym}
-              </span>
-              <span className="text-xs font-mono text-right tabular-nums">
-                {ltp > 0 ? pr(ltp) : '—'}
-              </span>
-              <span className={clsx(
-                'text-xs font-mono text-right tabular-nums',
-                ltp > 0 ? (up ? 'text-green' : 'text-red') : 'text-dim',
-              )}>
-                {ltp > 0 ? `${chgPct >= 0 ? '+' : ''}${chgPct.toFixed(2)}%` : '—'}
-              </span>
-            </button>
+            <div key={sec.sector}>
+              <div className="px-3 py-1 flex items-center gap-1.5 text-[9px] text-dim uppercase tracking-wider bg-bg/40">
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: sec.color }} />
+                {sec.sector}
+              </div>
+              {rows.map(st => (
+                <StockRow key={st.symbol} sym={st.symbol} name={st.name} active={active} prices={prices} onSelect={onSelect} />
+              ))}
+            </div>
           )
         })}
+
+        {filteredIndices.length === 0 && filteredStocks.length === 0 && (
+          <div className="px-3 py-6 text-xs text-dim text-center">No matches</div>
+        )}
       </div>
     </div>
+  )
+}
+
+function StockRow({ sym, name, active, prices, onSelect }: {
+  sym: string; name: string; active: string
+  prices: WatchlistResponse; onSelect: (s: string) => void
+}) {
+  const p      = prices[sym]
+  const ltp    = p?.ltp ?? 0
+  const chgPct = p?.change_pct ?? 0
+  const up     = chgPct >= 0
+  const isActive = sym === active
+
+  return (
+    <button
+      onClick={() => onSelect(sym)}
+      className={clsx(
+        'w-full grid grid-cols-[1fr_60px_50px] items-center px-3 py-1.5 border-b border-border/20 last:border-0 transition-colors text-left',
+        isActive ? 'bg-blue/10' : 'hover:bg-white/3',
+      )}
+    >
+      <div className="min-w-0">
+        <div className={clsx('text-xs font-mono font-medium truncate', isActive ? 'text-blue' : 'text-primary')}>
+          {sym}
+        </div>
+        {name !== sym && (
+          <div className="text-[9px] text-dim truncate">{name}</div>
+        )}
+      </div>
+      <span className="text-[11px] font-mono text-right tabular-nums">
+        {ltp > 0 ? pr(ltp) : '—'}
+      </span>
+      <span className={clsx(
+        'text-[11px] font-mono text-right tabular-nums',
+        ltp > 0 ? (up ? 'text-green' : 'text-red') : 'text-dim',
+      )}>
+        {ltp > 0 ? `${chgPct >= 0 ? '+' : ''}${chgPct.toFixed(2)}%` : '—'}
+      </span>
+    </button>
   )
 }
 
@@ -156,6 +214,9 @@ export default function Chart() {
   const volRef       = useRef<ISeriesApi<'Histogram'> | null>(null)
 
   const livePrices = useLiveWatchlist()
+  const { data: universe } = useSWR<UniverseResponse>('/api/universe', fetcher, {
+    revalidateOnFocus: false,
+  })
 
   // Effective days — cap to API limit
   const effectiveDays = Math.min(rangeDays, MAX_DAYS[interval.value] ?? 365)
@@ -302,13 +363,24 @@ export default function Chart() {
         <div className="h-10 shrink-0 flex items-center gap-0 border-b border-border bg-surface px-0">
 
           {/* Symbol selector */}
-          <div className="flex items-center h-full border-r border-border px-3 gap-2 min-w-[200px]">
+          <div className="flex items-center h-full border-r border-border px-3 gap-2 min-w-[180px]">
             <select
               value={symbol}
               onChange={e => setSymbol(e.target.value)}
-              className="bg-transparent text-sm font-semibold focus:outline-none cursor-pointer"
+              className="bg-transparent text-sm font-semibold focus:outline-none cursor-pointer max-w-[140px]"
             >
-              {WATCHLIST_SYMS.map(s => <option key={s} value={s}>{s}</option>)}
+              <optgroup label="Indices">
+                {['NIFTY50', 'BANKNIFTY', 'NIFTYIT', 'FINNIFTY'].map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </optgroup>
+              {universe?.sectors.map(sec => (
+                <optgroup key={sec.sector} label={sec.sector}>
+                  {sec.stocks.map(st => (
+                    <option key={st.symbol} value={st.symbol}>{st.symbol} — {st.name}</option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
             <span className="text-[10px] text-dim whitespace-nowrap">NSE</span>
           </div>
