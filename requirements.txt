@@ -1,56 +1,51 @@
-# Core
+# ── Core ──────────────────────────────────────────────────────────────────────
 numpy>=1.26
 pandas>=2.1
 pyyaml>=6.0
 aiohttp>=3.9
 
 # ── Upstox (Indian markets — primary) ─────────────────────────────────────────
-upstox-python-sdk>=2.5          # Official Upstox SDK (includes protobuf definitions)
-websockets>=12.0                # Async WebSocket client for Upstox feed
-requests>=2.31                  # Sync HTTP (used in Upstox executor)
-protobuf>=4.24                  # Protobuf decoding for WS feed
+upstox-python-sdk>=2.5          # Official SDK — includes protobuf definitions for WS feed
+websockets>=12.0                # Async WebSocket client for Upstox real-time feed
+requests>=2.31                  # Sync HTTP (token login, NSE scraper)
+protobuf>=4.24                  # Protobuf decoding for WebSocket binary frames
+httpx>=0.25                     # Async HTTP (FastAPI backend, backtest runner)
 
-# ── Exchange connectivity (crypto — secondary) ─────────────────────────────────
+# ── Exchange connectivity (crypto — secondary) ────────────────────────────────
 ccxt>=4.2
 
-# Technical indicators (pure Python fallback used; ta-lib optional)
-# ta-lib  # optional: faster C-based indicators
-
-# Machine Learning
+# ── Machine Learning ──────────────────────────────────────────────────────────
 scikit-learn>=1.4
 xgboost>=2.0
 lightgbm>=4.3
+hmmlearn>=0.3                   # Hidden Markov Model regime detector
 
-# Deep learning (optional — comment out if not needed)
-tensorflow>=2.15
-# torch>=2.2  # alternative to tensorflow
-
-# Reinforcement Learning (optional)
-# stable-baselines3>=2.2
-# gymnasium>=0.29
-
-# Sentiment
-vaderSentiment>=3.3
-
-# Dashboard
-streamlit>=1.31
-plotly>=5.18
+# ── Dashboard (FastAPI + React; Streamlit removed) ────────────────────────────
 fastapi>=0.100
 uvicorn[standard]>=0.24
-httpx>=0.25
 python-multipart>=0.0.9
 
-# Data storage
-pyarrow>=14.0       # parquet support
-fastparquet>=2023.0 # alternative
+# ── Feature engineering ───────────────────────────────────────────────────────
+yfinance>=0.2                   # Cross-asset features (USD/INR, Gold, Crude) fallback
+vaderSentiment>=3.3             # News sentiment scoring
 
-# Alerting
-# python-telegram-bot>=20.0  # optional
+# ── Data storage ──────────────────────────────────────────────────────────────
+pyarrow>=14.0                   # Parquet (NSE/VIX cache, feature cache)
 
-# Utilities
+# ── Utilities ─────────────────────────────────────────────────────────────────
 python-dotenv>=1.0
 structlog>=24.0
 
-# Testing
+# ── Testing ───────────────────────────────────────────────────────────────────
 pytest>=7.4
 pytest-asyncio>=0.23
+
+# ── Optional — uncomment to enable ───────────────────────────────────────────
+# tensorflow>=2.15              # LSTM model (heavy — 400MB+; skip if not using LSTM)
+# torch>=2.2                    # PyTorch alternative to tensorflow
+# stable-baselines3>=2.2        # Reinforcement learning agent
+# gymnasium>=0.29               # RL environment (required by stable-baselines3)
+# ta-lib                        # Faster C-based technical indicators
+# python-telegram-bot>=20.0     # Alternative Telegram client (not needed; we use requests)
+# plotly>=5.18                  # Interactive charts (not used in current FastAPI dashboard)
+# fastparquet>=2023.0           # Alternative parquet backend (pyarrow preferred)

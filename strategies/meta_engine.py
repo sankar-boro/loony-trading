@@ -18,7 +18,12 @@ from strategies.breakout import (
     SupportResistanceBreakoutStrategy, AtrBreakoutStrategy, RangeBreakoutStrategy,
 )
 from strategies.momentum import MacdMomentumStrategy, RsiMomentumStrategy, VolumeMomentumStrategy
-from strategies.microstructure import OrderBookImbalanceStrategy
+from strategies.microstructure import (
+    OrderBookImbalanceStrategy,
+    AnchoredVWAPStrategy,
+    CumulativeDeltaStrategy,
+    VolumeProfileStrategy,
+)
 from strategies.stat_arb import PairTradingStrategy
 from strategies.candlestick import CandlestickPatternStrategy
 from strategies.ml_based import MLClassifierStrategy
@@ -101,6 +106,9 @@ class MetaStrategyEngine:
             RsiMomentumStrategy(cfg),
             VolumeMomentumStrategy(cfg),
             OrderBookImbalanceStrategy(cfg),
+            AnchoredVWAPStrategy(cfg),
+            CumulativeDeltaStrategy(cfg),
+            VolumeProfileStrategy(cfg),
             CandlestickPatternStrategy(cfg),
         ]
 
@@ -132,7 +140,7 @@ class MetaStrategyEngine:
         extra_kwargs: dict | None = None,
     ) -> List[Signal]:
         extra_kwargs = extra_kwargs or {}
-        regime = self.regime_detector.detect(df)
+        regime = self.regime_detector.detect(df, symbol=symbol)
         signals = []
 
         for strategy in self.strategies:

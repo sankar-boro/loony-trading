@@ -127,6 +127,49 @@ def get_status() -> dict:
     }
 
 
+# ── Health ─────────────────────────────────────────────────────────────────────
+
+@app.get("/api/health")
+def get_health() -> dict:
+    """
+    Lightweight health check for load balancers, Docker HEALTHCHECK, and monitoring.
+    Returns HTTP 200 when core components are operational, 503 when degraded.
+    """
+    checks: dict[str, str] = {}
+    healthy = True
+
+    # Token
+    token, age_h = _get_token()
+    if not token:
+        checks["token"] = "missing"
+        healthy = False
+    elif age_h > 23:
+        checks["token"] = f"expired ({age_h:.0f}h)"
+        healthy = False
+    else:
+        checks["token"] = f"ok ({age_h:.1f}h)"
+
+    # Data files
+    checks["equity_data"]   = "ok" if _EQUITY_FILE.exists()  else "missing"
+    checks["positions_data"] = "ok" if _STATE_FILE.exists()  else "missing"
+
+    # Strategy engine (import-only check — fast)
+    try:
+        from strategies.meta_engine import MetaStrategyEngine  # noqa: F401
+        checks["strategy_engine"] = "ok"
+    except Exception as exc:
+        checks["strategy_engine"] = f"error: {str(exc)[:60]}"
+        healthy = False
+
+    # ML model
+    _ens = ROOT / "models" / "ensemble.pkl"
+    checks["ml_model"] = "ok" if _ens.exists() else "not trained"
+
+    from fastapi.responses import JSONResponse
+    payload = {"status": "healthy" if healthy else "degraded", "checks": checks}
+    return JSONResponse(content=payload, status_code=200 if healthy else 503)
+
+
 # ── Positions ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/positions")

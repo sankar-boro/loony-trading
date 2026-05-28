@@ -111,6 +111,9 @@ strategies:
     - vix_strategy          # India VIX spike/divergence — NIFTY/BANKNIFTY only
     - gift_nifty_gap        # Pre-market GIFT Nifty gap — NIFTY/BANKNIFTY only, intraday
     - fii_dii               # Institutional flow bias — NIFTY/BANKNIFTY only
+    - anchored_vwap         # Per-session VWAP bands mean-reversion
+    - cumulative_delta      # Order flow imbalance (buy vs sell pressure)
+    - volume_profile        # POC/VAH/VAL level trades
     # Excluded: ema_crossover (Sharpe -19), multi_tf_trend (needs multi-TF frames),
     #           rsi_mean_reversion (-16), sr_breakout (-8), macd_momentum (-7),
     #           range_breakout (-3), supertrend (0 trades on daily data)
@@ -125,6 +128,9 @@ strategies:
     vix_strategy: 1.1      # macro signal — high quality when VIX regime fires
     gift_nifty_gap: 1.0    # intraday open window only; returns None otherwise
     fii_dii: 0.8           # daily flow bias; supporting signal weight
+    anchored_vwap: 0.9     # intraday VWAP mean-reversion
+    cumulative_delta: 0.8  # order flow; weaker on daily bars than intraday
+    volume_profile: 0.8    # POC/VAH/VAL; effective on liquid NSE stocks
 
 regime_detection:
   adx_trend_threshold: 25
@@ -168,7 +174,35 @@ india_market:
   amo_window_start: "17:00"    # After-market order window
   amo_window_end:   "08:59"
   auto_squareoff_time: "15:15" # MIS auto-squareoff (broker may differ)
-  holidays: []                 # list "YYYY-MM-DD" of NSE trading holidays
+  holidays:                    # NSE trading holidays (market closed these days)
+    # 2025
+    - "2025-01-26"  # Republic Day
+    - "2025-02-26"  # Mahashivratri
+    - "2025-03-14"  # Holi
+    - "2025-03-31"  # Id-Ul-Fitr (Ramzan Id)
+    - "2025-04-10"  # Shri Ram Navami
+    - "2025-04-14"  # Dr. Baba Saheb Ambedkar Jayanti
+    - "2025-04-18"  # Good Friday
+    - "2025-05-01"  # Maharashtra Day
+    - "2025-08-15"  # Independence Day
+    - "2025-08-27"  # Ganesh Chaturthi
+    - "2025-10-02"  # Mahatma Gandhi Jayanti / Dussehra
+    - "2025-10-20"  # Diwali Laxmi Puja (Muhurat trading — short session)
+    - "2025-10-21"  # Diwali Balipratipada
+    - "2025-11-05"  # Prakash Gurpurb Sri Guru Nanak Dev Ji
+    - "2025-12-25"  # Christmas
+    # 2026
+    - "2026-01-26"  # Republic Day
+    - "2026-03-20"  # Holi
+    - "2026-04-02"  # Shri Ram Navami
+    - "2026-04-03"  # Good Friday
+    - "2026-04-14"  # Dr. Baba Saheb Ambedkar Jayanti
+    - "2026-04-22"  # Id-Ul-Fitr
+    - "2026-05-01"  # Maharashtra Day
+    - "2026-08-15"  # Independence Day
+    - "2026-10-02"  # Mahatma Gandhi Jayanti
+    - "2026-11-14"  # Diwali Laxmi Puja
+    - "2026-12-25"  # Christmas
 
 notifications:
   telegram:

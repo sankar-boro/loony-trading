@@ -272,14 +272,14 @@ def main():
 
     syms = [s.strip().upper() for s in args.symbols.split(",") if s.strip()] or DEFAULT_SYMBOLS
 
-    cfg = {
-        "strategies": {"enabled": [], "weights": {}},
-        "risk": {"max_risk_per_trade": 0.01, "trailing_stop_pct": 0.02},
-        "execution": {"commission_intraday": 0.00055, "commission_delivery": 0.0021,
-                      "slippage_pct": 0.0005},
-        "data": {"warmup_bars": 50},
-        "system": {"mode": "backtest"},
-    }
+    try:
+        from config.loader import Settings
+        cfg = Settings().as_dict()
+    except Exception:
+        cfg = {}
+    # tune_weights evaluates every strategy independently; clear enabled filter
+    cfg.setdefault("strategies", {})["enabled"] = []
+    cfg["system"] = {"mode": "backtest"}
 
     # Pre-load OHLCV data
     print(bold(f"\n  Tuning strategy weights — {len(syms)} symbols, {args.days} days"))

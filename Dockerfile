@@ -6,6 +6,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     build-essential \
     curl \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -14,14 +16,21 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source
+# Build React frontend
+COPY dashboard/frontend/package*.json dashboard/frontend/
+RUN cd dashboard/frontend && npm ci --silent
+
+COPY dashboard/frontend/ dashboard/frontend/
+RUN cd dashboard/frontend && npm run build
+
+# Copy the rest of the source
 COPY . .
 
 # Create runtime directories
-RUN mkdir -p logs data/cache models
+RUN mkdir -p logs data/cache data/nse_cache models .pids
 
-# Expose Streamlit dashboard port
-EXPOSE 8501
+# Expose FastAPI backend port
+EXPOSE 8000
 
-# Default: run the trading bot in paper mode
+# Default: paper trading bot
 CMD ["python", "main.py", "--mode", "paper"]

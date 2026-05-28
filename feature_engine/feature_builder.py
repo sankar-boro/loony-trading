@@ -96,6 +96,32 @@ class FeatureBuilder:
         df["gap"] = (df["open"] - c.shift(1)) / c.shift(1)
         return df
 
+    def advanced_build(
+        self,
+        df: pd.DataFrame,
+        symbol: str = "",
+        option_chain: pd.DataFrame | None = None,
+        include_cross_asset: bool = True,
+    ) -> pd.DataFrame:
+        """
+        Build full feature matrix including India VIX, FII/DII flow, cross-asset
+        macro (USD/INR, Gold, Crude) and optional F&O OI features.
+
+        Falls back to standard build() if advanced data sources are unavailable.
+        Use this for ML training; use build() for backtesting/paper trading where
+        latency and reliability matter more than feature richness.
+        """
+        try:
+            from feature_engine.advanced_features import AdvancedFeatureBuilder
+            return AdvancedFeatureBuilder().build(
+                df, symbol,
+                option_chain=option_chain,
+                include_cross_asset=include_cross_asset,
+            )
+        except Exception as exc:
+            logger.warning("advanced_build fell back to standard build: %s", exc)
+            return self.build(df)
+
     def build_multitimeframe(self, frames: dict[str, pd.DataFrame],
                               primary_tf: str = "1h") -> pd.DataFrame:
         """Merge features from multiple timeframes into the primary frame."""

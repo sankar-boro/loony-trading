@@ -172,23 +172,20 @@ def _fetch_ohlcv(token: str, instrument_key: str, interval: str,
 # ── Engine bootstrap ──────────────────────────────────────────────────────────
 
 def _make_cfg(strategies: list[str], capital: float) -> dict:
-    return {
-        "strategies": {
-            "enabled": strategies,  # [] = all enabled
-            "weights": {},
-        },
-        "risk": {
-            "max_risk_per_trade": 0.01,
-            "trailing_stop_pct": 0.02,
-            "max_concurrent_trades": 10,
-        },
-        "execution": {
-            "commission": 0.001,
-            "slippage_pct": 0.001,
-        },
-        "data": {"warmup_bars": 50},
-        "system": {"mode": "paper"},
-    }
+    try:
+        from config.loader import Settings
+        cfg = Settings().as_dict()
+    except Exception:
+        cfg = {}
+    # Override fields relevant to backtesting
+    if strategies:
+        cfg.setdefault("strategies", {})["enabled"] = strategies
+    cfg["system"] = {"mode": "backtest"}
+    cfg.setdefault("risk", {}).update({
+        "max_risk_per_trade": cfg.get("risk", {}).get("max_risk_per_trade", 0.01),
+        "trailing_stop_pct":  cfg.get("risk", {}).get("trailing_stop_pct", 0.02),
+    })
+    return cfg
 
 
 # ── ASCII equity curve ────────────────────────────────────────────────────────

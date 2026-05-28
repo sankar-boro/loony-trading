@@ -820,16 +820,17 @@ def main():
     try:
         from strategies.meta_engine import MetaStrategyEngine
         from feature_engine.feature_builder import FeatureBuilder
-        _cfg = {
-            "strategies": {"enabled": [], "weights": {}},
-            "risk": {"max_risk_per_trade": args.risk_per_trade, "trailing_stop_pct": 0.02},
-            "execution": {"commission": 0.001, "slippage_pct": 0.001},
-            "data": {"warmup_bars": 50},
-            "system": {"mode": "paper"},
-        }
+        from config.loader import Settings
+        _cfg = Settings().as_dict()
+        # Override risk fields with CLI args so --risk-per-trade is respected
+        _cfg.setdefault("risk", {})
+        _cfg["risk"]["max_risk_per_trade"] = args.risk_per_trade
+        _cfg["system"] = {"mode": "paper"}
         engine = MetaStrategyEngine(_cfg)
         fb = FeatureBuilder()
-        print(f"\r{DIM}Strategy engine ready — {len(engine.strategies)} strategies{E}   ")
+        enabled = _cfg.get("strategies", {}).get("enabled", [])
+        print(f"\r{DIM}Strategy engine ready — {len(engine.strategies)} strategies "
+              f"({len(enabled)} enabled){E}   ")
     except Exception as e:
         print(f"\n{Y}Strategy engine load failed: {e}{E}")
         print(f"  {dim('Signals will not be generated. Only price tracking will run.')}")

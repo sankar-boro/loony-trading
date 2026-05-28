@@ -229,20 +229,14 @@ def _fetch_ltp(token: str, instrument_keys: list[str]) -> dict[str, float]:
 
 # ── Strategy engine bootstrap ─────────────────────────────────────────────────
 
-_MIN_CFG: dict = {
-    "strategies": {"enabled": [], "weights": {}},
-    "risk": {"max_risk_per_trade": 0.01, "trailing_stop_pct": 0.02},
-    "execution": {"commission": 0.001, "slippage_pct": 0.001},
-    "data": {"warmup_bars": 50},
-    "system": {"mode": "paper"},
-}
-
-
 def _load_engine():
-    """Load MetaStrategyEngine, returning (engine, error_str)."""
+    """Load MetaStrategyEngine from settings.yaml, returning (engine, error_str)."""
     try:
         from strategies.meta_engine import MetaStrategyEngine
-        engine = MetaStrategyEngine(_MIN_CFG)
+        from config.loader import Settings
+        cfg = Settings().as_dict()
+        cfg["system"] = {"mode": "paper"}
+        engine = MetaStrategyEngine(cfg)
         return engine, None
     except Exception as e:
         return None, str(e)

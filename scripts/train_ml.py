@@ -154,7 +154,7 @@ def main():
     feature_cols: list[str] = []
     exclude = {"open", "high", "low", "close", "volume"}
 
-    print(f"  {dim('Fetching and building features...')}")
+    print(f"  {dim('Fetching and building features (including advanced: VIX, FII/DII, cross-asset)...')}")
     for sym in syms:
         ikey = INSTRUMENTS.get(sym)
         if not ikey:
@@ -165,10 +165,14 @@ def main():
             print(f"  {yellow(f'{sym}: no data')}")
             continue
         try:
-            df = fb.build(df_raw)
+            df = fb.advanced_build(df_raw, symbol=sym, include_cross_asset=True)
         except Exception as exc:
-            print(f"  {yellow(f'{sym}: feature build failed — {exc}')}")
-            continue
+            print(f"  {yellow(f'{sym}: advanced build failed ({exc}), falling back')}")
+            try:
+                df = fb.build(df_raw)
+            except Exception as exc2:
+                print(f"  {yellow(f'{sym}: feature build failed — {exc2}')}")
+                continue
         if len(df) < 100:
             print(f"  {yellow(f'{sym}: only {len(df)} bars after feature build — skipped')}")
             continue

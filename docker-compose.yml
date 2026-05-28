@@ -1,42 +1,80 @@
 version: "3.9"
 
+# ── Loony Trading — Docker Compose ────────────────────────────────────────────
+# Quick start:
+#   cp .env.example .env          # fill in your keys
+#   docker compose up -d          # start everything
+#   docker compose logs -f        # tail logs
+#
+# Services:
+#   dashboard  — FastAPI backend + React SPA on :8000
+#   bot        — paper/live trading bot (shares data volume with dashboard)
+# ─────────────────────────────────────────────────────────────────────────────
+
 services:
-  trading-bot:
+
+  # ── FastAPI Dashboard + React SPA ─────────────────────────────────────────
+  dashboard:
     build: .
-    container_name: loony-trading-bot
+    container_name: loony-dashboard
     restart: unless-stopped
+    command: >
+      uvicorn dashboard.backend.main:app
+        --host 0.0.0.0
+        --port 8000
+        --workers 2
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
     environment:
-      - BINANCE_API_KEY=${BINANCE_API_KEY}
-      - BINANCE_API_SECRET=${BINANCE_API_SECRET}
-      - ALPACA_API_KEY=${ALPACA_API_KEY}
-      - ALPACA_API_SECRET=${ALPACA_API_SECRET}
-      - ALPACA_BASE_URL=${ALPACA_BASE_URL:-https://paper-api.alpaca.markets}
+      # Upstox (Indian markets — primary)
+      - UPSTOX_API_KEY=${UPSTOX_API_KEY}
+      - UPSTOX_API_SECRET=${UPSTOX_API_SECRET}
+      - UPSTOX_REDIRECT_URI=${UPSTOX_REDIRECT_URI:-http://localhost:8888/callback}
+      - UPSTOX_ACCESS_TOKEN=${UPSTOX_ACCESS_TOKEN}
+      # Telegram notifications
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
-      - NEWS_API_KEY=${NEWS_API_KEY}
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
       - ./models:/app/models
       - ./config:/app/config
     healthcheck:
-      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 15s
 
-  dashboard:
+  # ── Trading Bot ────────────────────────────────────────────────────────────
+  bot:
     build: .
-    container_name: loony-dashboard
+    container_name: loony-bot
     restart: unless-stopped
-    command: streamlit run dashboard/app.py --server.address 0.0.0.0 --server.port 8501
-    ports:
-      - "8501:8501"
+    command: python scripts/paper_trade.py
+    env_file:
+      - .env
     environment:
-      - BINANCE_API_KEY=${BINANCE_API_KEY}
-      - BINANCE_API_SECRET=${BINANCE_API_SECRET}
+      - UPSTOX_API_KEY=${UPSTOX_API_KEY}
+      - UPSTOX_API_SECRET=${UPSTOX_API_SECRET}
+      - UPSTOX_REDIRECT_URI=${UPSTOX_REDIRECT_URI:-http://localhost:8888/callback}
+      - UPSTOX_ACCESS_TOKEN=${UPSTOX_ACCESS_TOKEN}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - NEWS_API_KEY=${NEWS_API_KEY:-}
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
+      - ./models:/app/models
+      - ./config:/app/config
     depends_on:
-      - trading-bot
+      - dashboard
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import json,time,sys; s=json.load(open('data/live_positions.json')); sys.exit(0 if time.time()-s.get('saved_at',0)<300 else 1)"]
+      interval: 60s
+      timeout: 5s
+      retries: 2
+      start_period: 60s

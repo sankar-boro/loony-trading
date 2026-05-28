@@ -82,8 +82,8 @@ _help() {
 }
 
 _require_token() {
-  if ! "$PYTHON" scripts/check_token.py --quiet 2>/dev/null; then
-    echo -e "${Y}⚠  Token check failed — trying to continue anyway.${E}"
+  if ! "$PYTHON" scripts/check_token.py 2>/dev/null | grep -q "valid\|ok\|OK"; then
+    echo -e "${Y}⚠  Token may be expired — trying to continue anyway.${E}"
   fi
 }
 
