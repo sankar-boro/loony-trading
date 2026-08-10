@@ -7,11 +7,45 @@ version: "3.9"
 #   docker compose logs -f        # tail logs
 #
 # Services:
+#   db         — Postgres (MarketPulse AI persistence layer, Phase 0+)
+#   redis      — cache/pubsub, provisioned now, wired up in Phase 11
 #   dashboard  — FastAPI backend + React SPA on :8000
 #   bot        — paper/live trading bot (shares data volume with dashboard)
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
+
+  # ── Postgres ───────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: loony-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-loony}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-loony}
+      - POSTGRES_DB=${POSTGRES_DB:-loony_trading}
+    ports:
+      - "5432:5432"
+    volumes:
+      - loony-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-loony}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: loony-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # ── FastAPI Dashboard + React SPA ─────────────────────────────────────────
   dashboard:
@@ -36,11 +70,21 @@ services:
       # Telegram notifications
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      # Persistence + AI (Phase 0)
+      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-loony}:${POSTGRES_PASSWORD:-loony}@db:5432/${POSTGRES_DB:-loony_trading}
+      - REDIS_URL=redis://redis:6379/0
+      - LLM_PROVIDER=${LLM_PROVIDER:-demo}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
       - ./models:/app/models
       - ./config:/app/config
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s
@@ -64,6 +108,10 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
       - NEWS_API_KEY=${NEWS_API_KEY:-}
+      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-loony}:${POSTGRES_PASSWORD:-loony}@db:5432/${POSTGRES_DB:-loony_trading}
+      - REDIS_URL=redis://redis:6379/0
+      - LLM_PROVIDER=${LLM_PROVIDER:-demo}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
@@ -78,3 +126,6 @@ services:
       timeout: 5s
       retries: 2
       start_period: 60s
+
+volumes:
+  loony-pgdata:
