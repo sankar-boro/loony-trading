@@ -112,16 +112,19 @@ Starts placing real orders. Make sure you've tested in paper mode first.
 ## 6. Launch the Dashboard
 
 ```bash
-streamlit run dashboard/app.py
+bash dashboard/start.sh
 ```
 
-Open http://localhost:8501 in your browser.
+Open http://localhost:5173 in your browser (FastAPI backend runs on :8000).
 
-Tabs:
-- **Live** — real-time prices, open positions, latest signals
-- **Signals** — signal table with strategy attribution
-- **Portfolio** — equity curve, drawdown chart
+Pages:
+- **Dashboard** — real-time prices, open positions, latest signals
+- **Chart** — TradingView-style candlestick chart per symbol
+- **Positions** — open positions
+- **Trades** — trade log
+- **Strategies** — signal table with strategy attribution
 - **Backtest** — historical performance metrics
+- **Daily PnL** — equity curve, drawdown chart
 
 ---
 
@@ -189,7 +192,7 @@ docker compose logs -f # watch logs
 [ ] .env configured with API keys         — credentials set
 [ ] python main.py --mode auth            — Upstox OAuth completed
 [ ] python main.py --mode paper           — paper trading running
-[ ] streamlit run dashboard/app.py        — dashboard open
+[ ] bash dashboard/start.sh               — dashboard open
 [ ] pytest tests/ -v                      — all 342 tests pass
 [ ] tail -f logs/trading.log              — watching live logs
 ```

@@ -212,6 +212,8 @@ def apply_adjustments(df: pd.DataFrame, symbol: str,
 
     for event in reversed(sym_actions):   # apply most recent first
         ex_date = pd.Timestamp(event["ex_date"])
+        if df.index.tz is not None and ex_date.tzinfo is None:
+            ex_date = ex_date.tz_localize(df.index.tz)
         factor  = float(event["factor"])
         mask    = df.index < ex_date
         if not mask.any():

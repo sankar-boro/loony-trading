@@ -498,18 +498,22 @@ Setup:
 
 ## Dashboard
 
-Streamlit app at `localhost:8501`:
+FastAPI + React app at `localhost:5173` (API on `localhost:8000`):
 
 ```bash
-streamlit run dashboard/app.py
+bash dashboard/start.sh          # dev mode
+bash dashboard/start.sh --prod   # production build
 ```
 
-| Tab | Content |
+| Page | Content |
 |---|---|
-| Live | Real-time candlestick chart, current positions, latest signals |
-| Signals | Table of all strategy signals with strength scores |
-| Portfolio | Equity curve, drawdown chart, strategy attribution |
-| Backtest | Performance metrics, trade log, Monte Carlo results |
+| Dashboard | Real-time prices, current positions, latest signals |
+| Chart | TradingView-style candlestick chart per symbol |
+| Positions | Open positions |
+| Trades | Trade log |
+| Strategies | Table of all strategy signals with strength scores |
+| Backtest | Performance metrics, Monte Carlo results |
+| Daily PnL | Equity curve, drawdown chart |
 
 ---
 

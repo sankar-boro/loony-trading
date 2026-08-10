@@ -16,3 +16,4 @@ models/
 data/
 node_modules/
 .pids/
+*.log
