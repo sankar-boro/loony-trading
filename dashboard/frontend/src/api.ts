@@ -2,7 +2,7 @@ import type {
   StatusResponse, PositionsResponse, EquityPoint,
   TradesResponse, DailyResponse, ChartResponse,
   ConfigResponse, BacktestRequest, BacktestJobResponse,
-  UniverseResponse,
+  UniverseResponse, NewsItem,
 } from './types'
 
 const BASE = '/api'
@@ -40,6 +40,16 @@ export const api = {
   pollBacktest: (jobId: string): Promise<BacktestJobResponse> =>
     get(`/backtest/${jobId}`),
   universe: (): Promise<UniverseResponse> => get('/universe'),
+  news: (params: { eventType?: string; symbol?: string } = {}): Promise<NewsItem[]> => {
+    const q = new URLSearchParams()
+    if (params.eventType) q.set('event_type', params.eventType)
+    if (params.symbol) q.set('symbol', params.symbol)
+    const qs = q.toString()
+    return get(`/news${qs ? `?${qs}` : ''}`)
+  },
+  newsEventTypes: (): Promise<string[]> => get('/news/event-types'),
+  ingestNews: (): Promise<{ fetched: number; ingested: number; skipped_duplicate: number; events_created: number }> =>
+    post('/news/ingest', {}),
 }
 
 // SWR fetcher

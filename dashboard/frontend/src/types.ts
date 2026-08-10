@@ -207,3 +207,17 @@ export interface UniverseResponse {
   total_stocks: number
   watchlist: string[]
 }
+
+export interface NewsItem {
+  id: number
+  headline: string
+  source: string
+  url: string
+  published_at: string
+  event_type: string
+  sentiment_score: number
+  impact_score: number
+  confidence: number
+  summary: string
+  affected_stocks: string[]
+}
