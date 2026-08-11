@@ -19,13 +19,17 @@ def get_status() -> dict:
             pass
     open_ = is_market_open()
     nxt   = next_market_open()
+    token_valid = bool(token) and age_h < 23
     return {
         "bot_running":      bot_running,
         "market_open":      open_,
         "mins_to_close":    minutes_to_close() if open_ else 0,
         "next_market_open": nxt.strftime("%a %d %b • %H:%M IST"),
-        "token_valid":      bool(token) and age_h < 23,
+        "token_valid":      token_valid,
         "token_age_h":      round(age_h, 1),
+        # spec §41: no paid API key configured — prices/signals are
+        # synthetic (data_engine/demo_ohlcv.py), never real market data.
+        "demo_mode":        not token_valid,
     }
 
 @router.get("/health")

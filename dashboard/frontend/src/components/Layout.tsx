@@ -35,6 +35,7 @@ export default function Layout() {
   const marketOpen  = status?.market_open ?? false
   const botRunning  = status?.bot_running ?? false
   const tokenOk     = status?.token_valid ?? false
+  const demoMode    = status?.demo_mode ?? false
 
   return (
     <div className="flex h-screen bg-bg text-primary overflow-hidden select-none">
@@ -114,8 +115,19 @@ export default function Layout() {
       </aside>
 
       {/* ── Main content ─────────────────────────────────────────────────── */}
-      <main className="flex-1 min-w-0 h-full overflow-y-auto bg-bg">
-        <Outlet />
+      <main className="flex-1 min-w-0 h-full flex flex-col overflow-hidden bg-bg">
+        {demoMode && (
+          <div className="shrink-0 bg-amber/15 border-b border-amber/30 px-4 py-1.5 flex items-center gap-2">
+            <span className="text-amber text-xs">⚠</span>
+            <span className="text-[11px] text-amber font-medium tracking-wide">DEMO DATA</span>
+            <span className="text-[11px] text-dim">
+              No live Upstox connection — prices, signals, and history shown are synthetic, not real market data.
+            </span>
+          </div>
+        )}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <Outlet />
+        </div>
       </main>
     </div>
   )

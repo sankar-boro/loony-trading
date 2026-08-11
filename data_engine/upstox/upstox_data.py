@@ -143,6 +143,19 @@ class UpstoxDataEngine:
                 self._candle_cache.setdefault(symbol, {})[timeframe] = df
                 return df
 
+        # Demo mode (spec §41): no Upstox token configured — the app must
+        # still run end to end, so generate clearly-synthetic OHLCV instead
+        # of hitting the live endpoint. Bar granularity is always daily
+        # here even for intraday timeframes; callers only rely on the
+        # column shape, not true intraday resolution, in demo mode.
+        if not self.auth.access_token:
+            from data_engine.demo_ohlcv import generate_demo_ohlcv
+            df = generate_demo_ohlcv(symbol, days=lookback_days)
+            df.to_parquet(cache_file)
+            self._candle_cache.setdefault(symbol, {})[timeframe] = df
+            logger.warning(f"DEMO DATA: no Upstox token — generated {len(df)} synthetic bars for {symbol}/{timeframe}")
+            return df
+
         # Fetch in chunks if needed (Upstox has per-request date range limits)
         end_dt = now_utc()
         start_dt = end_dt - timedelta(days=lookback_days)

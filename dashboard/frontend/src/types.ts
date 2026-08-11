@@ -5,6 +5,7 @@ export interface StatusResponse {
   next_market_open: string
   token_valid: boolean
   token_age_h: number
+  demo_mode: boolean
 }
 
 export interface Position {
