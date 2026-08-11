@@ -29,12 +29,9 @@ from utils.logger import get_logger
 logger = get_logger("run_signal_engine")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--limit", type=int, default=None, help="cap symbols scanned")
-    parser.add_argument("--lookback-days", type=int, default=200)
-    args = parser.parse_args()
-
+def run_signal_engine(limit: int | None = None, lookback_days: int = 200) -> dict:
+    """Score the universe and persist Signal rows. Returns a summary dict —
+    the scheduler (Phase 11) and the CLI entry point below both call this."""
     cfg = Settings().as_dict()
 
     up_cfg = cfg.get("exchanges", {}).get("upstox", {})
@@ -51,8 +48,8 @@ def main() -> None:
     engine = CompositeSignalEngine(cfg)
 
     symbols = list(STOCK_UNIVERSE.keys())
-    if args.limit:
-        symbols = symbols[:args.limit]
+    if limit:
+        symbols = symbols[:limit]
 
     counts = {d: 0 for d in SignalDirection}
     fetched = failed = 0
@@ -60,7 +57,7 @@ def main() -> None:
     with session_scope() as db:
         for symbol in symbols:
             try:
-                df = data_engine.fetch_ohlcv(symbol, "1d", lookback_days=args.lookback_days)
+                df = data_engine.fetch_ohlcv(symbol, "1d", lookback_days=lookback_days)
             except Exception as e:
                 logger.warning(f"{symbol}: fetch failed — {e}")
                 failed += 1
@@ -86,10 +83,23 @@ def main() -> None:
                 logger.warning(f"{symbol}: scoring failed — {e}")
                 failed += 1
 
+    summary = {
+        "universe": len(symbols), "scored": fetched, "skipped": failed,
+        "directions": {d.value: n for d, n in counts.items()},
+    }
     logger.info(
         f"Universe: {len(symbols)} symbols, {fetched} scored, {failed} skipped (no data/error). "
         f"Directions: {', '.join(f'{d.value}={n}' for d, n in counts.items())}"
     )
+    return summary
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--limit", type=int, default=None, help="cap symbols scanned")
+    parser.add_argument("--lookback-days", type=int, default=200)
+    args = parser.parse_args()
+    run_signal_engine(limit=args.limit, lookback_days=args.lookback_days)
 
 
 if __name__ == "__main__":

@@ -183,6 +183,22 @@ portfolio:
   rebalance_interval_hours: 24
   correlation_limit: 0.7
 
+# ── Scheduler (spec §55) ─────────────────────────────────────────────────────
+# Opt-in: disabled by default so importing the dashboard app never silently
+# starts hitting live APIs (tests, one-off local runs, etc.). Intervals are
+# conservative relative to the spec's "every minute" guidance — a full-
+# universe signal scan against a rate-limited broker API every 60s isn't
+# realistic for every provider; tune per your API tier.
+scheduler:
+  enabled: false
+  news_interval_seconds: 60            # spec: every 15-60s
+  signal_interval_seconds: 300         # spec: every minute (loosened — see above)
+  alert_interval_seconds: 300          # runs right after signal scoring
+  market_hours_only: true              # news still runs after hours; signals/alerts don't
+  historical_backfill_hour: 18         # IST, after market close + buffer
+  historical_backfill_minute: 0
+  historical_backfill_min_age_days: 7  # matches backfill_historical_events.py default
+
 # ── India Market Calendar ────────────────────────────────────────────────────
 india_market:
   open_time: "09:15"           # IST

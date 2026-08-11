@@ -24,6 +24,7 @@ hmmlearn>=0.3                   # Hidden Markov Model regime detector
 fastapi>=0.100
 uvicorn[standard]>=0.24
 python-multipart>=0.0.9
+apscheduler>=3.11               # background job scheduler (MarketPulse AI Phase 11)
 
 # ── Persistence (MarketPulse AI Phase 0) ──────────────────────────────────────
 sqlalchemy>=2.0

@@ -19,6 +19,7 @@ from .copilot import router as copilot_router
 from .watchlists import router as watchlists_router
 from .alerts import router as alerts_router
 from .portfolio_risk import router as portfolio_risk_router
+from .scheduler import router as scheduler_router
 
 __all__ = [
     "status_router", "positions_router", "equity_router", "trades_router",
@@ -26,5 +27,5 @@ __all__ = [
     "universe_router", "signals_router", "telegram_router", "chart_router",
     "ltp_router", "stream_router", "backtest_router", "news_router",
     "composite_signals_router", "copilot_router", "watchlists_router",
-    "alerts_router", "portfolio_risk_router"
+    "alerts_router", "portfolio_risk_router", "scheduler_router"
 ]

@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -10,10 +11,20 @@ from .routers import (
     universe_router, signals_router, telegram_router, chart_router,
     ltp_router, stream_router, backtest_router, news_router,
     composite_signals_router, copilot_router, watchlists_router, alerts_router,
-    portfolio_risk_router,
+    portfolio_risk_router, scheduler_router,
 )
 
-app = FastAPI(title="Loony Trading API", docs_url="/api/docs")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from config.loader import Settings
+    from scheduler import start_scheduler, stop_scheduler
+    start_scheduler(Settings().as_dict())
+    yield
+    stop_scheduler()
+
+
+app = FastAPI(title="Loony Trading API", docs_url="/api/docs", lifespan=lifespan)
 
 # CORS
 app.add_middleware(
@@ -48,6 +59,7 @@ app.include_router(copilot_router, prefix="/api", tags=["copilot"])
 app.include_router(watchlists_router, prefix="/api", tags=["watchlists"])
 app.include_router(alerts_router, prefix="/api", tags=["alerts"])
 app.include_router(portfolio_risk_router, prefix="/api", tags=["portfolio"])
+app.include_router(scheduler_router, prefix="/api", tags=["scheduler"])
 
 # Static files for React (production)
 if _DIST_DIR.exists():

@@ -145,21 +145,13 @@ def seed_demo_historical_events(db, event_type: str, count: int, symbol: str = "
     return created
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--min-age-days", type=int, default=7)
-    parser.add_argument("--seed-demo", type=str, default=None, help="event_type to seed demo data for")
-    parser.add_argument("--seed-count", type=int, default=40)
-    parser.add_argument("--seed-symbol", type=str, default="RELIANCE")
-    args = parser.parse_args()
-
+def run_organic_backfill(min_age_days: int = 7) -> int:
+    """Backfill real HistoricalEvent rows from matured StockEvents. Returns
+    the number created — the scheduler (Phase 11) and the CLI entry point
+    below both call this."""
     cfg = Settings().as_dict()
 
     with session_scope() as db:
-        if args.seed_demo:
-            seed_demo_historical_events(db, args.seed_demo, args.seed_count, args.seed_symbol)
-            return
-
         up_cfg = cfg.get("exchanges", {}).get("upstox", {})
         auth = UpstoxAuth(
             api_key=up_cfg.get("api_key", ""), api_secret=up_cfg.get("api_secret", ""),
@@ -170,7 +162,24 @@ def main() -> None:
         registry.load()
         data_engine = UpstoxDataEngine(auth, registry)
 
-        backfill_from_matured_stock_events(db, data_engine, cfg, args.min_age_days)
+        return backfill_from_matured_stock_events(db, data_engine, cfg, min_age_days)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--min-age-days", type=int, default=7)
+    parser.add_argument("--seed-demo", type=str, default=None, help="event_type to seed demo data for")
+    parser.add_argument("--seed-count", type=int, default=40)
+    parser.add_argument("--seed-symbol", type=str, default="RELIANCE")
+    args = parser.parse_args()
+
+    if args.seed_demo:
+        cfg = Settings().as_dict()
+        with session_scope() as db:
+            seed_demo_historical_events(db, args.seed_demo, args.seed_count, args.seed_symbol)
+        return
+
+    run_organic_backfill(args.min_age_days)
 
 
 if __name__ == "__main__":
