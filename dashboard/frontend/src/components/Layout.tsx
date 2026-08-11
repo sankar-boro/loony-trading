@@ -15,6 +15,8 @@ const NAV = [
   { to: '/news',       label: 'News',       icon: '⚡' },
   { to: '/signals',    label: 'Signals',    icon: '◈' },
   { to: '/copilot',    label: 'Copilot',    icon: '✦' },
+  { to: '/watchlists', label: 'Watchlists', icon: '◎' },
+  { to: '/alerts',     label: 'Alerts',     icon: '🔔' },
 ]
 
 function Dot({ on, pulse }: { on: boolean; pulse?: boolean }) {

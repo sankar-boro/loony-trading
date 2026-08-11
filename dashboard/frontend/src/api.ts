@@ -3,6 +3,7 @@ import type {
   TradesResponse, DailyResponse, ChartResponse,
   ConfigResponse, BacktestRequest, BacktestJobResponse,
   UniverseResponse, NewsItem, CompositeSignal, WhyResponse, CopilotResponse,
+  WatchlistDTO, AlertDTO, AlertTriggerDTO,
 } from './types'
 
 const BASE = '/api'
@@ -19,6 +20,18 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+  return res.json()
+}
+
+async function del<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+  return res.json()
+}
+
+async function patch<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { method: 'PATCH' })
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
   return res.json()
 }
@@ -58,6 +71,22 @@ export const api = {
     get(`/stocks/${symbol}/why`),
   copilotQuery: (question: string): Promise<CopilotResponse> =>
     post('/copilot/query', { question }),
+  listWatchlists: (): Promise<WatchlistDTO[]> => get('/watchlists'),
+  createWatchlist: (name: string): Promise<WatchlistDTO> => post('/watchlists', { name }),
+  deleteWatchlist: (id: number): Promise<{ deleted: number }> => del(`/watchlists/${id}`),
+  addWatchlistItem: (id: number, symbol: string): Promise<WatchlistDTO> =>
+    post(`/watchlists/${id}/items`, { symbol }),
+  removeWatchlistItem: (id: number, symbol: string): Promise<WatchlistDTO> =>
+    del(`/watchlists/${id}/items/${symbol}`),
+  listAlerts: (): Promise<AlertDTO[]> => get('/alerts'),
+  createAlert: (name: string, condition: Record<string, number>, symbol?: string): Promise<AlertDTO> =>
+    post('/alerts', { name, condition, symbol: symbol || null }),
+  toggleAlert: (id: number, isActive: boolean): Promise<AlertDTO> =>
+    patch(`/alerts/${id}?is_active=${isActive}`),
+  deleteAlert: (id: number): Promise<{ deleted: number }> => del(`/alerts/${id}`),
+  alertTriggers: (id: number): Promise<AlertTriggerDTO[]> => get(`/alerts/${id}/triggers`),
+  evaluateAlerts: (): Promise<{ alerts_checked: number; triggers: unknown[] }> =>
+    post('/alerts/evaluate', {}),
 }
 
 // SWR fetcher

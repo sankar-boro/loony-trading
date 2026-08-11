@@ -10,6 +10,8 @@ import DailyPnL   from './pages/DailyPnL'
 import News       from './pages/News'
 import Signals    from './pages/Signals'
 import Copilot    from './pages/Copilot'
+import Watchlists from './pages/Watchlists'
+import Alerts     from './pages/Alerts'
 
 export default function App() {
   return (
@@ -26,6 +28,8 @@ export default function App() {
           <Route path="news"         element={<News />} />
           <Route path="signals"      element={<Signals />} />
           <Route path="copilot"      element={<Copilot />} />
+          <Route path="watchlists"   element={<Watchlists />} />
+          <Route path="alerts"       element={<Alerts />} />
         </Route>
       </Routes>
     </BrowserRouter>

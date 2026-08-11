@@ -275,6 +275,31 @@ export interface CopilotResponse {
   insufficient_evidence: boolean
 }
 
+export interface WatchlistDTO {
+  id: number
+  name: string
+  created_at: string
+  symbols: string[]
+}
+
+export interface AlertDTO {
+  id: number
+  name: string
+  symbol: string | null
+  condition: Record<string, number>
+  is_active: boolean
+  triggered_at: string | null
+  created_at: string
+}
+
+export interface AlertTriggerDTO {
+  id: number
+  symbol: string
+  signal_id: number | null
+  matched_values: Record<string, number>
+  created_at: string
+}
+
 export interface NewsItem {
   id: number
   headline: string

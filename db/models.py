@@ -237,3 +237,21 @@ class Alert(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     stock: Mapped["Stock | None"] = relationship()
+
+
+class AlertTrigger(Base):
+    """One row per (alert, stock, evaluation cycle) match — a bare
+    `triggered_at` timestamp on Alert can't say *which* stock matched or
+    with what values, which is what "shows up in-app" actually needs."""
+    __tablename__ = "alert_triggers"
+    __table_args__ = (Index("ix_alerttrigger_alert_created", "alert_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    alert_id: Mapped[int] = mapped_column(ForeignKey("alerts.id"), nullable=False)
+    stock_id: Mapped[int] = mapped_column(ForeignKey("stocks.id"), nullable=False)
+    signal_id: Mapped[int | None] = mapped_column(ForeignKey("signals.id"), nullable=True)
+    matched_values: Mapped[dict] = mapped_column(JSON)  # snapshot of the fields the condition checked
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    alert: Mapped["Alert"] = relationship()
+    stock: Mapped["Stock"] = relationship()
