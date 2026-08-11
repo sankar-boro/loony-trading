@@ -140,25 +140,75 @@ export interface BacktestRequest {
   strategy: string
   days: number
   capital: number
+  benchmark?: boolean
+  walk_forward?: boolean
+  walk_forward_splits?: number
+  monte_carlo?: boolean
+}
+
+export interface BacktestBenchmark {
+  bench_return_pct: number
+  strat_return_pct: number
+  alpha_pct: number
+  beta: number
+  info_ratio: number
+}
+
+export interface BacktestMonteCarlo {
+  sharpe_mean: number
+  sharpe_p5: number
+  sharpe_p95: number
+  max_dd_mean: number
+  max_dd_p95: number
+  return_mean_pct: number
+  p_value_sharpe: number
+  error?: string
 }
 
 export interface BacktestResult {
   symbol: string
-  strategy: string
   n_trades: number
   win_rate: number
   total_return_pct: number
+  cagr_pct: number
   sharpe: number
+  sortino: number
   max_drawdown_pct: number
   profit_factor: number
+  avg_win: number
+  avg_loss: number
+  expectancy: number
+  median_trade_return_pct: number
+  avg_holding_bars: number
   equity_curve: number[]
   trades_pnl: number[]
+  benchmark?: BacktestBenchmark
+  monte_carlo?: BacktestMonteCarlo
+}
+
+export interface BacktestWalkForwardSplit extends BacktestResult {
+  split_index: number
+}
+
+export interface BacktestWalkForwardResult {
+  symbol: string
+  strategy: string | string[]
+  walk_forward: true
+  splits: BacktestWalkForwardSplit[]
+  final_split: BacktestResult
+  monte_carlo?: BacktestMonteCarlo
+}
+
+export interface BacktestJobResult {
+  symbols: string[]
+  results: (BacktestResult | BacktestWalkForwardResult)[]
+  errors?: { symbol: string; error: string }[]
 }
 
 export interface BacktestJobResponse {
   job_id: string
   status: 'pending' | 'running' | 'done' | 'error'
-  result?: BacktestResult
+  result?: BacktestJobResult
   error?: string
 }
 

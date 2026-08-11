@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api'
-import type { BacktestResult, ConfigResponse, UniverseResponse } from '../types'
+import type {
+  BacktestResult, BacktestWalkForwardResult, ConfigResponse, UniverseResponse,
+} from '../types'
 import useSWR from 'swr'
 import { fetcher } from '../api'
 import {
@@ -47,9 +49,13 @@ export default function Backtest() {
   const [strategy, setStrategy] = useState('')
   const [period,   setPeriod]   = useState(PERIODS[1])
   const [capital,  setCapital]  = useState(500_000)
+  const [benchmark, setBenchmark]       = useState(false)
+  const [walkForward, setWalkForward]   = useState(false)
+  const [monteCarlo, setMonteCarlo]     = useState(false)
   const [jobId,    setJobId]    = useState<string | null>(null)
   const [status,   setStatus]   = useState<'idle' | 'running' | 'done' | 'error'>('idle')
   const [result,   setResult]   = useState<BacktestResult | null>(null)
+  const [wfSplits, setWfSplits] = useState<BacktestWalkForwardResult['splits'] | null>(null)
   const [errMsg,   setErrMsg]   = useState('')
 
   const effectiveStrategy = strategy || strategies[0] || 'vwap_reversion'
@@ -60,7 +66,21 @@ export default function Backtest() {
     const id = setInterval(async () => {
       try {
         const r = await api.pollBacktest(jobId)
-        if (r.status === 'done')  { setStatus('done');  setResult(r.result ?? null); clearInterval(id) }
+        if (r.status === 'done') {
+          setStatus('done')
+          const entry = r.result?.results?.[0]
+          if (!entry) {
+            setStatus('error')
+            setErrMsg(r.result?.errors?.[0]?.error ?? 'Backtest produced no result')
+          } else if ('walk_forward' in entry && entry.walk_forward) {
+            setResult(entry.final_split)
+            setWfSplits(entry.splits)
+          } else {
+            setResult(entry as BacktestResult)
+            setWfSplits(null)
+          }
+          clearInterval(id)
+        }
         if (r.status === 'error') { setStatus('error'); setErrMsg(r.error ?? 'Unknown error'); clearInterval(id) }
       } catch {}
     }, 1_500)
@@ -68,9 +88,12 @@ export default function Backtest() {
   }, [jobId, status])
 
   const run = async () => {
-    setStatus('running'); setResult(null); setErrMsg('')
+    setStatus('running'); setResult(null); setWfSplits(null); setErrMsg('')
     try {
-      const { job_id } = await api.submitBacktest({ symbol, strategy: effectiveStrategy, days: period.days, capital })
+      const { job_id } = await api.submitBacktest({
+        symbol, strategy: effectiveStrategy, days: period.days, capital,
+        benchmark, walk_forward: walkForward, monte_carlo: monteCarlo,
+      })
       setJobId(job_id)
     } catch (e: any) { setStatus('error'); setErrMsg(e.message) }
   }
@@ -150,6 +173,24 @@ export default function Backtest() {
           />
         </div>
 
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[9px] text-dim uppercase tracking-wide">Options</label>
+          <div className="flex gap-3 items-center h-[34px]">
+            <label className="flex items-center gap-1.5 text-xs text-dim cursor-pointer">
+              <input type="checkbox" checked={benchmark} onChange={e => setBenchmark(e.target.checked)} />
+              vs Nifty
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-dim cursor-pointer">
+              <input type="checkbox" checked={walkForward} onChange={e => setWalkForward(e.target.checked)} />
+              Walk-forward
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-dim cursor-pointer">
+              <input type="checkbox" checked={monteCarlo} onChange={e => setMonteCarlo(e.target.checked)} />
+              Monte Carlo
+            </label>
+          </div>
+        </div>
+
         <button
           onClick={run}
           disabled={status === 'running'}
@@ -192,7 +233,65 @@ export default function Backtest() {
             <Metric label="Trades"         value={String(result.n_trades)} />
             <Metric label="Win Rate"       value={`${result.win_rate.toFixed(1)}%`}                      up={result.win_rate >= 50} />
             <Metric label="Profit Factor"  value={result.profit_factor.toFixed(2)}                       up={result.profit_factor >= 1} />
+            <Metric label="Median Trade"   value={`${result.median_trade_return_pct >= 0 ? '+' : ''}${result.median_trade_return_pct.toFixed(2)}%`} up={result.median_trade_return_pct >= 0} />
+            <Metric label="Avg Holding"    value={`${result.avg_holding_bars.toFixed(1)} bars`} />
+            <Metric label="Expectancy"     value={pnlFmt(result.expectancy)}                              up={result.expectancy >= 0} />
           </div>
+
+          {/* Benchmark comparison */}
+          {result.benchmark && (
+            <div className="bg-surface border border-border rounded-xl px-4 py-3 flex flex-wrap gap-x-6 gap-y-2 items-center shrink-0">
+              <span className="text-[9px] text-dim uppercase tracking-wide">vs Nifty 50</span>
+              <span className="text-xs text-dim">Strategy <b className="text-primary font-mono">{result.benchmark.strat_return_pct.toFixed(2)}%</b></span>
+              <span className="text-xs text-dim">Nifty <b className="text-primary font-mono">{result.benchmark.bench_return_pct.toFixed(2)}%</b></span>
+              <span className="text-xs text-dim">Alpha <b className={clsx('font-mono', result.benchmark.alpha_pct >= 0 ? 'text-green' : 'text-red')}>{result.benchmark.alpha_pct.toFixed(2)}%</b></span>
+              <span className="text-xs text-dim">Beta <b className="text-primary font-mono">{result.benchmark.beta.toFixed(3)}</b></span>
+              <span className="text-xs text-dim">Info Ratio <b className="text-primary font-mono">{result.benchmark.info_ratio.toFixed(3)}</b></span>
+            </div>
+          )}
+
+          {/* Monte Carlo */}
+          {result.monte_carlo && !result.monte_carlo.error && (
+            <div className="bg-surface border border-border rounded-xl px-4 py-3 flex flex-wrap gap-x-6 gap-y-2 items-center shrink-0">
+              <span className="text-[9px] text-dim uppercase tracking-wide">Monte Carlo (500 sims)</span>
+              <span className="text-xs text-dim">Sharpe 5–95% <b className="text-primary font-mono">{result.monte_carlo.sharpe_p5.toFixed(2)} – {result.monte_carlo.sharpe_p95.toFixed(2)}</b></span>
+              <span className="text-xs text-dim">Max DD 95% <b className="text-red font-mono">{result.monte_carlo.max_dd_p95.toFixed(2)}%</b></span>
+              <span className="text-xs text-dim">P(Sharpe&gt;0) <b className="text-primary font-mono">{result.monte_carlo.p_value_sharpe.toFixed(1)}%</b></span>
+            </div>
+          )}
+
+          {/* Walk-forward splits */}
+          {wfSplits && wfSplits.length > 0 && (
+            <div className="bg-surface border border-border rounded-xl p-3 shrink-0 overflow-x-auto">
+              <div className="text-[9px] text-dim uppercase tracking-wide mb-2">Walk-forward — out-of-sample splits</div>
+              <table className="text-xs w-full min-w-[480px]">
+                <thead>
+                  <tr className="text-dim text-left">
+                    <th className="font-normal pb-1">Split</th>
+                    <th className="font-normal pb-1">Trades</th>
+                    <th className="font-normal pb-1">Win Rate</th>
+                    <th className="font-normal pb-1">Return</th>
+                    <th className="font-normal pb-1">Sharpe</th>
+                    <th className="font-normal pb-1">Max DD</th>
+                  </tr>
+                </thead>
+                <tbody className="font-mono">
+                  {wfSplits.map(s => (
+                    <tr key={s.split_index} className="border-t border-border/50">
+                      <td className="py-1">{s.split_index}</td>
+                      <td className="py-1">{s.n_trades}</td>
+                      <td className="py-1">{s.win_rate.toFixed(1)}%</td>
+                      <td className={clsx('py-1', s.total_return_pct >= 0 ? 'text-green' : 'text-red')}>
+                        {s.total_return_pct >= 0 ? '+' : ''}{s.total_return_pct.toFixed(2)}%
+                      </td>
+                      <td className="py-1">{s.sharpe.toFixed(3)}</td>
+                      <td className="py-1 text-red">{s.max_drawdown_pct.toFixed(2)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* Charts */}
           <div className="flex-1 grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-3 min-h-0 overflow-hidden">

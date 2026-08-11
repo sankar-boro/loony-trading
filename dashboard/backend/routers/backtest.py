@@ -84,6 +84,8 @@ def _serialize_result(result, bench_df=None, include_curve=True, include_trades=
         "avg_win": round(m.get("avg_win", 0), 2),
         "avg_loss": round(m.get("avg_loss", 0), 2),
         "expectancy": round(m.get("expectancy", 0), 2),
+        "median_trade_return_pct": round(m.get("median_trade_return_pct", 0), 2),
+        "avg_holding_bars": round(m.get("avg_holding_bars", 0), 1),
     }
     if include_curve:
         summary["equity_curve"] = result.equity_curve.tolist()
@@ -151,9 +153,10 @@ def _monte_carlo_metrics(trades_pnl):
             "sharpe_mean":    round(mc.sharpe_mean, 3),
             "sharpe_p5":      round(mc.sharpe_p5, 3),
             "sharpe_p95":     round(mc.sharpe_p95, 3),
-            "max_dd_mean":    round(mc.max_dd_mean, 2),
-            "max_dd_p95":     round(mc.max_dd_p95, 2),
-            "return_mean_pct": round(mc.return_mean, 2),
+            # mc.max_dd_* / final_return_mean are fractions (0.03 = 3%) — scale to percent
+            "max_dd_mean":    round(mc.max_dd_mean * 100, 2),
+            "max_dd_p95":     round(mc.max_dd_p95 * 100, 2),
+            "return_mean_pct": round(mc.final_return_mean * 100, 2),
             "p_value_sharpe": round(mc.p_value_sharpe * 100, 1),
         }
     except Exception as e:
@@ -275,7 +278,9 @@ def _run_backtest_sync(job_id: str, req: BacktestRequest) -> None:
                         ),
                     }
                     if req.monte_carlo and wf_results[-1].trades:
-                        pnl_list = [t.pnl for t in wf_results[-1].trades]
+                        # run_monte_carlo expects fractional per-trade returns
+                        # (0.02 = 2%), not raw rupee P&L — normalize by capital.
+                        pnl_list = [t.pnl / req.capital for t in wf_results[-1].trades]
                         symbol_result["monte_carlo"] = _monte_carlo_metrics(pnl_list)
                 else:
                     if engine is not None:
@@ -285,7 +290,7 @@ def _run_backtest_sync(job_id: str, req: BacktestRequest) -> None:
 
                     symbol_result = _serialize_result(result, bench_df if req.benchmark else None)
                     if req.monte_carlo and result.trades:
-                        pnl_list = [t.pnl for t in result.trades]
+                        pnl_list = [t.pnl / req.capital for t in result.trades]
                         symbol_result["monte_carlo"] = _monte_carlo_metrics(pnl_list)
 
                 results.append(symbol_result)

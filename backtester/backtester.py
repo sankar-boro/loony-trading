@@ -183,9 +183,14 @@ class Backtester:
                 "sharpe": 0.0, "sortino": 0.0, "max_drawdown_pct": 0.0,
                 "total_return_pct": 0.0, "avg_win": 0.0, "avg_loss": 0.0,
                 "expectancy": 0.0, "cagr_pct": 0.0,
+                "median_trade_return_pct": 0.0, "avg_holding_bars": 0.0,
             }
         pnls = np.array([t.pnl for t in trades])
         returns = pnls / self.initial_capital
+        trade_returns_pct = np.array([
+            (t.exit_price - t.entry_price) / t.entry_price * t.direction * 100 for t in trades
+        ])
+        holding_bars = np.array([t.exit_bar - t.entry_bar for t in trades])
         wins = pnls[pnls > 0]
         losses = pnls[pnls < 0]
         total_return = (equity[-1] - equity[0]) / equity[0]
@@ -203,6 +208,8 @@ class Backtester:
             "avg_win": float(np.mean(wins)) if len(wins) else 0,
             "avg_loss": float(np.mean(losses)) if len(losses) else 0,
             "expectancy": float(np.mean(pnls)),
+            "median_trade_return_pct": float(np.median(trade_returns_pct)),
+            "avg_holding_bars": float(np.mean(holding_bars)),
         }
 
     def run_walk_forward(self, df: pd.DataFrame, symbol: str,
