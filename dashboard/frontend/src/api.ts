@@ -2,7 +2,7 @@ import type {
   StatusResponse, PositionsResponse, EquityPoint,
   TradesResponse, DailyResponse, ChartResponse,
   ConfigResponse, BacktestRequest, BacktestJobResponse,
-  UniverseResponse, NewsItem, CompositeSignal, WhyResponse,
+  UniverseResponse, NewsItem, CompositeSignal, WhyResponse, CopilotResponse,
 } from './types'
 
 const BASE = '/api'
@@ -56,6 +56,8 @@ export const api = {
     get(`/signals/composite/${id}`),
   whyIsItMoving: (symbol: string): Promise<WhyResponse> =>
     get(`/stocks/${symbol}/why`),
+  copilotQuery: (question: string): Promise<CopilotResponse> =>
+    post('/copilot/query', { question }),
 }
 
 // SWR fetcher

@@ -9,6 +9,7 @@ import Backtest   from './pages/Backtest'
 import DailyPnL   from './pages/DailyPnL'
 import News       from './pages/News'
 import Signals    from './pages/Signals'
+import Copilot    from './pages/Copilot'
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="daily"        element={<DailyPnL />} />
           <Route path="news"         element={<News />} />
           <Route path="signals"      element={<Signals />} />
+          <Route path="copilot"      element={<Copilot />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -268,6 +268,13 @@ export interface WhyResponse {
   conclusion: string
 }
 
+export interface CopilotResponse {
+  answer: string
+  confidence: 'low' | 'medium' | 'high'
+  evidence: string[]
+  insufficient_evidence: boolean
+}
+
 export interface NewsItem {
   id: number
   headline: string

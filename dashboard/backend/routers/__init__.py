@@ -15,11 +15,12 @@ from .stream import router as stream_router
 from .backtest import router as backtest_router
 from .news import router as news_router
 from .composite_signals import router as composite_signals_router
+from .copilot import router as copilot_router
 
 __all__ = [
     "status_router", "positions_router", "equity_router", "trades_router",
     "daily_router", "config_router", "watchlist_router", "market_router",
     "universe_router", "signals_router", "telegram_router", "chart_router",
     "ltp_router", "stream_router", "backtest_router", "news_router",
-    "composite_signals_router"
+    "composite_signals_router", "copilot_router"
 ]

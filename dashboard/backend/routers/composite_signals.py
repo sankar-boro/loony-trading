@@ -3,28 +3,17 @@ Composite (DB-backed, multi-factor) signals — distinct from the ad-hoc
 live scanner in routers/signals.py. This is the persisted, explainable
 output of signals.CompositeSignalEngine (Phase 2).
 """
-from datetime import datetime, timedelta, timezone
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from db.base import get_db
-from db.models import NewsArticle, NewsEvent, Signal, SignalDirection, Stock, StockEvent, TradeSetup
+from db.models import Signal, SignalDirection, Stock, TradeSetup
 from signals.historical import find_analogues
+from signals.queries import latest_signal_per_stock
+from signals.why import explain_move
 
 router = APIRouter()
-
-_WHY_NEWS_LOOKBACK = timedelta(days=7)
-_COMPONENT_LABEL = {
-    "catalyst": "News catalyst", "technical": "Technical setup", "momentum": "Price momentum",
-    "volume": "Volume activity", "historical": "Historical analogue", "regime": "Market regime",
-    "risk": "Volatility/risk profile",
-}
-_WEIGHTS = {
-    "catalyst": 0.25, "technical": 0.20, "momentum": 0.15, "volume": 0.15,
-    "historical": 0.10, "regime": 0.10, "risk": 0.05,
-}
 
 
 def _trade_setup_dict(db: Session, signal_id: int) -> dict | None:
@@ -68,7 +57,7 @@ def list_composite_signals(
     limit: int = Query(100, le=500),
     db: Session = Depends(get_db),
 ) -> list[dict]:
-    q = db.query(Signal, Stock.symbol).join(Stock, Signal.stock_id == Stock.id)
+    q = latest_signal_per_stock(db) if latest_only else db.query(Signal, Stock.symbol).join(Stock, Signal.stock_id == Stock.id)
 
     if direction:
         try:
@@ -78,21 +67,7 @@ def list_composite_signals(
     if symbol:
         q = q.filter(Stock.symbol == symbol.upper())
 
-    q = q.order_by(desc(Signal.timestamp))
-    rows = q.limit(limit * 3 if latest_only else limit).all()
-
-    if latest_only:
-        seen: set[int] = set()
-        deduped = []
-        for signal, sym in rows:
-            if signal.stock_id in seen:
-                continue
-            seen.add(signal.stock_id)
-            deduped.append((signal, sym))
-            if len(deduped) >= limit:
-                break
-        rows = deduped
-
+    rows = q.order_by(desc(Signal.timestamp)).limit(limit).all()
     return [_signal_dict(db, signal, sym, with_setup=False) for signal, sym in rows]
 
 
@@ -145,95 +120,9 @@ def get_historical_analogues(
 
 @router.get("/stocks/{symbol}/why")
 def why_is_it_moving(symbol: str, db: Session = Depends(get_db)) -> dict:
-    """The flagship explainability feature (spec §27): fuse the latest
-    persisted composite score, recent news, and historical analogues into
-    one evidence-backed explanation. Every claim traces to a DB row —
-    if there's nothing to point at, this says so rather than guessing."""
-    stock = db.query(Stock).filter(Stock.symbol == symbol.upper()).first()
-    if not stock:
+    """The flagship explainability feature (spec §27) — see signals/why.py
+    for the actual logic, shared with the Phase 6 copilot."""
+    result = explain_move(db, symbol)
+    if result is None:
         raise HTTPException(404, f"Unknown symbol: {symbol}")
-
-    latest_signal = (
-        db.query(Signal)
-        .filter(Signal.stock_id == stock.id)
-        .order_by(desc(Signal.timestamp))
-        .first()
-    )
-
-    since = datetime.now(timezone.utc) - _WHY_NEWS_LOOKBACK
-    news_rows = (
-        db.query(StockEvent, NewsEvent, NewsArticle)
-        .join(NewsEvent, StockEvent.event_id == NewsEvent.id)
-        .join(NewsArticle, NewsEvent.article_id == NewsArticle.id)
-        .filter(StockEvent.stock_id == stock.id, StockEvent.created_at >= since)
-        .order_by(desc(StockEvent.created_at))
-        .limit(10)
-        .all()
-    )
-    recent_news = [
-        {
-            "headline": article.title, "source": article.source, "url": article.url,
-            "published_at": article.published_at.isoformat(), "event_type": news_event.event_type,
-            "sentiment_score": news_event.sentiment_score, "impact_score": news_event.impact_score,
-            "summary": news_event.summary,
-        }
-        for _, news_event, article in news_rows
-    ]
-
-    drivers: list[dict] = []
-    if latest_signal and latest_signal.explanation:
-        ranked = sorted(
-            latest_signal.explanation.items(),
-            key=lambda kv: kv[1] * _WEIGHTS.get(kv[0], 0), reverse=True,
-        )
-        for key, value in ranked:
-            if value <= 0:
-                continue
-            drivers.append({
-                "factor": key, "label": _COMPONENT_LABEL.get(key, key),
-                "score": value, "weight": _WEIGHTS.get(key, 0),
-                "contribution": round(value * _WEIGHTS.get(key, 0), 1),
-            })
-
-    historical_analogue = None
-    if news_rows:
-        top_event_type = news_rows[0][1].event_type
-        top_direction = news_rows[0][0].direction
-        result = find_analogues(db, event_type=top_event_type, direction=top_direction)
-        day_1 = next((h for h in result.horizons if h.horizon == "1d"), None)
-        if day_1 and day_1.sample_count > 0:
-            historical_analogue = {
-                "event_type": top_event_type, "direction": top_direction,
-                "sample_count": day_1.sample_count, "win_rate_pct": day_1.win_rate_pct,
-                "median_return_pct": day_1.median_return_pct,
-                "label": "Historical analysis of past events — not a prediction",
-            }
-
-    if not latest_signal and not recent_news:
-        conclusion = f"No scored signal or recent news found for {stock.symbol}. Insufficient evidence."
-    elif drivers:
-        top = drivers[0]
-        conclusion = (
-            f"The move appears primarily driven by {top['label'].lower()} "
-            f"(contributing {top['contribution']} of the {latest_signal.score} composite score)."
-        )
-        if historical_analogue and historical_analogue["sample_count"] >= 5:
-            conclusion += (
-                f" Similar {historical_analogue['event_type']} events historically closed higher "
-                f"{historical_analogue['win_rate_pct']}% of the time over the next day "
-                f"({historical_analogue['sample_count']} comparable events)."
-            )
-    else:
-        conclusion = f"News found for {stock.symbol} but no composite signal has been scored yet."
-
-    return {
-        "symbol": stock.symbol,
-        "signal": None if not latest_signal else {
-            "direction": latest_signal.direction.value, "score": latest_signal.score,
-            "confidence": latest_signal.confidence, "timestamp": latest_signal.timestamp.isoformat(),
-        },
-        "drivers": drivers,
-        "recent_news": recent_news,
-        "historical_analogue": historical_analogue,
-        "conclusion": conclusion,
-    }
+    return result

@@ -53,6 +53,8 @@ def _demo_field_value(field_name: str, field: FieldInfo, prompt: str) -> object:
         return typing.get_args(annotation)[0]
     if origin in (list, typing.List):
         return []
+    if annotation is bool:
+        return False
     if annotation is float or annotation is int:
         lo, hi = 0.0, 1.0
         for meta in getattr(field, "metadata", []):

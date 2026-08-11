@@ -9,7 +9,7 @@ from .routers import (
     daily_router, config_router, watchlist_router, market_router,
     universe_router, signals_router, telegram_router, chart_router,
     ltp_router, stream_router, backtest_router, news_router,
-    composite_signals_router
+    composite_signals_router, copilot_router
 )
 
 app = FastAPI(title="Loony Trading API", docs_url="/api/docs")
@@ -43,6 +43,7 @@ app.include_router(stream_router, prefix="/api", tags=["stream"])
 app.include_router(backtest_router, prefix="/api", tags=["backtest"])
 app.include_router(news_router, prefix="/api", tags=["news"])
 app.include_router(composite_signals_router, prefix="/api", tags=["signals"])
+app.include_router(copilot_router, prefix="/api", tags=["copilot"])
 
 # Static files for React (production)
 if _DIST_DIR.exists():

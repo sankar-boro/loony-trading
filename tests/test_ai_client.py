@@ -5,7 +5,7 @@ import os
 import pytest
 
 from ai.client import DemoLLMProvider, get_llm_provider, AnthropicProvider
-from ai.schemas import StructuredAnalysis
+from ai.schemas import StructuredAnalysis, CopilotAnswer
 
 
 def test_demo_provider_returns_valid_schema_instance():
@@ -35,6 +35,18 @@ def test_demo_provider_is_schema_agnostic():
     assert result.label == "a"
     assert result.weight == 50.0
     assert result.tags == []
+
+
+def test_demo_provider_handles_bool_fields():
+    # Regression: bool fields (e.g. CopilotAnswer.insufficient_evidence)
+    # fell through _demo_field_value's type checks to None, which Pydantic
+    # rejects for a non-Optional bool — found while building the Phase 6
+    # copilot, whose answer schema is the first bool field in this codebase.
+    result = DemoLLMProvider().complete_structured(
+        system="", prompt="which stocks are unusual", schema=CopilotAnswer,
+    )
+    assert isinstance(result, CopilotAnswer)
+    assert result.insufficient_evidence is False
 
 
 def test_factory_defaults_to_demo_without_api_key(monkeypatch):
