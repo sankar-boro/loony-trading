@@ -17,6 +17,7 @@ const NAV = [
   { to: '/copilot',    label: 'Copilot',    icon: '✦' },
   { to: '/watchlists', label: 'Watchlists', icon: '◎' },
   { to: '/alerts',     label: 'Alerts',     icon: '🔔' },
+  { to: '/risk',       label: 'Portfolio Risk', icon: '⚖' },
 ]
 
 function Dot({ on, pulse }: { on: boolean; pulse?: boolean }) {

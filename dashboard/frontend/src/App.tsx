@@ -12,6 +12,7 @@ import Signals    from './pages/Signals'
 import Copilot    from './pages/Copilot'
 import Watchlists from './pages/Watchlists'
 import Alerts     from './pages/Alerts'
+import PortfolioRisk from './pages/PortfolioRisk'
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
           <Route path="copilot"      element={<Copilot />} />
           <Route path="watchlists"   element={<Watchlists />} />
           <Route path="alerts"       element={<Alerts />} />
+          <Route path="risk"         element={<PortfolioRisk />} />
         </Route>
       </Routes>
     </BrowserRouter>

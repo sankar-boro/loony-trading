@@ -3,7 +3,7 @@ import type {
   TradesResponse, DailyResponse, ChartResponse,
   ConfigResponse, BacktestRequest, BacktestJobResponse,
   UniverseResponse, NewsItem, CompositeSignal, WhyResponse, CopilotResponse,
-  WatchlistDTO, AlertDTO, AlertTriggerDTO,
+  WatchlistDTO, AlertDTO, AlertTriggerDTO, PortfolioRisk,
 } from './types'
 
 const BASE = '/api'
@@ -87,6 +87,7 @@ export const api = {
   alertTriggers: (id: number): Promise<AlertTriggerDTO[]> => get(`/alerts/${id}/triggers`),
   evaluateAlerts: (): Promise<{ alerts_checked: number; triggers: unknown[] }> =>
     post('/alerts/evaluate', {}),
+  portfolioRisk: (): Promise<PortfolioRisk> => get('/portfolio/risk'),
 }
 
 // SWR fetcher

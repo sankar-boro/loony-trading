@@ -351,6 +351,26 @@ export interface AlertTriggerDTO {
   created_at: string
 }
 
+export interface PortfolioRiskWarning {
+  type: 'sector_concentration' | 'high_correlation' | 'total_exposure' | 'daily_loss_limit'
+  severity: 'warning' | 'critical'
+  message: string
+}
+
+export interface PortfolioRisk {
+  capital: number
+  cash: number
+  market_value: number
+  open_positions: number
+  daily_pnl: number
+  unrealized_pnl: number
+  exposure_pct: number
+  max_loss: number
+  sector_exposure_pct: Record<string, number>
+  correlation: Record<string, Record<string, number | null>>
+  warnings: PortfolioRiskWarning[]
+}
+
 export interface NewsItem {
   id: number
   headline: string
