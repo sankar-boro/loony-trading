@@ -8,6 +8,7 @@ import Strategies from './pages/Strategies'
 import Backtest   from './pages/Backtest'
 import DailyPnL   from './pages/DailyPnL'
 import News       from './pages/News'
+import Signals    from './pages/Signals'
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
           <Route path="backtest"     element={<Backtest />} />
           <Route path="daily"        element={<DailyPnL />} />
           <Route path="news"         element={<News />} />
+          <Route path="signals"      element={<Signals />} />
         </Route>
       </Routes>
     </BrowserRouter>

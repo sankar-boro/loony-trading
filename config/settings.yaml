@@ -132,6 +132,23 @@ strategies:
     cumulative_delta: 0.8  # order flow; weaker on daily bars than intraday
     volume_profile: 0.8    # POC/VAH/VAL; effective on liquid NSE stocks
 
+signal_engine:
+  # Composite score weights (spec §17) — must sum to 1.0. `historical` is a
+  # flat neutral placeholder until Phase 3's analogue engine backfills
+  # HistoricalEvent; treat its weight as inert until then.
+  weights:
+    catalyst: 0.25
+    technical: 0.20
+    momentum: 0.15
+    volume: 0.15
+    historical: 0.10
+    regime: 0.10
+    risk: 0.05
+  quality_gate:
+    min_score: 70        # score AND confidence must clear this to be BULLISH/BEARISH
+    min_confidence: 65
+    watch_score: 50       # below min_score but above this -> WATCH, else NO_SIGNAL
+
 regime_detection:
   adx_trend_threshold: 25
   adx_strong_threshold: 40

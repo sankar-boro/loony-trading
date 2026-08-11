@@ -208,6 +208,66 @@ export interface UniverseResponse {
   watchlist: string[]
 }
 
+export interface ScoreComponents {
+  catalyst: number
+  technical: number
+  momentum: number
+  volume: number
+  historical: number
+  regime: number
+  risk: number
+}
+
+export interface TradeSetup {
+  entry_low: number
+  entry_high: number
+  stop_loss: number
+  target_1: number
+  target_2: number | null
+  risk_reward: number | null
+}
+
+export interface CompositeSignal {
+  id: number
+  symbol: string
+  timestamp: string
+  direction: 'bullish' | 'bearish' | 'watch' | 'no_signal'
+  score: number
+  confidence: number
+  components: ScoreComponents
+  explanation: ScoreComponents
+  trade_setup: TradeSetup | null
+}
+
+export interface WhyDriver {
+  factor: string
+  label: string
+  score: number
+  weight: number
+  contribution: number
+}
+
+export interface WhyHistoricalAnalogue {
+  event_type: string
+  direction: string | null
+  sample_count: number
+  win_rate_pct: number | null
+  median_return_pct: number | null
+  label: string
+}
+
+export interface WhyResponse {
+  symbol: string
+  signal: { direction: string; score: number; confidence: number; timestamp: string } | null
+  drivers: WhyDriver[]
+  recent_news: {
+    headline: string; source: string; url: string; published_at: string
+    event_type: string; sentiment_score: number; impact_score: number; summary: string
+  }[]
+  historical_analogue: WhyHistoricalAnalogue | null
+  conclusion: string
+}
+
 export interface NewsItem {
   id: number
   headline: string

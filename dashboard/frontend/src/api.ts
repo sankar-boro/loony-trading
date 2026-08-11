@@ -2,7 +2,7 @@ import type {
   StatusResponse, PositionsResponse, EquityPoint,
   TradesResponse, DailyResponse, ChartResponse,
   ConfigResponse, BacktestRequest, BacktestJobResponse,
-  UniverseResponse, NewsItem,
+  UniverseResponse, NewsItem, CompositeSignal, WhyResponse,
 } from './types'
 
 const BASE = '/api'
@@ -50,6 +50,12 @@ export const api = {
   newsEventTypes: (): Promise<string[]> => get('/news/event-types'),
   ingestNews: (): Promise<{ fetched: number; ingested: number; skipped_duplicate: number; events_created: number }> =>
     post('/news/ingest', {}),
+  compositeSignals: (direction?: string): Promise<CompositeSignal[]> =>
+    get(`/signals/composite${direction ? `?direction=${direction}` : ''}`),
+  compositeSignal: (id: number): Promise<CompositeSignal> =>
+    get(`/signals/composite/${id}`),
+  whyIsItMoving: (symbol: string): Promise<WhyResponse> =>
+    get(`/stocks/${symbol}/why`),
 }
 
 // SWR fetcher

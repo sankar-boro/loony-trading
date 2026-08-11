@@ -4,7 +4,7 @@ import { createChart, ColorType, CrosshairMode } from 'lightweight-charts'
 import type { IChartApi, ISeriesApi } from 'lightweight-charts'
 import useSWR from 'swr'
 import { api, fetcher } from '../api'
-import type { ChartResponse, WatchlistResponse, UniverseResponse } from '../types'
+import type { ChartResponse, WatchlistResponse, UniverseResponse, WhyResponse } from '../types'
 import clsx from 'clsx'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -191,6 +191,101 @@ function StockRow({ sym, name, active, prices, onSelect }: {
         {ltp > 0 ? `${chgPct >= 0 ? '+' : ''}${chgPct.toFixed(2)}%` : '—'}
       </span>
     </button>
+  )
+}
+
+// ── Why is it moving? ────────────────────────────────────────────────────────
+
+function WhyPanel({ symbol }: { symbol: string }) {
+  const [open, setOpen] = useState(false)
+  const { data, isLoading } = useSWR<WhyResponse>(
+    open ? `/api/stocks/${symbol}/why` : null, fetcher,
+  )
+
+  return (
+    <div className="w-72 shrink-0 flex flex-col bg-surface border-l border-border overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="px-3 py-2 border-b border-border flex items-center justify-between shrink-0 hover:bg-white/3 transition-colors"
+      >
+        <span className="text-xs font-semibold tracking-wide">Why is {symbol} moving?</span>
+        <span className="text-[10px] text-dim">{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div className="flex-1 overflow-y-auto min-h-0 p-3 flex flex-col gap-3">
+          {isLoading && <span className="text-xs text-dim animate-pulse">Loading…</span>}
+
+          {data && (
+            <>
+              {data.signal && (
+                <div className="flex items-center gap-2">
+                  <span className={clsx('px-1.5 py-0.5 rounded text-[9px] font-bold uppercase',
+                    data.signal.direction === 'bullish' ? 'bg-green/15 text-green'
+                      : data.signal.direction === 'bearish' ? 'bg-red/15 text-red'
+                      : 'bg-white/5 text-dim')}>
+                    {data.signal.direction}
+                  </span>
+                  <span className="text-xs font-mono text-dim">
+                    score {data.signal.score} · {data.signal.confidence.toFixed(0)}% confidence
+                  </span>
+                </div>
+              )}
+
+              <p className="text-xs text-primary leading-relaxed">{data.conclusion}</p>
+
+              {data.drivers.length > 0 && (
+                <div>
+                  <div className="text-[9px] text-dim uppercase tracking-wide mb-1.5">Drivers</div>
+                  <div className="flex flex-col gap-1">
+                    {data.drivers.slice(0, 4).map(d => (
+                      <div key={d.factor} className="flex items-center justify-between text-[11px]">
+                        <span className="text-dim">{d.label}</span>
+                        <span className="font-mono">+{d.contribution}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {data.historical_analogue && (
+                <div>
+                  <div className="text-[9px] text-dim uppercase tracking-wide mb-1.5">
+                    Historical Analogue
+                  </div>
+                  <div className="text-[11px] text-dim leading-relaxed">
+                    {data.historical_analogue.sample_count} similar {data.historical_analogue.event_type} events:{' '}
+                    <span className="text-primary font-mono">{data.historical_analogue.win_rate_pct}%</span> closed
+                    higher next day (median {data.historical_analogue.median_return_pct}%)
+                  </div>
+                </div>
+              )}
+
+              {data.recent_news.length > 0 && (
+                <div>
+                  <div className="text-[9px] text-dim uppercase tracking-wide mb-1.5">Recent News</div>
+                  <div className="flex flex-col gap-2">
+                    {data.recent_news.slice(0, 5).map((n, i) => (
+                      <a
+                        key={i} href={n.url} target="_blank" rel="noreferrer"
+                        className="block text-[11px] text-primary hover:text-blue transition-colors leading-snug"
+                      >
+                        {n.headline}
+                        <span className="block text-[9px] text-dim font-mono mt-0.5">{n.source}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!data.signal && data.recent_news.length === 0 && (
+                <span className="text-xs text-dim">No scored signal or recent news for {symbol}.</span>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -468,6 +563,9 @@ export default function Chart() {
           </span>
         </div>
       </div>
+
+      {/* ── Why is it moving? ────────────────────────────────────────────── */}
+      <WhyPanel symbol={symbol} />
 
       {/* ── Right watchlist ─────────────────────────────────────────────── */}
       <WatchlistPanel

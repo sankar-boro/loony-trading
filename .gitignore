@@ -17,3 +17,4 @@ data/
 node_modules/
 .pids/
 *.log
+.claude/settings.local.json

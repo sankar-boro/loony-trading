@@ -91,6 +91,7 @@ class NewsEvent(Base):
     event_type: Mapped[str] = mapped_column(String(32))       # earnings, guidance, ma, ...
     event_subtype: Mapped[str | None] = mapped_column(String(64), nullable=True)
     impact_score: Mapped[float] = mapped_column(Float)        # 0-1
+    catalyst_score: Mapped[float] = mapped_column(Float, default=0)  # 0-10 — materiality/surprise/recency/credibility
     sentiment_score: Mapped[float] = mapped_column(Float)     # -1..1
     confidence: Mapped[float] = mapped_column(Float)          # 0-1
     summary: Mapped[str | None] = mapped_column(String(1024), nullable=True)
@@ -173,13 +174,20 @@ class TradeSetup(Base):
 
 class HistoricalEvent(Base):
     __tablename__ = "historical_events"
-    __table_args__ = (Index("ix_histevent_stock_type", "stock_id", "event_type"),)
+    __table_args__ = (
+        Index("ix_histevent_stock_type", "stock_id", "event_type"),
+        Index("ix_histevent_type_direction_regime", "event_type", "direction", "regime"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     stock_id: Mapped[int] = mapped_column(ForeignKey("stocks.id"), nullable=False)
     event_type: Mapped[str] = mapped_column(String(32))
     event_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     event_description: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Similarity dimensions (spec §22) beyond event_type — narrows the
+    # analogue search to genuinely comparable past setups.
+    direction: Mapped[str | None] = mapped_column(String(16), nullable=True)   # bullish/bearish/neutral
+    regime: Mapped[str | None] = mapped_column(String(24), nullable=True)      # MarketRegime at event time
     price_before: Mapped[float | None] = mapped_column(Float, nullable=True)
     price_after_15m: Mapped[float | None] = mapped_column(Float, nullable=True)
     price_after_1h: Mapped[float | None] = mapped_column(Float, nullable=True)

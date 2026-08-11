@@ -80,6 +80,7 @@ class NewsIngestionPipeline:
                 article_id=article.id,
                 event_type=analysis.event_type,
                 impact_score=analysis.impact_score,
+                catalyst_score=analysis.catalyst_score,
                 sentiment_score=_DIRECTION_TO_SENTIMENT[analysis.direction] * analysis.confidence,
                 confidence=analysis.confidence,
                 summary=analysis.summary,
