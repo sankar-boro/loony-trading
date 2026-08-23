@@ -155,7 +155,7 @@ def run_organic_backfill(min_age_days: int = 7) -> int:
         up_cfg = cfg.get("exchanges", {}).get("upstox", {})
         auth = UpstoxAuth(
             api_key=up_cfg.get("api_key", ""), api_secret=up_cfg.get("api_secret", ""),
-            redirect_uri=up_cfg.get("redirect_uri", "http://localhost:8888/callback"),
+            redirect_uri=up_cfg.get("redirect_uri", "http://localhost:3561/callback"),
         )
         auth.load_token()
         registry = InstrumentRegistry()

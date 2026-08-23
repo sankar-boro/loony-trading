@@ -10,7 +10,7 @@ def auth(tmp_path):
     return UpstoxAuth(
         api_key="test_key",
         api_secret="test_secret",
-        redirect_uri="http://localhost:8888/callback",
+        redirect_uri="http://localhost:3561/callback",
         token_file=str(tmp_path / "token.json"),
     )
 

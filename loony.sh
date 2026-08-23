@@ -49,7 +49,7 @@ _help() {
   echo -e "${B}Usage:${E}  ./loony.sh <command> [options]"
   echo ""
   echo -e "${B}Dashboard:${E}"
-  echo "  start           Start dashboard in dev mode  (API :8000, Vite :5173)"
+  echo "  start           Start dashboard in dev mode  (API :8000, Vite :5163)"
   echo "  start --prod    Start dashboard in prod mode (API :8000)"
   echo "  stop            Stop dashboard processes"
   echo "  restart         Restart dashboard"

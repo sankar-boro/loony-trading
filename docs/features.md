@@ -498,7 +498,7 @@ Setup:
 
 ## Dashboard
 
-FastAPI + React app at `localhost:5173` (API on `localhost:8000`):
+FastAPI + React app at `localhost:5163` (API on `localhost:8000`):
 
 ```bash
 bash dashboard/start.sh          # dev mode

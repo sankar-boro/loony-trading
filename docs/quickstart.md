@@ -42,7 +42,7 @@ Edit `.env` — minimum required for paper trading:
 # Upstox — get from https://upstox.com/developer/
 UPSTOX_API_KEY=your_api_key
 UPSTOX_API_SECRET=your_api_secret
-UPSTOX_REDIRECT_URI=http://localhost:8888/callback
+UPSTOX_REDIRECT_URI=http://localhost:3561/callback
 
 # Optional: paste a pre-obtained access token to skip browser auth on each start
 UPSTOX_ACCESS_TOKEN=
@@ -67,7 +67,7 @@ python main.py --mode auth
 ```
 
 1. Browser opens → log in to Upstox → approve API access
-2. You are redirected to `http://localhost:8888/callback`
+2. You are redirected to `http://localhost:3561/callback`
 3. The bot captures the token and saves it to `data/upstox_token.json`
 4. Subsequent runs reuse this token automatically (valid ~24 hours)
 
@@ -115,7 +115,7 @@ Starts placing real orders. Make sure you've tested in paper mode first.
 bash dashboard/start.sh
 ```
 
-Open http://localhost:5173 in your browser (FastAPI backend runs on :8000).
+Open http://localhost:5163 in your browser (FastAPI backend runs on :8000).
 
 Pages:
 - **Dashboard** — real-time prices, open positions, latest signals

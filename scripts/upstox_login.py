@@ -283,7 +283,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Upstox login (3 methods)")
     parser.add_argument("--force",         action="store_true", help="Force re-auth even if token is valid")
     parser.add_argument("--env",           default=".env",      help="Path to .env file (default: .env)")
-    parser.add_argument("--port",          type=int, default=8888, help="Callback/webhook port (default: 8888)")
+    parser.add_argument("--port",          type=int, default=3561, help="Callback/webhook port (default: 3561)")
     parser.add_argument("--no-browser",    action="store_true", help="Print URL instead of auto-opening browser")
     parser.add_argument("--token-request", action="store_true", help="Method 2: WhatsApp/in-app approval")
     parser.add_argument("--sandbox",       action="store_true", help="Method 3: paste sandbox portal token")

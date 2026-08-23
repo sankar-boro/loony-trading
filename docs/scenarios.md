@@ -46,7 +46,7 @@ for line in Path('.env').read_text().splitlines():
 
 ## Scenario 1 — Dashboard
 
-The dashboard has two processes: a FastAPI backend (port 8000) and a Vite dev server (port 5173).
+The dashboard has two processes: a FastAPI backend (port 8000) and a Vite dev server (port 5163).
 
 ### Start (development mode)
 
@@ -54,7 +54,7 @@ The dashboard has two processes: a FastAPI backend (port 8000) and a Vite dev se
 bash dashboard/run_dev.sh
 ```
 
-Then open **http://localhost:5173** in your browser.
+Then open **http://localhost:5163** in your browser.
 
 ### Start (production — single port)
 
@@ -182,7 +182,7 @@ python scripts/paper_trade.py \
 ### After running the bot, verify the dashboard shows live data
 
 1. Start the dashboard (`bash dashboard/run_dev.sh`)
-2. Open **http://localhost:5173**
+2. Open **http://localhost:5163**
 3. Dashboard page → equity curve and KPIs should populate
 4. Positions page → open positions and signal log visible
 5. Trades page → closed trades table (if any trades closed)
@@ -461,4 +461,4 @@ python scripts/tune_weights.py --days 730 --min-sharpe 0.3 --dry-run
 | Dashboard shows empty data      | Bot has never run                | Run `paper_trade.py` first to create data files                     |
 | LTP returns `{}`                | Market is closed                 | Expected — LTP is live only 9:15–15:30 IST                          |
 | `Port 8000 already in use`      | Previous backend still running   | `pkill -f uvicorn`                                                  |
-| `Port 5173 already in use`      | Previous Vite dev server running | `pkill -f vite`                                                     |
+| `Port 5163 already in use`      | Previous Vite dev server running | `pkill -f vite`                                                     |

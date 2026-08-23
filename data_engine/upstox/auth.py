@@ -127,7 +127,7 @@ class UpstoxAuthServer:
     Usage: only needed for automated/headless setups.
     """
 
-    def __init__(self, auth: UpstoxAuth, port: int = 8888):
+    def __init__(self, auth: UpstoxAuth, port: int = 3561):
         self.auth = auth
         self.port = port
         self._code: Optional[str] = None

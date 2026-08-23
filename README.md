@@ -29,7 +29,7 @@ cp .env.example .env          # fill UPSTOX_API_KEY, UPSTOX_API_SECRET
 python main.py --mode paper   # paper trading — no real money
 ```
 
-Dashboard: `bash dashboard/start.sh` → open http://localhost:5173
+Dashboard: `bash dashboard/start.sh` → open http://localhost:5163
 
 ---
 

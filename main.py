@@ -63,7 +63,7 @@ class UpstoxTradingBot:
         self.auth = UpstoxAuth(
             api_key=up_cfg.get("api_key", ""),
             api_secret=up_cfg.get("api_secret", ""),
-            redirect_uri=up_cfg.get("redirect_uri", "http://localhost:8888/callback"),
+            redirect_uri=up_cfg.get("redirect_uri", "http://localhost:3561/callback"),
             token_file=up_cfg.get("token_file", "data/upstox_token.json"),
         )
 
@@ -370,7 +370,7 @@ def run_backtest(cfg: dict, market: str = "india") -> None:
         auth = UpstoxAuth(
             api_key=up_cfg.get("api_key", ""),
             api_secret=up_cfg.get("api_secret", ""),
-            redirect_uri=up_cfg.get("redirect_uri", "http://localhost:8888/callback"),
+            redirect_uri=up_cfg.get("redirect_uri", "http://localhost:3561/callback"),
         )
         auth.load_token()
         registry = InstrumentRegistry()
@@ -440,7 +440,7 @@ def run_auth(cfg: dict) -> None:
     auth = UpstoxAuth(
         api_key=up_cfg.get("api_key", ""),
         api_secret=up_cfg.get("api_secret", ""),
-        redirect_uri=up_cfg.get("redirect_uri", "http://localhost:8888/callback"),
+        redirect_uri=up_cfg.get("redirect_uri", "http://localhost:3561/callback"),
         token_file=up_cfg.get("token_file", "data/upstox_token.json"),
     )
 
@@ -450,7 +450,7 @@ def run_auth(cfg: dict) -> None:
         print(f"   Token age: check {up_cfg.get('token_file', 'data/upstox_token.json')}")
         return
 
-    port = up_cfg.get("auth_port", 8888)
+    port = up_cfg.get("auth_port", 3561)
     server = UpstoxAuthServer(auth, port=port)
     token = server.start_and_wait(timeout=300)
     if token:

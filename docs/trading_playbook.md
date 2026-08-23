@@ -58,7 +58,7 @@ learn the tool's behavior risk-free before pointing it at a real account.
 python3 scripts/backfill_stocks.py          # populate the stock universe
 python3 scripts/run_signal_engine.py        # score it once (needs price data → live or demo)
 python3 scripts/seed_demo_data.py           # OR: one-shot full demo dataset (fresh DB only)
-bash dashboard/start.sh                     # → http://localhost:5173
+bash dashboard/start.sh                     # → http://localhost:5163
 ```
 
 If `/api/status` reports `demo_mode: true`, you'll see an amber **DEMO DATA** banner

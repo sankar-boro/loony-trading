@@ -3,7 +3,7 @@
 # dashboard/start.sh — start the Loony Trading dashboard
 #
 # Usage:
-#   bash dashboard/start.sh            # dev mode  (Vite :5173 + FastAPI :8000)
+#   bash dashboard/start.sh            # dev mode  (Vite :5163 + FastAPI :8000)
 #   bash dashboard/start.sh --prod     # prod mode (build + FastAPI :8000)
 #   bash dashboard/start.sh --port 9000   # custom backend port (prod only)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -105,8 +105,8 @@ FRONTEND_PID=$!
 echo "$FRONTEND_PID" > "$FRONTEND_PID_FILE"
 
 sleep 3
-# Extract the actual port Vite picked (it increments if 5173 is busy)
-VITE_PORT=$(grep -oP '(?<=Local:   http://localhost:)\d+' "$FRONTEND_LOG" 2>/dev/null | tail -1 || echo "5173")
+# Extract the actual port Vite picked (it increments if 5163 is busy)
+VITE_PORT=$(grep -oP '(?<=Local:   http://localhost:)\d+' "$FRONTEND_LOG" 2>/dev/null | tail -1 || echo "5163")
 
 if kill -0 "$FRONTEND_PID" 2>/dev/null; then
   success "Frontend running on http://localhost:${VITE_PORT}"

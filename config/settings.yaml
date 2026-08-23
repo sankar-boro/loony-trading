@@ -14,7 +14,7 @@ exchanges:
     redirect_uri: "${UPSTOX_REDIRECT_URI}"
     access_token: "${UPSTOX_ACCESS_TOKEN}"   # pre-obtained token (optional)
     token_file: "data/upstox_token.json"
-    auth_port: 8888           # local port for OAuth redirect capture
+    auth_port: 3561           # local port for OAuth redirect capture
     default_product: "CNC"    # CNC | MIS | NRML
 
   # ── Binance (Secondary — Crypto) ───────────────────────────────────────────

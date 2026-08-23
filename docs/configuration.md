@@ -14,7 +14,7 @@ Copy `.env.example` to `.env` and fill in your values.
 # ── Upstox ────────────────────────────────────────────────────────────────────
 UPSTOX_API_KEY=          # from https://upstox.com/developer/
 UPSTOX_API_SECRET=       # from Upstox developer console
-UPSTOX_REDIRECT_URI=http://localhost:8888/callback   # must match exactly
+UPSTOX_REDIRECT_URI=http://localhost:3561/callback   # must match exactly
 UPSTOX_ACCESS_TOKEN=     # optional: paste pre-obtained token to skip OAuth on startup
 UPSTOX_ANALYTICS_API_KEY=  # read-only analytics token (for market data only)
 
@@ -70,7 +70,7 @@ exchanges:
     redirect_uri: "${UPSTOX_REDIRECT_URI}"
     access_token: "${UPSTOX_ACCESS_TOKEN}"
     token_file: "data/upstox_token.json"
-    auth_port: 8888
+    auth_port: 3561
     default_product: "CNC"           # CNC=delivery | MIS=intraday | NRML=F&O
 ```
 
