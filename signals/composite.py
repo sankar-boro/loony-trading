@@ -59,6 +59,7 @@ class ScoredSignal:
     confidence: float
     components: dict[str, float]
     strategy_signal: StrategySignal | None = None
+    timeframe: str = "1d"
     entry_low: float | None = None
     entry_high: float | None = None
     stop_loss: float | None = None
@@ -78,7 +79,8 @@ class CompositeSignalEngine:
 
     # ── public API ────────────────────────────────────────────────────────────
 
-    def score_symbol(self, db: Session, symbol: str, df: pd.DataFrame) -> ScoredSignal:
+    def score_symbol(self, db: Session, symbol: str, df: pd.DataFrame,
+                      timeframe: str = "1d") -> ScoredSignal:
         strategy_signals = self.meta_engine.generate_signals(symbol, df)
         best = self.meta_engine.best_signal(strategy_signals)
 
@@ -105,7 +107,7 @@ class CompositeSignalEngine:
         scored = ScoredSignal(
             symbol=symbol, direction=direction, score=round(total, 1),
             confidence=round(confidence, 1), components=components,
-            strategy_signal=best,
+            strategy_signal=best, timeframe=timeframe,
         )
         if direction in (SignalDirection.BULLISH, SignalDirection.BEARISH) and best is not None:
             self._attach_trade_setup(scored, best, df)
@@ -119,6 +121,7 @@ class CompositeSignalEngine:
 
         signal = SignalModel(
             stock_id=stock.id,
+            timeframe=scored.timeframe,
             direction=scored.direction,
             score=scored.score,
             confidence=scored.confidence,

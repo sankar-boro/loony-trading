@@ -82,16 +82,21 @@ class EvaluationSummary:
     triggers: list[TriggerEvent] = field(default_factory=list)
 
 
-def evaluate_alerts(db: Session, notifier=None) -> EvaluationSummary:
+def evaluate_alerts(db: Session, notifier=None, timeframe: str = "1d") -> EvaluationSummary:
     """Runs every active Alert against the latest composite Signal per
     stock, records an AlertTrigger row for each match, and optionally
     notifies via `notifier` (anything with a `.send(text)` method — e.g.
-    utils.telegram_alerts.TelegramAlerter; a no-op if not configured)."""
+    utils.telegram_alerts.TelegramAlerter; a no-op if not configured).
+
+    `timeframe` selects which bar-size signals to evaluate against
+    (docs/intraday_gaps.md §5) — defaults to "1d" so existing daily-
+    cadence alert rules keep behaving exactly as before; an intraday
+    scheduler job would pass e.g. "15m" explicitly."""
     alerts = db.query(Alert).filter(Alert.is_active == True).all()  # noqa: E712
     events: list[TriggerEvent] = []
 
     for alert in alerts:
-        q = latest_signal_per_stock(db)
+        q = latest_signal_per_stock(db, timeframe=timeframe)
         if alert.stock_id is not None:
             q = q.filter(Signal.stock_id == alert.stock_id)
 

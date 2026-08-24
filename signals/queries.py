@@ -19,11 +19,18 @@ from sqlalchemy.orm import Query, Session
 from db.models import Signal, Stock
 
 
-def latest_signal_per_stock(db: Session) -> Query:
+def latest_signal_per_stock(db: Session, timeframe: str = "1d") -> Query:
     """Query yielding (Signal, symbol) tuples — exactly one row per stock,
-    its most recent by timestamp."""
+    its most recent by timestamp, restricted to one bar size.
+
+    Defaults to "1d" so the existing Signals/Alerts/Portfolio Risk pages
+    keep showing exactly the daily-cadence data they always have —
+    running an intraday scoring pass (docs/intraday_gaps.md §5) must not
+    silently change what those already-shipped pages display. Pass an
+    explicit timeframe (e.g. "15m") to query intraday signals instead."""
     latest_ts = (
         db.query(Signal.stock_id, func.max(Signal.timestamp).label("max_ts"))
+        .filter(Signal.timeframe == timeframe)
         .group_by(Signal.stock_id)
         .subquery()
     )
@@ -31,4 +38,5 @@ def latest_signal_per_stock(db: Session) -> Query:
         db.query(Signal, Stock.symbol)
         .join(Stock, Signal.stock_id == Stock.id)
         .join(latest_ts, (Signal.stock_id == latest_ts.c.stock_id) & (Signal.timestamp == latest_ts.c.max_ts))
+        .filter(Signal.timeframe == timeframe)
     )

@@ -129,11 +129,19 @@ class Signal(Base):
     __table_args__ = (
         Index("ix_signal_stock_ts", "stock_id", "timestamp"),
         Index("ix_signal_score", "score"),
+        Index("ix_signal_stock_tf_ts", "stock_id", "timeframe", "timestamp"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     stock_id: Mapped[int] = mapped_column(ForeignKey("stocks.id"), nullable=False)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+    # Bar size this signal was scored from ("1d", "15m", "5m", ...) —
+    # intraday-gap fix Phase 5 (docs/intraday_gaps.md §2/§7 item 5). Every
+    # signal before this column existed was daily, hence the "1d" default;
+    # queries that don't explicitly filter by timeframe should keep
+    # defaulting to "1d" too, so adding intraday scoring never silently
+    # changes what the existing daily-cadence dashboard shows.
+    timeframe: Mapped[str] = mapped_column(String(8), default="1d")
     direction: Mapped[SignalDirection] = mapped_column(Enum(SignalDirection), default=SignalDirection.NO_SIGNAL)
     score: Mapped[float] = mapped_column(Float, default=0)          # 0-100 composite
     confidence: Mapped[float] = mapped_column(Float, default=0)     # 0-100
