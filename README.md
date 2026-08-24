@@ -12,6 +12,7 @@ ML signal stacking, live risk management, and Telegram alerts.
 | Document | What's inside |
 |---|---|
 | [docs/trading_playbook.md](docs/trading_playbook.md) | A-to-Z guide: daily workflow, risk discipline, backtesting, tuning |
+| [docs/intraday_gaps.md](docs/intraday_gaps.md) | Evidence-based audit: what's missing for real intraday trading |
 | [docs/quickstart.md](docs/quickstart.md) | Install, configure, and run in 10 minutes |
 | [docs/features.md](docs/features.md) | Every module implemented and what it does |
 | [docs/strategies.md](docs/strategies.md) | All 25+ strategies — logic, params, signals |
