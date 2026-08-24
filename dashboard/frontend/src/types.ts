@@ -166,6 +166,18 @@ export interface BacktestMonteCarlo {
   error?: string
 }
 
+export interface BacktestTradeDetail {
+  direction: number
+  entry_price: number
+  exit_price: number
+  size: number
+  entry_bar: number
+  exit_bar: number
+  pnl: number
+  strategy: string
+  reason: string
+}
+
 export interface BacktestResult {
   symbol: string
   n_trades: number
@@ -183,6 +195,7 @@ export interface BacktestResult {
   avg_holding_bars: number
   equity_curve: number[]
   trades_pnl: number[]
+  trades?: BacktestTradeDetail[]
   benchmark?: BacktestBenchmark
   monte_carlo?: BacktestMonteCarlo
 }
@@ -281,6 +294,7 @@ export interface TradeSetup {
 export interface CompositeSignal {
   id: number
   symbol: string
+  timeframe: string
   timestamp: string
   direction: 'bullish' | 'bearish' | 'watch' | 'no_signal'
   score: number
@@ -288,6 +302,50 @@ export interface CompositeSignal {
   components: ScoreComponents
   explanation: ScoreComponents
   trade_setup: TradeSetup | null
+}
+
+export interface IntradayScanRequest {
+  symbols?: string[]
+  limit?: number | null
+  lookback_days?: number
+  timeframe?: string
+}
+
+export interface IntradayScanResult {
+  symbol: string
+  direction: 'bullish' | 'bearish' | 'watch' | 'no_signal'
+  score: number
+  confidence: number
+}
+
+export interface IntradayScanResponse {
+  universe: number
+  scored: number
+  skipped: number
+  timeframe: string
+  directions: Record<string, number>
+  results: IntradayScanResult[]
+  errors: { symbol: string; error: string }[]
+}
+
+export interface AlertEvaluateResponse {
+  alerts_checked: number
+  timeframe: string
+  triggers: { alert_id: number; alert_name: string; symbol: string; matched_values: Record<string, unknown> }[]
+}
+
+export interface SchedulerJobRun {
+  name: string
+  started_at: string
+  ok: boolean
+  detail: unknown
+  duration_ms: number
+}
+
+export interface SchedulerStatus {
+  running: boolean
+  next_runs: Record<string, string | null>
+  last_runs: Record<string, SchedulerJobRun>
 }
 
 export interface WhyDriver {

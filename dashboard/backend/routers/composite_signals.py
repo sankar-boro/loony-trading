@@ -4,6 +4,7 @@ live scanner in routers/signals.py. This is the persisted, explainable
 output of signals.CompositeSignalEngine (Phase 2).
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
@@ -31,6 +32,7 @@ def _signal_dict(db: Session, signal: Signal, symbol: str, with_setup: bool = Tr
     return {
         "id": signal.id,
         "symbol": symbol,
+        "timeframe": signal.timeframe,
         "timestamp": signal.timestamp.isoformat(),
         "direction": signal.direction.value,
         "score": signal.score,
@@ -53,11 +55,19 @@ def _signal_dict(db: Session, signal: Signal, symbol: str, with_setup: bool = Tr
 def list_composite_signals(
     direction: str | None = Query(None, description="bullish|bearish|watch|no_signal"),
     symbol: str | None = None,
+    timeframe: str = Query("1d", description='bar size, e.g. "1d", "30m", "1h"'),
     latest_only: bool = Query(True, description="one row per stock — its most recent signal"),
     limit: int = Query(100, le=500),
     db: Session = Depends(get_db),
 ) -> list[dict]:
-    q = latest_signal_per_stock(db) if latest_only else db.query(Signal, Stock.symbol).join(Stock, Signal.stock_id == Stock.id)
+    if latest_only:
+        q = latest_signal_per_stock(db, timeframe=timeframe)
+    else:
+        q = (
+            db.query(Signal, Stock.symbol)
+            .join(Stock, Signal.stock_id == Stock.id)
+            .filter(Signal.timeframe == timeframe)
+        )
 
     if direction:
         try:
@@ -69,6 +79,29 @@ def list_composite_signals(
 
     rows = q.order_by(desc(Signal.timestamp)).limit(limit).all()
     return [_signal_dict(db, signal, sym, with_setup=False) for signal, sym in rows]
+
+
+class IntradayScanRequest(BaseModel):
+    symbols: list[str] = []          # empty = whole universe, capped by `limit`
+    limit: int | None = 5            # ignored when `symbols` is non-empty
+    lookback_days: int = 5
+    timeframe: str = "30m"           # not "15m" — see config/settings.yaml's note
+                                      # on Upstox returning HTTP 400 for 5m/15m here
+
+
+@router.post("/signals/intraday-scan")
+def run_intraday_scan(req: IntradayScanRequest) -> dict:
+    """UI-triggered version of `scripts/run_signal_engine.py --timeframe
+    30m` (docs/intraday_gaps.md §5/§7 item 5) — same function, same
+    Signal rows tagged with this timeframe, just reachable from a button
+    instead of a terminal. Runs synchronously in FastAPI's threadpool
+    (this is a plain `def` route, not `async def`), which is fine for the
+    small symbol counts this form is meant for."""
+    from scripts.run_signal_engine import run_signal_engine
+    return run_signal_engine(
+        limit=req.limit, lookback_days=req.lookback_days,
+        timeframe=req.timeframe, symbols=req.symbols or None,
+    )
 
 
 @router.get("/signals/composite/{signal_id}")

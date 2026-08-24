@@ -18,6 +18,7 @@ const NAV = [
   { to: '/watchlists', label: 'Watchlists', icon: '◎' },
   { to: '/alerts',     label: 'Alerts',     icon: '🔔' },
   { to: '/risk',       label: 'Portfolio Risk', icon: '⚖' },
+  { to: '/intraday',   label: 'Intraday Lab', icon: '⏱' },
 ]
 
 function Dot({ on, pulse }: { on: boolean; pulse?: boolean }) {

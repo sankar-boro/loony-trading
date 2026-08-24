@@ -13,6 +13,7 @@ import Copilot    from './pages/Copilot'
 import Watchlists from './pages/Watchlists'
 import Alerts     from './pages/Alerts'
 import PortfolioRisk from './pages/PortfolioRisk'
+import Intraday   from './pages/Intraday'
 
 export default function App() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
           <Route path="watchlists"   element={<Watchlists />} />
           <Route path="alerts"       element={<Alerts />} />
           <Route path="risk"         element={<PortfolioRisk />} />
+          <Route path="intraday"     element={<Intraday />} />
         </Route>
       </Routes>
     </BrowserRouter>

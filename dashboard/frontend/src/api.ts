@@ -4,6 +4,7 @@ import type {
   ConfigResponse, BacktestRequest, BacktestJobResponse,
   UniverseResponse, NewsItem, CompositeSignal, WhyResponse, CopilotResponse,
   WatchlistDTO, AlertDTO, AlertTriggerDTO, PortfolioRisk,
+  IntradayScanRequest, IntradayScanResponse, AlertEvaluateResponse, SchedulerStatus,
 } from './types'
 
 const BASE = '/api'
@@ -63,8 +64,15 @@ export const api = {
   newsEventTypes: (): Promise<string[]> => get('/news/event-types'),
   ingestNews: (): Promise<{ fetched: number; ingested: number; skipped_duplicate: number; events_created: number }> =>
     post('/news/ingest', {}),
-  compositeSignals: (direction?: string): Promise<CompositeSignal[]> =>
-    get(`/signals/composite${direction ? `?direction=${direction}` : ''}`),
+  compositeSignals: (direction?: string, timeframe?: string): Promise<CompositeSignal[]> => {
+    const q = new URLSearchParams()
+    if (direction) q.set('direction', direction)
+    if (timeframe) q.set('timeframe', timeframe)
+    const qs = q.toString()
+    return get(`/signals/composite${qs ? `?${qs}` : ''}`)
+  },
+  intradayScan: (req: IntradayScanRequest): Promise<IntradayScanResponse> =>
+    post('/signals/intraday-scan', req),
   compositeSignal: (id: number): Promise<CompositeSignal> =>
     get(`/signals/composite/${id}`),
   whyIsItMoving: (symbol: string): Promise<WhyResponse> =>
@@ -85,9 +93,10 @@ export const api = {
     patch(`/alerts/${id}?is_active=${isActive}`),
   deleteAlert: (id: number): Promise<{ deleted: number }> => del(`/alerts/${id}`),
   alertTriggers: (id: number): Promise<AlertTriggerDTO[]> => get(`/alerts/${id}/triggers`),
-  evaluateAlerts: (): Promise<{ alerts_checked: number; triggers: unknown[] }> =>
-    post('/alerts/evaluate', {}),
+  evaluateAlerts: (timeframe?: string): Promise<AlertEvaluateResponse> =>
+    post(`/alerts/evaluate${timeframe ? `?timeframe=${timeframe}` : ''}`, {}),
   portfolioRisk: (): Promise<PortfolioRisk> => get('/portfolio/risk'),
+  schedulerStatus: (): Promise<SchedulerStatus> => get('/scheduler/status'),
 }
 
 // SWR fetcher

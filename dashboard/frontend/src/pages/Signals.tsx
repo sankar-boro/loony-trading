@@ -7,6 +7,12 @@ import clsx from 'clsx'
 const DIRECTIONS = ['all', 'bullish', 'bearish', 'watch', 'no_signal'] as const
 type Dir = typeof DIRECTIONS[number]
 
+// "30m" not "15m" as the intraday option — Upstox returns HTTP 400 for
+// 5m/15m on this account (see docs/intraday_gaps.md §5); 30m/1h work.
+const TIMEFRAMES = ['1d', '30m', '1h'] as const
+type Timeframe = typeof TIMEFRAMES[number]
+const TF_LABEL: Record<string, string> = { '1d': 'Daily', '30m': '30 min', '1h': '1 hour' }
+
 const DIR_LABEL: Record<string, string> = {
   bullish: 'Bullish', bearish: 'Bearish', watch: 'Watch', no_signal: 'No Signal',
 }
@@ -41,7 +47,12 @@ function BreakdownPanel({ signal }: { signal: CompositeSignal }) {
     <div className="bg-surface border border-border rounded-xl p-4 flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-sm font-semibold">{signal.symbol}</div>
+          <div className="text-sm font-semibold flex items-center gap-1.5">
+            {signal.symbol}
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-white/5 text-dim">
+              {signal.timeframe}
+            </span>
+          </div>
           <div className="text-[10px] text-dim font-mono">
             {new Date(signal.timestamp).toLocaleString('en-IN')}
           </div>
@@ -109,10 +120,15 @@ function BreakdownPanel({ signal }: { signal: CompositeSignal }) {
 
 export default function Signals() {
   const [filter, setFilter] = useState<Dir>('all')
+  const [timeframe, setTimeframe] = useState<Timeframe>('1d')
   const [selectedId, setSelectedId] = useState<number | null>(null)
 
   const { data: signals, isLoading } = useSWR<CompositeSignal[]>(
-    `/api/signals/composite${filter !== 'all' ? `?direction=${filter}` : ''}`,
+    (() => {
+      const q = new URLSearchParams({ timeframe })
+      if (filter !== 'all') q.set('direction', filter)
+      return `/api/signals/composite?${q.toString()}`
+    })(),
     fetcher, { refreshInterval: 60_000 },
   )
   const { data: detail } = useSWR<CompositeSignal>(
@@ -131,27 +147,46 @@ export default function Signals() {
         </span>
       </div>
 
-      <div className="flex gap-1.5 shrink-0">
-        {DIRECTIONS.map(d => (
-          <button
-            key={d} onClick={() => setFilter(d)}
-            className={clsx('px-3 py-1.5 rounded-lg text-xs capitalize transition-colors',
-              filter === d
-                ? 'bg-blue text-white font-medium'
-                : 'bg-surface border border-border text-dim hover:text-primary')}
-          >
-            {d === 'all' ? 'All' : DIR_LABEL[d]}
-          </button>
-        ))}
+      <div className="flex items-center gap-3 shrink-0 flex-wrap">
+        <div className="flex gap-1.5">
+          {DIRECTIONS.map(d => (
+            <button
+              key={d} onClick={() => setFilter(d)}
+              className={clsx('px-3 py-1.5 rounded-lg text-xs capitalize transition-colors',
+                filter === d
+                  ? 'bg-blue text-white font-medium'
+                  : 'bg-surface border border-border text-dim hover:text-primary')}
+            >
+              {d === 'all' ? 'All' : DIR_LABEL[d]}
+            </button>
+          ))}
+        </div>
+        <div className="w-px h-5 bg-border" />
+        <div className="flex gap-1.5">
+          {TIMEFRAMES.map(tf => (
+            <button
+              key={tf} onClick={() => { setTimeframe(tf); setSelectedId(null) }}
+              className={clsx('px-3 py-1.5 rounded-lg text-xs transition-colors',
+                timeframe === tf
+                  ? 'bg-blue/15 text-blue border border-blue/30 font-medium'
+                  : 'bg-surface border border-border text-dim hover:text-primary')}
+            >
+              {TF_LABEL[tf]}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-3 min-h-0 overflow-hidden">
         <div className="bg-surface border border-border rounded-xl flex flex-col min-h-0 overflow-hidden">
           {isLoading && <span className="text-xs text-dim animate-pulse p-4">Loading…</span>}
           {!isLoading && sorted.length === 0 && (
-            <div className="flex flex-col items-center justify-center flex-1 gap-2 text-dim">
+            <div className="flex flex-col items-center justify-center flex-1 gap-2 text-dim px-6 text-center">
               <span className="text-2xl opacity-30">◇</span>
-              <span className="text-sm">No signals in this category</span>
+              <span className="text-sm">No {TF_LABEL[timeframe].toLowerCase()} signals in this category</span>
+              {timeframe !== '1d' && (
+                <span className="text-xs">Run a scan from the <b className="text-primary">Intraday</b> page to populate this timeframe.</span>
+              )}
             </div>
           )}
           {sorted.length > 0 && (

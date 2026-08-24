@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -94,13 +94,20 @@ def list_triggers(alert_id: int, limit: int = 50, db: Session = Depends(get_db))
 
 
 @router.post("/alerts/evaluate")
-def run_evaluation(db: Session = Depends(get_db)) -> dict:
+def run_evaluation(
+    timeframe: str = Query("1d", description='signal bar size to evaluate against, e.g. "1d", "30m"'),
+    db: Session = Depends(get_db),
+) -> dict:
     """Manual evaluation trigger — a scheduler replaces this call site in
-    Phase 11, same as /api/news/ingest and the signal-engine runner."""
+    Phase 11, same as /api/news/ingest and the signal-engine runner.
+    `timeframe` selects daily vs. intraday signals (docs/intraday_gaps.md
+    §5) — an alert only fires against the latest signal of the timeframe
+    you ask for."""
     from utils.telegram_alerts import TelegramAlerter
-    summary = evaluate_alerts(db, notifier=TelegramAlerter())
+    summary = evaluate_alerts(db, notifier=TelegramAlerter(), timeframe=timeframe)
     return {
         "alerts_checked": summary.alerts_checked,
+        "timeframe": timeframe,
         "triggers": [
             {"alert_id": e.alert_id, "alert_name": e.alert_name, "symbol": e.symbol,
              "matched_values": e.matched_values}

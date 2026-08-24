@@ -22,6 +22,15 @@ const inr    = (n: number) => `₹${Math.abs(n).toLocaleString('en-IN', { maximu
 const pnlFmt = (n: number) => `${n >= 0 ? '+' : '-'}${inr(n)}`
 const ttStyle = { background: '#161b27', border: '1px solid #252d3d', borderRadius: 8, fontSize: 11 }
 
+// mis_squareoff is the intraday-gap Phase 3 fix (docs/intraday_gaps.md
+// §3) — an MIS-product backtest force-closing a position at 3:14 PM IST
+// instead of letting it ride across a session boundary. Called out with
+// its own color so it reads as a deliberate exit, not a stop/target hit.
+const REASON_CLASS: Record<string, string> = {
+  stop_loss: 'bg-red/15 text-red', take_profit: 'bg-green/15 text-green',
+  mis_squareoff: 'bg-amber-500/15 text-amber-400', end_of_data: 'bg-white/5 text-dim',
+}
+
 function Metric({ label, value, up }: { label: string; value: string; up?: boolean }) {
   return (
     <div className="bg-surface border border-border rounded-xl px-4 py-3">
@@ -350,6 +359,43 @@ export default function Backtest() {
               </div>
             )}
           </div>
+
+          {/* Trade log — exit reasons incl. mis_squareoff (docs/intraday_gaps.md §3) */}
+          {result.trades && result.trades.length > 0 && (
+            <div className="bg-surface border border-border rounded-xl p-3 shrink-0 max-h-56 overflow-auto">
+              <div className="text-[9px] text-dim uppercase tracking-wide mb-2 sticky top-0 bg-surface">
+                Trade Log ({result.trades.length})
+              </div>
+              <table className="text-xs w-full min-w-[520px] font-mono">
+                <thead>
+                  <tr className="text-dim text-left sticky top-4 bg-surface">
+                    <th className="font-normal pb-1">Dir</th>
+                    <th className="font-normal pb-1">Entry</th>
+                    <th className="font-normal pb-1">Exit</th>
+                    <th className="font-normal pb-1">Bars</th>
+                    <th className="font-normal pb-1">P&amp;L</th>
+                    <th className="font-normal pb-1">Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.trades.map((t, i) => (
+                    <tr key={i} className="border-t border-border/50">
+                      <td className="py-1">{t.direction === 1 ? 'LONG' : 'SHORT'}</td>
+                      <td className="py-1">₹{t.entry_price.toFixed(2)}</td>
+                      <td className="py-1">₹{t.exit_price.toFixed(2)}</td>
+                      <td className="py-1 text-dim">{t.entry_bar}→{t.exit_bar}</td>
+                      <td className={clsx('py-1', t.pnl >= 0 ? 'text-green' : 'text-red')}>{pnlFmt(t.pnl)}</td>
+                      <td className="py-1">
+                        <span className={clsx('px-1.5 py-0.5 rounded text-[9px] font-bold', REASON_CLASS[t.reason] ?? 'bg-white/5 text-dim')}>
+                          {t.reason}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>

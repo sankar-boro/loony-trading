@@ -91,6 +91,18 @@ def _serialize_result(result, bench_df=None, include_curve=True, include_trades=
         summary["equity_curve"] = result.equity_curve.tolist()
     if include_trades:
         summary["trades_pnl"] = [t.pnl for t in result.trades]
+        # Per-trade detail incl. exit reason — lets the UI show e.g.
+        # "mis_squareoff" exits from the intraday-gap Phase 3 fix
+        # (docs/intraday_gaps.md §3), not just aggregate P&L.
+        summary["trades"] = [
+            {
+                "direction": t.direction, "entry_price": round(t.entry_price, 2),
+                "exit_price": round(t.exit_price, 2), "size": round(t.size, 4),
+                "entry_bar": t.entry_bar, "exit_bar": t.exit_bar,
+                "pnl": round(t.pnl, 2), "strategy": t.strategy, "reason": t.reason,
+            }
+            for t in result.trades
+        ]
     if bench_df is not None and not bench_df.empty and len(result.equity_curve) > 1:
         summary["benchmark"] = _benchmark_metrics(result.equity_curve, bench_df)
     return summary
