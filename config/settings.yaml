@@ -199,6 +199,26 @@ scheduler:
   historical_backfill_minute: 0
   historical_backfill_min_age_days: 7  # matches backfill_historical_events.py default
 
+  # ── Intraday track (docs/intraday_gaps.md §6) ───────────────────────────────
+  # Separate opt-in from the daily jobs above — both can run at once,
+  # writing to Signal rows tagged with their own timeframe (Phase 5's
+  # fix), so enabling this never changes what the daily-cadence pages show.
+  # Always market-hours-gated regardless of market_hours_only, since an
+  # intraday bar means nothing once the session is closed.
+  intraday_enabled: false
+  intraday_timeframe: "30m"              # NOT "15m" — see note below
+  intraday_signal_interval_seconds: 900  # 15 min; UpstoxDataEngine caches
+                                          # intraday fetches for ~1h, so this
+                                          # mostly hits cache, not the API
+  intraday_alert_interval_seconds: 900
+  intraday_lookback_days: 5
+  # Live verification during this fix found Upstox's v2 historical-candle
+  # endpoint returning HTTP 400 for the 5-minute and 15-minute intervals
+  # on this account (30m/60m work fine) — matches the "broken Upstox
+  # 15-minute interval" note already in backfill_historical_events.py.
+  # If your account's API access differs, "15m" matches
+  # timeframes.intraday above and is the spec's original suggestion.
+
 # ── India Market Calendar ────────────────────────────────────────────────────
 india_market:
   open_time: "09:15"           # IST

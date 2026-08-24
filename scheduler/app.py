@@ -76,6 +76,35 @@ def start_scheduler(cfg: dict) -> Optional[BackgroundScheduler]:
         id="historical_backfill", max_instances=1, coalesce=True,
     )
 
+    # Intraday signal/alert jobs — separate opt-in track, coexisting with
+    # the daily jobs above rather than replacing them (docs/intraday_gaps.md
+    # §6/§7 item 6). Always market-hours-gated regardless of
+    # market_hours_only: an intraday bar is meaningless once the session
+    # is closed, unlike news.
+    if sched_cfg.get("intraday_enabled", False):
+        intraday_tf = sched_cfg.get("intraday_timeframe", "30m")
+        intraday_job = _market_hours_guard(
+            "intraday_signal_engine",
+            lambda: jobs.intraday_signal_engine_job(
+                lookback_days=sched_cfg.get("intraday_lookback_days", 5),
+                timeframe=intraday_tf,
+            ),
+        )
+        intraday_alert_job = _market_hours_guard(
+            "intraday_alert_evaluation",
+            lambda: jobs.intraday_alert_evaluation_job(timeframe=intraday_tf),
+        )
+        sched.add_job(
+            intraday_job,
+            IntervalTrigger(seconds=sched_cfg.get("intraday_signal_interval_seconds", 900)),
+            id="intraday_signal_engine", max_instances=1, coalesce=True,
+        )
+        sched.add_job(
+            intraday_alert_job,
+            IntervalTrigger(seconds=sched_cfg.get("intraday_alert_interval_seconds", 900)),
+            id="intraday_alert_evaluation", max_instances=1, coalesce=True,
+        )
+
     sched.start()
     _scheduler = sched
     logger.info(
@@ -84,6 +113,9 @@ def start_scheduler(cfg: dict) -> Optional[BackgroundScheduler]:
         f"alerts={sched_cfg.get('alert_interval_seconds', 300)}s, "
         f"historical backfill daily at {sched_cfg.get('historical_backfill_hour', 18):02d}:"
         f"{sched_cfg.get('historical_backfill_minute', 0):02d} {tz}"
+        + (f", intraday({sched_cfg.get('intraday_timeframe', '30m')})="
+           f"{sched_cfg.get('intraday_signal_interval_seconds', 900)}s"
+           if sched_cfg.get("intraday_enabled", False) else "")
     )
     return sched
 
