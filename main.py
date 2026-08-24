@@ -37,6 +37,7 @@ class UpstoxTradingBot:
 
     def __init__(self, cfg: dict, mode: str = "paper"):
         from data_engine.upstox import UpstoxAuth, InstrumentRegistry, UpstoxDataEngine, UpstoxFeed
+        from data_engine.live_bars import LiveBarAggregator
         from execution_engine.upstox_executor import UpstoxExecutor, UpstoxProduct
         from risk_manager import RiskManager
         from portfolio_manager import PortfolioManager
@@ -103,7 +104,9 @@ class UpstoxTradingBot:
         # Strategy engine + ML
         self.meta_engine = MetaStrategyEngine(cfg, ml_model=None)
         self._trainer = ModelTrainer(cfg)
-        self._df_cache: dict = {}   # symbol → DataFrame
+        self._df_cache: dict = {}   # symbol → DataFrame — read by strategies, kept fresh intraday (see _refresh_live_df)
+        self._df_cache_base: dict = {}   # immutable historical fetch, before today's live bars are spliced on
+        self._live_bars = LiveBarAggregator()   # docs/intraday_gaps.md §1 fix — turns live ticks into fresh bars
         self._tick_counter: dict = {}
         self._mis_squaredoff: bool = False
 
@@ -169,6 +172,7 @@ class UpstoxTradingBot:
     async def _load_historical_data(self) -> None:
         lookback = self.cfg.get("data", {}).get("lookback_days", 365)
         logger.info(f"Loading historical data ({lookback} days) for {len(self.all_symbols)} symbols...")
+        self._live_bars.clear()   # a fresh run must never inherit a previous session's live bars
         for sym in self.all_symbols:
             df = self.data_engine.fetch_ohlcv(sym, self.primary_tf, lookback_days=lookback)
             if not df.empty:
@@ -181,7 +185,9 @@ class UpstoxTradingBot:
                 df_intra = self.data_engine.fetch_ohlcv(sym, self.intraday_tf,
                                                          lookback_days=60)
                 if not df_intra.empty:
-                    self._df_cache[f"{sym}_{self.intraday_tf}"] = df_intra
+                    key = f"{sym}_{self.intraday_tf}"
+                    self._df_cache[key] = df_intra
+                    self._df_cache_base[key] = df_intra   # kept as the pre-session base — see _refresh_live_df
 
     async def _train_or_load_models(self) -> None:
         from ml_models import XGBoostModel, LightGBMModel, EnsembleModel
@@ -206,6 +212,17 @@ class UpstoxTradingBot:
                     logger.info("ML models trained")
 
     # ── Tick handler (real-time) ────────────────────────────────────────────────
+
+    def _refresh_live_df(self, symbol: str) -> None:
+        """Splice today's freshly-aggregated intraday bars onto the
+        pre-session historical base and update _df_cache — the fix for
+        docs/intraday_gaps.md §1 (the live loop previously never updated
+        the dataframe strategies actually score against)."""
+        from data_engine.live_bars import merge_live_onto_history
+        key = f"{symbol}_{self.intraday_tf}"
+        base = self._df_cache_base.get(key)
+        live = self._live_bars.get_bars(symbol, self.intraday_tf)
+        self._df_cache[key] = merge_live_onto_history(base, live)
 
     async def _on_tick(self, event: dict) -> None:
         from utils.timeutils import should_squareoff_mis
@@ -234,12 +251,29 @@ class UpstoxTradingBot:
                     f"🔴 Closed {symbol} | {reason} | PnL: ₹{pnl:+.2f}"
                 )
 
-        # Only generate strategy signals on candle close (not every tick)
-        self._tick_counter[symbol] = self._tick_counter.get(symbol, 0) + 1
-        if self._tick_counter[symbol] % 15 != 0:  # ~every 15 ticks for 15m candles
-            return
+        # Generate strategy signals on real candle close, not a tick-count
+        # guess — docs/intraday_gaps.md §1. For symbols with an intraday
+        # base (equity symbols seeded in _load_historical_data), feed the
+        # live bar aggregator and only re-score once a full intraday_tf
+        # bar has actually finalized, using freshly-merged live data.
+        intraday_key = f"{symbol}_{self.intraday_tf}"
+        has_intraday_base = intraday_key in self._df_cache_base
+        if has_intraday_base:
+            bar_closed = self._live_bars.update(event)
+            if not bar_closed:
+                return
+            self._tick_counter[symbol] = self._tick_counter.get(symbol, 0) + 1
+            from data_engine.live_bars import timeframe_minutes
+            if self._tick_counter[symbol] % timeframe_minutes(self.intraday_tf) != 0:
+                return
+            self._refresh_live_df(symbol)
+            df = self._df_cache.get(intraday_key)
+        else:
+            # No intraday base for this symbol (e.g. an index, or an
+            # equity beyond the first 5 seeded — see _load_historical_data)
+            # — unchanged fallback: score against the daily cache.
+            df = self._df_cache.get(symbol)
 
-        df = self._df_cache.get(symbol) or self._df_cache.get(f"{symbol}_{self.intraday_tf}")
         if df is None or len(df) < 60:
             return
 
