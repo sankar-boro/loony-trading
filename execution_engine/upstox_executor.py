@@ -167,6 +167,32 @@ class UpstoxExecutor:
         resp.raise_for_status()
         return resp.json()
 
+    # ── Non-blocking wrappers ─────────────────────────────────────────────────
+    # main.py's live loop and this executor's own async methods share one
+    # asyncio event loop with the WebSocket tick stream. `requests` is
+    # synchronous, so calling _post/_get/_put/_delete directly from an
+    # `async def` blocks that entire loop for the HTTP round-trip —
+    # delaying stop-loss checks and price updates for every OTHER open
+    # position, not just the one placing an order. These run the same
+    # synchronous call in a thread instead, off the event loop. See
+    # docs/intraday_gaps.md §4/§7 item 4.
+
+    async def _post_async(self, endpoint: str, payload: dict) -> dict:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._post, endpoint, payload)
+
+    async def _get_async(self, endpoint: str, params: dict | None = None) -> dict:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._get, endpoint, params)
+
+    async def _put_async(self, endpoint: str, payload: dict) -> dict:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._put, endpoint, payload)
+
+    async def _delete_async(self, endpoint: str, params: dict) -> dict:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._delete, endpoint, params)
+
     # ── Signal execution ──────────────────────────────────────────────────────
 
     async def execute_signal(self, signal: Signal,
@@ -241,7 +267,7 @@ class UpstoxExecutor:
         for attempt in range(self._retry_attempts):
             try:
                 t0 = time.monotonic()
-                resp = self._post("/order/place", payload)
+                resp = await self._post_async("/order/place", payload)
                 latency_ms = (time.monotonic() - t0) * 1000
                 order.order_id = resp.get("data", {}).get("order_id", "")
                 order.status = "open"
@@ -259,8 +285,8 @@ class UpstoxExecutor:
         deadline = time.monotonic() + timeout_sec
         while time.monotonic() < deadline:
             try:
-                data = self._get(f"/order/details",
-                                  params={"order_id": order.order_id})
+                data = await self._get_async(f"/order/details",
+                                              params={"order_id": order.order_id})
                 o = data.get("data", {})
                 order.status = o.get("status", "open").lower()
                 order.avg_price = float(o.get("average_price", 0) or 0)
@@ -287,7 +313,7 @@ class UpstoxExecutor:
         if trigger_price is not None:
             payload["trigger_price"] = trigger_price
         try:
-            self._put("/order/modify", payload)
+            await self._put_async("/order/modify", payload)
             logger.info(f"Order {order_id} modified")
             return True
         except Exception as e:
@@ -296,7 +322,7 @@ class UpstoxExecutor:
 
     async def cancel_order(self, order_id: str) -> bool:
         try:
-            self._delete("/order/cancel", {"order_id": order_id})
+            await self._delete_async("/order/cancel", {"order_id": order_id})
             logger.info(f"Order {order_id} cancelled")
             return True
         except Exception as e:
@@ -569,7 +595,7 @@ class UpstoxExecutor:
                 order_ids.append("")
             else:
                 try:
-                    resp = self._post("/order/place", {
+                    resp = await self._post_async("/order/place", {
                         "quantity":           order.quantity,
                         "product":            order.product.value,
                         "validity":           "DAY",
@@ -632,7 +658,7 @@ class UpstoxExecutor:
                 tag="mis_squareoff",
             )
             try:
-                resp = self._post("/order/place", {
+                resp = await self._post_async("/order/place", {
                     "quantity":          order.quantity,
                     "product":           order.product.value,
                     "validity":          "DAY",
