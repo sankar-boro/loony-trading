@@ -9,8 +9,8 @@ const pnlFmt = (n: number) => `${n >= 0 ? '+' : '-'}${inr(n)}`
 function Metric({ label, value, up }: { label: string; value: string; up?: boolean }) {
   return (
     <div className="bg-surface border border-border rounded-xl px-4 py-3">
-      <div className="text-[9px] text-dim uppercase tracking-wide mb-1">{label}</div>
-      <div className={clsx('text-lg font-mono font-semibold',
+      <div className="text-[11px] text-dim uppercase tracking-wide mb-1">{label}</div>
+      <div className={clsx('text-xl font-mono font-semibold',
         up === true ? 'text-green' : up === false ? 'text-red' : 'text-primary')}>
         {value}
       </div>
@@ -36,10 +36,10 @@ export default function PortfolioRiskPage() {
 
   return (
     <div className="flex flex-col h-full p-4 gap-3 overflow-hidden">
-      <h1 className="text-base font-semibold tracking-wide shrink-0">Portfolio Risk</h1>
+      <h1 className="text-lg font-semibold tracking-wide shrink-0">Portfolio Risk</h1>
 
       {isLoading && (
-        <div className="flex-1 flex items-center justify-center text-dim text-sm">Loading…</div>
+        <div className="flex-1 flex items-center justify-center text-dim text-base">Loading…</div>
       )}
 
       {data && (
@@ -51,7 +51,7 @@ export default function PortfolioRiskPage() {
                 <div
                   key={i}
                   className={clsx(
-                    'rounded-xl px-4 py-2.5 text-xs flex items-center gap-2 border',
+                    'rounded-xl px-4 py-2.5 text-sm flex items-center gap-2 border',
                     w.severity === 'critical'
                       ? 'bg-red/10 border-red/30 text-red'
                       : 'bg-amber/10 border-amber/30 text-amber',
@@ -80,16 +80,16 @@ export default function PortfolioRiskPage() {
           <div className="flex-1 grid grid-cols-1 xl:grid-cols-2 gap-3 min-h-0">
             {/* Sector exposure */}
             <div className="bg-surface border border-border rounded-xl p-4 flex flex-col overflow-hidden">
-              <div className="text-xs font-medium mb-3 text-dim uppercase tracking-wide">Sector Exposure</div>
+              <div className="text-sm font-medium mb-3 text-dim uppercase tracking-wide">Sector Exposure</div>
               {sectors.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center text-dim text-xs">
+                <div className="flex-1 flex items-center justify-center text-dim text-sm">
                   No open positions
                 </div>
               ) : (
                 <div className="flex flex-col gap-2.5 overflow-y-auto">
                   {sectors.map(([sector, pct], i) => (
                     <div key={sector} className="flex flex-col gap-1">
-                      <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center justify-between text-sm">
                         <span className="text-primary">{sector}</span>
                         <span className="font-mono text-dim">{pct.toFixed(1)}%</span>
                       </div>
@@ -110,16 +110,16 @@ export default function PortfolioRiskPage() {
 
             {/* Correlation matrix */}
             <div className="bg-surface border border-border rounded-xl p-4 flex flex-col overflow-hidden">
-              <div className="text-xs font-medium mb-3 text-dim uppercase tracking-wide">
+              <div className="text-sm font-medium mb-3 text-dim uppercase tracking-wide">
                 Position Correlation
               </div>
               {corrSymbols.length < 2 ? (
-                <div className="flex-1 flex items-center justify-center text-dim text-xs text-center px-4">
+                <div className="flex-1 flex items-center justify-center text-dim text-sm text-center px-4">
                   Need 2+ open positions with price history to compute correlation
                 </div>
               ) : (
                 <div className="overflow-auto">
-                  <table className="text-[10px] font-mono border-collapse">
+                  <table className="text-[12px] font-mono border-collapse">
                     <thead>
                       <tr>
                         <th className="p-1"></th>

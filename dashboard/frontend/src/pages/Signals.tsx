@@ -31,7 +31,7 @@ const COMPONENT_LABEL: Record<string, string> = {
 
 function DirBadge({ direction }: { direction: string }) {
   return (
-    <span className={clsx('px-1.5 py-0.5 rounded text-[9px] font-bold', DIR_CLASS[direction])}>
+    <span className={clsx('px-1.5 py-0.5 rounded text-[11px] font-bold', DIR_CLASS[direction])}>
       {DIR_LABEL[direction] ?? direction}
     </span>
   )
@@ -47,13 +47,13 @@ function BreakdownPanel({ signal }: { signal: CompositeSignal }) {
     <div className="bg-surface border border-border rounded-xl p-4 flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-sm font-semibold flex items-center gap-1.5">
+          <div className="text-base font-semibold flex items-center gap-1.5">
             {signal.symbol}
-            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-white/5 text-dim">
+            <span className="px-1.5 py-0.5 rounded text-[11px] font-mono bg-white/5 text-dim">
               {signal.timeframe}
             </span>
           </div>
-          <div className="text-[10px] text-dim font-mono">
+          <div className="text-[12px] text-dim font-mono">
             {new Date(signal.timestamp).toLocaleString('en-IN')}
           </div>
         </div>
@@ -61,17 +61,17 @@ function BreakdownPanel({ signal }: { signal: CompositeSignal }) {
       </div>
 
       <div className="flex items-baseline gap-3">
-        <span className="text-3xl font-mono font-bold">{signal.score.toFixed(1)}</span>
-        <span className="text-xs text-dim">score · {signal.confidence.toFixed(0)}% confidence</span>
+        <span className="text-4xl font-mono font-bold">{signal.score.toFixed(1)}</span>
+        <span className="text-sm text-dim">score · {signal.confidence.toFixed(0)}% confidence</span>
       </div>
 
       <div>
-        <div className="text-[9px] text-dim uppercase tracking-wide mb-2">
+        <div className="text-[11px] text-dim uppercase tracking-wide mb-2">
           Why {signal.score.toFixed(0)}?
         </div>
         <div className="flex flex-col gap-1.5">
           {rows.map(r => (
-            <div key={r.key} className="flex items-center gap-2 text-xs">
+            <div key={r.key} className="flex items-center gap-2 text-sm">
               <span className="w-24 text-dim shrink-0">{r.label}</span>
               <div className="flex-1 h-2 bg-white/5 rounded overflow-hidden">
                 <div className="h-full bg-blue" style={{ width: `${Math.min(100, r.value)}%` }} />
@@ -80,7 +80,7 @@ function BreakdownPanel({ signal }: { signal: CompositeSignal }) {
               <span className="w-16 text-right font-mono text-dim">+{r.contribution.toFixed(1)}</span>
             </div>
           ))}
-          <div className="flex items-center gap-2 text-xs pt-1.5 border-t border-border mt-1">
+          <div className="flex items-center gap-2 text-sm pt-1.5 border-t border-border mt-1">
             <span className="w-24 font-semibold">Total</span>
             <div className="flex-1" />
             <span className="w-10" />
@@ -91,24 +91,24 @@ function BreakdownPanel({ signal }: { signal: CompositeSignal }) {
 
       {signal.trade_setup && (
         <div>
-          <div className="text-[9px] text-dim uppercase tracking-wide mb-2">Trade Setup</div>
-          <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="text-[11px] text-dim uppercase tracking-wide mb-2">Trade Setup</div>
+          <div className="grid grid-cols-2 gap-2 text-sm">
             <div className="bg-white/5 rounded-lg px-3 py-2">
-              <div className="text-dim text-[9px] uppercase">Entry Zone</div>
+              <div className="text-dim text-[11px] uppercase">Entry Zone</div>
               <div className="font-mono">
                 ₹{signal.trade_setup.entry_low.toFixed(2)}–{signal.trade_setup.entry_high.toFixed(2)}
               </div>
             </div>
             <div className="bg-white/5 rounded-lg px-3 py-2">
-              <div className="text-dim text-[9px] uppercase">Stop Loss</div>
+              <div className="text-dim text-[11px] uppercase">Stop Loss</div>
               <div className="font-mono text-red">₹{signal.trade_setup.stop_loss.toFixed(2)}</div>
             </div>
             <div className="bg-white/5 rounded-lg px-3 py-2">
-              <div className="text-dim text-[9px] uppercase">Target 1</div>
+              <div className="text-dim text-[11px] uppercase">Target 1</div>
               <div className="font-mono text-green">₹{signal.trade_setup.target_1.toFixed(2)}</div>
             </div>
             <div className="bg-white/5 rounded-lg px-3 py-2">
-              <div className="text-dim text-[9px] uppercase">Risk/Reward</div>
+              <div className="text-dim text-[11px] uppercase">Risk/Reward</div>
               <div className="font-mono">{signal.trade_setup.risk_reward?.toFixed(2) ?? '—'}</div>
             </div>
           </div>
@@ -140,8 +140,8 @@ export default function Signals() {
   return (
     <div className="flex flex-col h-full p-4 gap-3 overflow-hidden">
       <div className="flex items-center gap-3 shrink-0 flex-wrap">
-        <h1 className="text-base font-semibold tracking-wide">Signals</h1>
-        <span className="text-xs text-dim">
+        <h1 className="text-lg font-semibold tracking-wide">Signals</h1>
+        <span className="text-sm text-dim">
           Multi-factor composite — Catalyst 25% · Technical 20% · Momentum 15% ·
           Volume 15% · Historical 10% · Regime 10% · Risk 5%
         </span>
@@ -152,7 +152,7 @@ export default function Signals() {
           {DIRECTIONS.map(d => (
             <button
               key={d} onClick={() => setFilter(d)}
-              className={clsx('px-3 py-1.5 rounded-lg text-xs capitalize transition-colors',
+              className={clsx('px-3 py-1.5 rounded-lg text-sm capitalize transition-colors',
                 filter === d
                   ? 'bg-blue text-white font-medium'
                   : 'bg-surface border border-border text-dim hover:text-primary')}
@@ -166,7 +166,7 @@ export default function Signals() {
           {TIMEFRAMES.map(tf => (
             <button
               key={tf} onClick={() => { setTimeframe(tf); setSelectedId(null) }}
-              className={clsx('px-3 py-1.5 rounded-lg text-xs transition-colors',
+              className={clsx('px-3 py-1.5 rounded-lg text-sm transition-colors',
                 timeframe === tf
                   ? 'bg-blue/15 text-blue border border-blue/30 font-medium'
                   : 'bg-surface border border-border text-dim hover:text-primary')}
@@ -179,23 +179,23 @@ export default function Signals() {
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-3 min-h-0 overflow-hidden">
         <div className="bg-surface border border-border rounded-xl flex flex-col min-h-0 overflow-hidden">
-          {isLoading && <span className="text-xs text-dim animate-pulse p-4">Loading…</span>}
+          {isLoading && <span className="text-sm text-dim animate-pulse p-4">Loading…</span>}
           {!isLoading && sorted.length === 0 && (
             <div className="flex flex-col items-center justify-center flex-1 gap-2 text-dim px-6 text-center">
-              <span className="text-2xl opacity-30">◇</span>
-              <span className="text-sm">No {TF_LABEL[timeframe].toLowerCase()} signals in this category</span>
+              <span className="text-3xl opacity-30">◇</span>
+              <span className="text-base">No {TF_LABEL[timeframe].toLowerCase()} signals in this category</span>
               {timeframe !== '1d' && (
-                <span className="text-xs">Run a scan from the <b className="text-primary">Intraday</b> page to populate this timeframe.</span>
+                <span className="text-sm">Run a scan from the <b className="text-primary">Intraday</b> page to populate this timeframe.</span>
               )}
             </div>
           )}
           {sorted.length > 0 && (
             <div className="flex-1 overflow-auto min-h-0">
-              <table className="w-full text-xs font-mono min-w-[520px]">
+              <table className="w-full text-sm font-mono min-w-[520px]">
                 <thead className="sticky top-0 bg-surface z-10">
                   <tr className="border-b border-border">
                     {['Symbol', 'Direction', 'Score', 'Confidence', 'Time'].map(h => (
-                      <th key={h} className="text-left px-4 py-2.5 text-[9px] uppercase tracking-wide text-dim font-medium whitespace-nowrap">
+                      <th key={h} className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-dim font-medium whitespace-nowrap">
                         {h}
                       </th>
                     ))}
@@ -226,8 +226,8 @@ export default function Signals() {
         <div className="overflow-y-auto min-h-0">
           {detail ? <BreakdownPanel signal={detail} /> : (
             <div className="bg-surface border border-border rounded-xl flex flex-col items-center justify-center h-full gap-2 text-dim p-8">
-              <span className="text-2xl opacity-30">◈</span>
-              <span className="text-sm text-center">Select a signal to see its score breakdown</span>
+              <span className="text-3xl opacity-30">◈</span>
+              <span className="text-base text-center">Select a signal to see its score breakdown</span>
             </div>
           )}
         </div>

@@ -30,8 +30,8 @@ function Panel({ title, right, children, className = '' }: {
   return (
     <div className={clsx('bg-surface border border-border rounded-xl flex flex-col min-h-0 overflow-hidden', className)}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-        <span className="text-sm font-medium text-primary">{title}</span>
-        {right && <span className="text-xs text-dim">{right}</span>}
+        <span className="text-base font-medium text-primary">{title}</span>
+        {right && <span className="text-sm text-dim">{right}</span>}
       </div>
       {children}
     </div>
@@ -45,13 +45,13 @@ function KPI({ label, value, sub, up }: {
 }) {
   return (
     <div className="bg-surface border border-border rounded-xl px-4 py-3">
-      <div className="text-xs text-dim mb-1 uppercase tracking-wide">{label}</div>
-      <div className={clsx('text-lg font-mono font-semibold truncate',
+      <div className="text-sm text-dim mb-1 uppercase tracking-wide">{label}</div>
+      <div className={clsx('text-xl font-mono font-semibold truncate',
         up === true ? 'text-green' : up === false ? 'text-red' : 'text-primary')}>
         {value}
       </div>
       {sub && (
-        <div className={clsx('text-xs font-mono mt-0.5',
+        <div className={clsx('text-sm font-mono mt-0.5',
           up === true ? 'text-green/70' : up === false ? 'text-red/70' : 'text-dim')}>
           {sub}
         </div>
@@ -82,7 +82,7 @@ function useLivePrices() {
 function MarketTicker({ market, live }: { market: MarketResponse | null; live: boolean }) {
   const indices = ['NIFTY50', 'BANKNIFTY', 'NIFTYIT']
   return (
-    <div className="h-10 bg-surface border border-border rounded-xl px-4 flex items-center gap-6 text-xs font-mono shrink-0 overflow-x-auto">
+    <div className="h-10 bg-surface border border-border rounded-xl px-4 flex items-center gap-6 text-sm font-mono shrink-0 overflow-x-auto">
       {indices.map(sym => {
         const d = market?.[sym]
         const up = (d?.change_pct ?? 0) >= 0
@@ -157,7 +157,7 @@ function WatchlistPanel({ watchlist }: { watchlist: WatchlistResponse | null }) 
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Symbol or company…"
-          className="w-full text-xs bg-bg border border-border rounded px-2.5 py-1.5 focus:outline-none focus:border-blue placeholder:text-dim"
+          className="w-full text-sm bg-bg border border-border rounded px-2.5 py-1.5 focus:outline-none focus:border-blue placeholder:text-dim"
         />
       </div>
 
@@ -170,14 +170,14 @@ function WatchlistPanel({ watchlist }: { watchlist: WatchlistResponse | null }) 
               key={tab}
               onClick={() => { setActiveTab(tab); setSearch('') }}
               className={clsx(
-                'px-3 py-2 text-xs whitespace-nowrap shrink-0 border-b-2 transition-colors',
+                'px-3 py-2 text-sm whitespace-nowrap shrink-0 border-b-2 transition-colors',
                 activeTab === tab
                   ? 'border-blue text-primary font-medium'
                   : 'border-transparent text-dim hover:text-primary',
               )}
             >
               {tab === 'Watchlist' ? '⭐' : ''} {tab}
-              {sec && <span className="ml-1 text-[9px] text-dim">({sec.stocks.length})</span>}
+              {sec && <span className="ml-1 text-[11px] text-dim">({sec.stocks.length})</span>}
             </button>
           )
         })}
@@ -186,7 +186,7 @@ function WatchlistPanel({ watchlist }: { watchlist: WatchlistResponse | null }) 
       {/* Stock rows */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {filtered.length === 0 ? (
-          <div className="flex items-center justify-center h-24 text-xs text-dim">
+          <div className="flex items-center justify-center h-24 text-sm text-dim">
             {universe ? 'No matches' : 'Loading…'}
           </div>
         ) : (
@@ -198,9 +198,9 @@ function WatchlistPanel({ watchlist }: { watchlist: WatchlistResponse | null }) 
                   className="w-full flex items-center gap-2 px-3 py-1.5 bg-bg/40 hover:bg-bg/60 transition-colors"
                 >
                   <span className="w-2 h-2 rounded-full shrink-0" style={{ background: sec.color }} />
-                  <span className="text-[10px] font-medium text-dim uppercase tracking-wide">{sec.sector}</span>
-                  <span className="text-[9px] text-dim ml-1">({sec.stocks.length})</span>
-                  <span className="ml-auto text-[10px] text-dim">{collapsed.has(sec.sector) ? '▶' : '▼'}</span>
+                  <span className="text-[12px] font-medium text-dim uppercase tracking-wide">{sec.sector}</span>
+                  <span className="text-[11px] text-dim ml-1">({sec.stocks.length})</span>
+                  <span className="ml-auto text-[12px] text-dim">{collapsed.has(sec.sector) ? '▶' : '▼'}</span>
                 </button>
               )}
               {!collapsed.has(sec.sector) && sec.stocks.map(st => {
@@ -214,22 +214,22 @@ function WatchlistPanel({ watchlist }: { watchlist: WatchlistResponse | null }) 
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1">
-                        <span className="text-xs font-mono font-semibold group-hover:text-blue transition-colors">{st.symbol}</span>
-                        {st.fno    && <span className="text-[8px] px-1 rounded bg-blue/10 text-blue leading-tight">F&O</span>}
-                        {st.nifty50 && <span className="text-[8px] px-1 rounded bg-amber/10 text-amber leading-tight">N50</span>}
+                        <span className="text-sm font-mono font-semibold group-hover:text-blue transition-colors">{st.symbol}</span>
+                        {st.fno    && <span className="text-[10px] px-1 rounded bg-blue/10 text-blue leading-tight">F&O</span>}
+                        {st.nifty50 && <span className="text-[10px] px-1 rounded bg-amber/10 text-amber leading-tight">N50</span>}
                       </div>
-                      <div className="text-[10px] text-dim truncate">{st.name}</div>
+                      <div className="text-[12px] text-dim truncate">{st.name}</div>
                     </div>
                     <div className="text-right ml-2 shrink-0">
                       {p && p.ltp > 0 ? (
                         <>
-                          <div className="text-xs font-mono">₹{price(p.ltp)}</div>
-                          <div className={clsx('text-[10px] font-mono', up ? 'text-green' : 'text-red')}>
+                          <div className="text-sm font-mono">₹{price(p.ltp)}</div>
+                          <div className={clsx('text-[12px] font-mono', up ? 'text-green' : 'text-red')}>
                             {pct(p.change_pct)}
                           </div>
                         </>
                       ) : (
-                        <span className="text-xs text-dim">—</span>
+                        <span className="text-sm text-dim">—</span>
                       )}
                     </div>
                   </button>
@@ -254,9 +254,9 @@ function SignalsFeed() {
       <div className="flex-1 divide-y divide-border overflow-y-auto min-h-0">
         {signals.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-dim">
-            <span className="text-2xl opacity-20">◎</span>
-            <span className="text-xs text-center px-4">No signals above threshold</span>
-            <span className="text-[10px] text-dim">Scan runs every 60s</span>
+            <span className="text-3xl opacity-20">◎</span>
+            <span className="text-sm text-center px-4">No signals above threshold</span>
+            <span className="text-[12px] text-dim">Scan runs every 60s</span>
           </div>
         ) : (
           signals.map((s, i) => {
@@ -267,15 +267,15 @@ function SignalsFeed() {
                 {/* Row 1: badge + symbol + price */}
                 <div className="flex items-center gap-2.5 mb-1.5">
                   <span className={clsx(
-                    'text-[10px] font-bold px-2 py-0.5 rounded shrink-0',
+                    'text-[12px] font-bold px-2 py-0.5 rounded shrink-0',
                     isBuy ? 'bg-green/15 text-green' : 'bg-red/15 text-red',
                   )}>{s.signal}</span>
-                  <span className="text-sm font-mono font-bold flex-1">{s.symbol}</span>
-                  <span className="text-sm font-mono font-medium">₹{price(s.price)}</span>
+                  <span className="text-base font-mono font-bold flex-1">{s.symbol}</span>
+                  <span className="text-base font-mono font-medium">₹{price(s.price)}</span>
                 </div>
                 {/* Row 2: strategy + confidence bar */}
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-dim truncate flex-1">{s.strategy}</span>
+                  <span className="text-[12px] text-dim truncate flex-1">{s.strategy}</span>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <div className="w-16 h-1.5 rounded-full bg-border overflow-hidden">
                       <div
@@ -283,13 +283,13 @@ function SignalsFeed() {
                         style={{ width: `${s.confidence * 100}%`, opacity: 0.7 }}
                       />
                     </div>
-                    <span className="text-[10px] font-mono text-dim w-8 text-right">{confPct}%</span>
+                    <span className="text-[12px] font-mono text-dim w-8 text-right">{confPct}%</span>
                   </div>
                 </div>
                 {/* Row 3: SL / TP */}
                 <div className="flex items-center gap-3 mt-1">
-                  <span className="text-[10px] text-dim">SL <span className="text-red font-mono">₹{price(s.stop_loss)}</span></span>
-                  <span className="text-[10px] text-dim">TP <span className="text-green font-mono">₹{price(s.take_profit)}</span></span>
+                  <span className="text-[12px] text-dim">SL <span className="text-red font-mono">₹{price(s.stop_loss)}</span></span>
+                  <span className="text-[12px] text-dim">TP <span className="text-green font-mono">₹{price(s.take_profit)}</span></span>
                 </div>
               </div>
             )
@@ -326,7 +326,7 @@ export default function Dashboard() {
   const eqColor   = totalReturn >= 0 ? '#10b981' : '#f43f5e'
 
   // Tooltip styles
-  const ttStyle = { background: '#161b27', border: '1px solid #252d3d', borderRadius: 8, fontSize: 11 }
+  const ttStyle = { background: '#161b27', border: '1px solid #252d3d', borderRadius: 8, fontSize: 13 }
 
   return (
     <div className="flex flex-col h-full p-4 gap-3 overflow-hidden">
@@ -395,9 +395,9 @@ export default function Dashboard() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid stroke="#252d3d" strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="ts" tick={{ fill: '#8892a4', fontSize: 9 }} tickLine={false} axisLine={false}
+                    <XAxis dataKey="ts" tick={{ fill: '#8892a4', fontSize: 11 }} tickLine={false} axisLine={false}
                            interval="preserveStartEnd" />
-                    <YAxis tick={{ fill: '#8892a4', fontSize: 9 }} tickLine={false} axisLine={false}
+                    <YAxis tick={{ fill: '#8892a4', fontSize: 11 }} tickLine={false} axisLine={false}
                            width={48} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
                     <ReferenceLine y={capital} stroke="#4b5563" strokeDasharray="4 2" />
                     <Tooltip formatter={(v: any) => [inr(Number(v)), 'Equity']} contentStyle={ttStyle}
@@ -408,7 +408,7 @@ export default function Dashboard() {
                 </ResponsiveContainer>
               </div>
             ) : (
-              <div className="flex items-center justify-center h-44 text-xs text-dim">
+              <div className="flex items-center justify-center h-44 text-sm text-dim">
                 No equity data — run <code className="mx-1 text-blue">python scripts/seed_dashboard_data.py</code>
               </div>
             )}

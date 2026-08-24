@@ -10,13 +10,13 @@ import clsx from 'clsx'
 
 const inr     = (n: number) => `₹${Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
 const pnlFmt  = (n: number) => `${n >= 0 ? '+' : '-'}${inr(n)}`
-const ttStyle = { background: '#161b27', border: '1px solid #252d3d', borderRadius: 8, fontSize: 11 }
+const ttStyle = { background: '#161b27', border: '1px solid #252d3d', borderRadius: 8, fontSize: 13 }
 
 function Stat({ label, value, up }: { label: string; value: string; up?: boolean }) {
   return (
     <div className="bg-surface border border-border rounded-xl px-4 py-3">
-      <div className="text-[9px] text-dim uppercase tracking-wide mb-1">{label}</div>
-      <div className={clsx('text-sm font-mono font-semibold',
+      <div className="text-[11px] text-dim uppercase tracking-wide mb-1">{label}</div>
+      <div className={clsx('text-base font-mono font-semibold',
         up === true ? 'text-green' : up === false ? 'text-red' : 'text-primary')}>
         {value}
       </div>
@@ -66,7 +66,7 @@ function TradesTab({ source }: { source: 'paper' | 'live' }) {
 
   return (
     <div className="flex flex-col flex-1 gap-3 min-h-0 overflow-hidden">
-      {isLoading && <span className="text-xs text-dim animate-pulse shrink-0">Loading…</span>}
+      {isLoading && <span className="text-sm text-dim animate-pulse shrink-0">Loading…</span>}
 
       {/* Stats */}
       {stats && stats.total > 0 && (
@@ -87,13 +87,13 @@ function TradesTab({ source }: { source: 'paper' | 'live' }) {
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 shrink-0">
           {stratData.length > 0 && (
             <div className="bg-surface border border-border rounded-xl p-4">
-              <div className="text-xs font-medium mb-3 text-dim uppercase tracking-wide">P&L by Strategy</div>
+              <div className="text-sm font-medium mb-3 text-dim uppercase tracking-wide">P&L by Strategy</div>
               <ResponsiveContainer width="100%" height={Math.min(180, Math.max(120, stratData.length * 28))}>
                 <BarChart data={stratData} layout="vertical" margin={{ left: 110, right: 16, top: 0, bottom: 0 }}>
                   <CartesianGrid stroke="#252d3d" strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tick={{ fill: '#8892a4', fontSize: 9 }} tickLine={false} axisLine={false}
+                  <XAxis type="number" tick={{ fill: '#8892a4', fontSize: 11 }} tickLine={false} axisLine={false}
                          tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-                  <YAxis type="category" dataKey="name" tick={{ fill: '#e2e8f0', fontSize: 9 }}
+                  <YAxis type="category" dataKey="name" tick={{ fill: '#e2e8f0', fontSize: 11 }}
                          tickLine={false} axisLine={false} width={110} />
                   <ReferenceLine x={0} stroke="#4b5563" />
                   <Tooltip formatter={(v: any) => [pnlFmt(Number(v)), 'P&L']} contentStyle={ttStyle} />
@@ -109,13 +109,13 @@ function TradesTab({ source }: { source: 'paper' | 'live' }) {
 
           {histData.length > 0 && (
             <div className="bg-surface border border-border rounded-xl p-4">
-              <div className="text-xs font-medium mb-3 text-dim uppercase tracking-wide">P&L Distribution</div>
+              <div className="text-sm font-medium mb-3 text-dim uppercase tracking-wide">P&L Distribution</div>
               <ResponsiveContainer width="100%" height={Math.min(180, Math.max(120, stratData.length * 28))}>
                 <BarChart data={histData} margin={{ top: 0, right: 8, bottom: 0, left: 0 }}>
                   <CartesianGrid stroke="#252d3d" strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="bin" tick={{ fill: '#8892a4', fontSize: 9 }} tickLine={false} axisLine={false}
+                  <XAxis dataKey="bin" tick={{ fill: '#8892a4', fontSize: 11 }} tickLine={false} axisLine={false}
                          tickFormatter={v => `${(Number(v) / 1000).toFixed(0)}k`} />
-                  <YAxis tick={{ fill: '#8892a4', fontSize: 9 }} tickLine={false} axisLine={false} width={28} />
+                  <YAxis tick={{ fill: '#8892a4', fontSize: 11 }} tickLine={false} axisLine={false} width={28} />
                   <ReferenceLine x={0} stroke="#4b5563" />
                   <Tooltip formatter={(v, n, p) => [v, 'Count']}
                            labelFormatter={v => `₹${Number(v).toFixed(0)}`} contentStyle={ttStyle} />
@@ -134,17 +134,17 @@ function TradesTab({ source }: { source: 'paper' | 'live' }) {
       {/* Trade table */}
       <div className="flex-1 bg-surface border border-border rounded-xl flex flex-col min-h-0 overflow-hidden">
         <div className="px-4 py-3 border-b border-border shrink-0 flex items-center justify-between">
-          <span className="text-sm font-medium">
+          <span className="text-base font-medium">
             {trades.length} {source} trade{trades.length !== 1 ? 's' : ''}
           </span>
         </div>
         {trades.length > 0 ? (
           <div className="flex-1 overflow-auto min-h-0">
-            <table className="w-full text-xs font-mono min-w-[640px]">
+            <table className="w-full text-sm font-mono min-w-[640px]">
               <thead className="sticky top-0 bg-surface z-10">
                 <tr className="border-b border-border">
                   {['Date', 'Symbol', 'Side', 'Strategy', 'Entry ₹', 'Exit ₹', 'Qty', 'P&L ₹', 'Reason'].map(h => (
-                    <th key={h} className="text-left px-4 py-2.5 text-[9px] uppercase tracking-wide text-dim font-medium whitespace-nowrap">
+                    <th key={h} className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-dim font-medium whitespace-nowrap">
                       {h}
                     </th>
                   ))}
@@ -156,7 +156,7 @@ function TradesTab({ source }: { source: 'paper' | 'live' }) {
                     <td className="px-4 py-2 text-dim whitespace-nowrap">{t.ts?.slice(0, 10) ?? '—'}</td>
                     <td className="px-4 py-2 font-semibold">{t.symbol}</td>
                     <td className="px-4 py-2">
-                      <span className={clsx('px-1.5 py-0.5 rounded text-[9px] font-bold',
+                      <span className={clsx('px-1.5 py-0.5 rounded text-[11px] font-bold',
                         t.direction === 1 ? 'bg-green/15 text-green' : 'bg-red/15 text-red')}>
                         {t.direction === 1 ? 'LONG' : 'SHORT'}
                       </span>
@@ -176,9 +176,9 @@ function TradesTab({ source }: { source: 'paper' | 'live' }) {
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center flex-1 gap-2 text-dim">
-            <span className="text-2xl opacity-30">≡</span>
-            <span className="text-sm">No {source} trades yet</span>
-            {source === 'paper' && <code className="text-xs text-blue mt-1">python scripts/paper_trade.py</code>}
+            <span className="text-3xl opacity-30">≡</span>
+            <span className="text-base">No {source} trades yet</span>
+            {source === 'paper' && <code className="text-sm text-blue mt-1">python scripts/paper_trade.py</code>}
           </div>
         )}
       </div>
@@ -194,11 +194,11 @@ export default function Trades() {
   return (
     <div className="flex flex-col h-full p-4 gap-3 overflow-hidden">
       <div className="flex items-center gap-3 shrink-0">
-        <h1 className="text-base font-semibold tracking-wide">Trade History</h1>
+        <h1 className="text-lg font-semibold tracking-wide">Trade History</h1>
         <div className="flex rounded-lg border border-border overflow-hidden">
           {(['paper', 'live'] as const).map(s => (
             <button key={s} onClick={() => setSource(s)}
-              className={clsx('px-4 py-2 text-xs capitalize transition-colors',
+              className={clsx('px-4 py-2 text-sm capitalize transition-colors',
                 source === s ? 'bg-blue text-white font-medium' : 'text-dim hover:text-primary')}>
               {s}
             </button>

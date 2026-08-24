@@ -23,39 +23,39 @@ function PositionRow({ p }: { p: PositionsResponse['positions'][0] }) {
       <div className="space-y-2 min-w-0">
         {/* Header row */}
         <div className="flex items-center gap-2.5">
-          <span className="font-mono font-semibold text-sm">{p.symbol}</span>
+          <span className="font-mono font-semibold text-base">{p.symbol}</span>
           <span className={clsx(
-            'text-[10px] font-bold px-1.5 py-0.5 rounded',
+            'text-[12px] font-bold px-1.5 py-0.5 rounded',
             isLong ? 'bg-green/15 text-green' : 'bg-red/15 text-red',
           )}>
             {isLong ? '▲ LONG' : '▼ SHORT'}
           </span>
-          <span className="text-[10px] bg-blue/10 text-blue px-1.5 py-0.5 rounded font-mono">{p.strategy}</span>
-          <span className="text-[10px] text-dim ml-auto">{p.entry_time}</span>
+          <span className="text-[12px] bg-blue/10 text-blue px-1.5 py-0.5 rounded font-mono">{p.strategy}</span>
+          <span className="text-[12px] text-dim ml-auto">{p.entry_time}</span>
         </div>
 
         {/* Metrics grid */}
-        <div className="grid grid-cols-5 gap-2 text-xs font-mono">
+        <div className="grid grid-cols-5 gap-2 text-sm font-mono">
           <div>
-            <div className="text-dim text-[9px] uppercase mb-0.5">Qty</div>
+            <div className="text-dim text-[11px] uppercase mb-0.5">Qty</div>
             <div>{Math.round(p.size)}</div>
           </div>
           <div>
-            <div className="text-dim text-[9px] uppercase mb-0.5">Entry</div>
+            <div className="text-dim text-[11px] uppercase mb-0.5">Entry</div>
             <div>₹{pr(p.entry_price)}</div>
           </div>
           <div>
-            <div className="text-dim text-[9px] uppercase mb-0.5">CMP</div>
+            <div className="text-dim text-[11px] uppercase mb-0.5">CMP</div>
             <div className={p.current_price >= p.entry_price ? 'text-green' : 'text-red'}>
               ₹{pr(p.current_price)}
             </div>
           </div>
           <div>
-            <div className="text-dim text-[9px] uppercase mb-0.5">Stop</div>
+            <div className="text-dim text-[11px] uppercase mb-0.5">Stop</div>
             <div className="text-red">₹{pr(p.stop_loss)}</div>
           </div>
           <div>
-            <div className="text-dim text-[9px] uppercase mb-0.5">Target</div>
+            <div className="text-dim text-[11px] uppercase mb-0.5">Target</div>
             <div className="text-green">₹{pr(p.take_profit)}</div>
           </div>
         </div>
@@ -68,7 +68,7 @@ function PositionRow({ p }: { p: PositionsResponse['positions'][0] }) {
               style={{ width: `${progress * 100}%`, opacity: 0.7 }}
             />
           </div>
-          <div className="flex justify-between text-[9px] text-dim mt-0.5 font-mono">
+          <div className="flex justify-between text-[11px] text-dim mt-0.5 font-mono">
             <span>SL {pr(p.stop_loss)}</span>
             <span>TP {pr(p.take_profit)}</span>
           </div>
@@ -77,10 +77,10 @@ function PositionRow({ p }: { p: PositionsResponse['positions'][0] }) {
 
       {/* Right: P&L */}
       <div className="flex flex-col items-end justify-center shrink-0">
-        <div className={clsx('text-lg font-mono font-bold', inProfit ? 'text-green' : 'text-red')}>
+        <div className={clsx('text-xl font-mono font-bold', inProfit ? 'text-green' : 'text-red')}>
           {pnlFmt(p.unrealised_pnl)}
         </div>
-        <div className={clsx('text-xs font-mono', inProfit ? 'text-green/70' : 'text-red/70')}>
+        <div className={clsx('text-sm font-mono', inProfit ? 'text-green/70' : 'text-red/70')}>
           {pct(pnlPct)}
         </div>
       </div>
@@ -105,11 +105,11 @@ export default function Positions() {
 
       {/* Page header */}
       <div className="flex items-center justify-between shrink-0">
-        <h1 className="text-base font-semibold tracking-wide">Positions</h1>
+        <h1 className="text-lg font-semibold tracking-wide">Positions</h1>
         <div className="flex items-center gap-3">
-          {isLoading && <span className="text-xs text-dim animate-pulse">Refreshing…</span>}
+          {isLoading && <span className="text-sm text-dim animate-pulse">Refreshing…</span>}
           {data && (
-            <span className="text-xs text-dim font-mono">
+            <span className="text-sm text-dim font-mono">
               {new Date(data.saved_at * 1000).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
@@ -119,8 +119,8 @@ export default function Positions() {
       {/* Exposure bar */}
       <div className="bg-surface border border-border rounded-xl px-4 py-3 shrink-0">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium">Portfolio Exposure</span>
-          <div className="flex items-center gap-4 text-xs font-mono">
+          <span className="text-sm font-medium">Portfolio Exposure</span>
+          <div className="flex items-center gap-4 text-sm font-mono">
             <span><span className="text-dim">Deployed </span>
               <span className="text-amber">{deployed.toFixed(1)}%</span></span>
             <span><span className="text-dim">Cash </span>
@@ -138,7 +138,7 @@ export default function Positions() {
             style={{ width: `${Math.min(100, deployed)}%` }}
           />
         </div>
-        <div className="flex justify-between text-[9px] text-dim mt-1 font-mono">
+        <div className="flex justify-between text-[11px] text-dim mt-1 font-mono">
           <span>0%</span>
           <span>{positions.length} open position{positions.length !== 1 ? 's' : ''}</span>
           <span>100%</span>
@@ -151,9 +151,9 @@ export default function Positions() {
         {/* Positions */}
         <div className="bg-surface border border-border rounded-xl flex flex-col min-h-0 overflow-hidden">
           <div className="px-4 py-3 border-b border-border flex items-center justify-between shrink-0">
-            <span className="text-sm font-medium">Open Positions</span>
+            <span className="text-base font-medium">Open Positions</span>
             {positions.length > 0 && (
-              <span className={clsx('text-sm font-mono font-medium', totalUnreal >= 0 ? 'text-green' : 'text-red')}>
+              <span className={clsx('text-base font-mono font-medium', totalUnreal >= 0 ? 'text-green' : 'text-red')}>
                 {pnlFmt(totalUnreal)} unrealised
               </span>
             )}
@@ -163,10 +163,10 @@ export default function Positions() {
               positions.map((p, i) => <PositionRow key={i} p={p} />)
             ) : (
               <div className="flex flex-col items-center justify-center h-full gap-2 text-dim">
-                <span className="text-2xl opacity-30">◎</span>
-                <span className="text-sm">{data ? 'No open positions' : 'Bot not running'}</span>
+                <span className="text-3xl opacity-30">◎</span>
+                <span className="text-base">{data ? 'No open positions' : 'Bot not running'}</span>
                 {!data && (
-                  <code className="text-xs text-blue mt-1">python scripts/paper_trade.py</code>
+                  <code className="text-sm text-blue mt-1">python scripts/paper_trade.py</code>
                 )}
               </div>
             )}
@@ -176,8 +176,8 @@ export default function Positions() {
         {/* Signal log */}
         <div className="bg-surface border border-border rounded-xl flex flex-col min-h-0 overflow-hidden">
           <div className="px-4 py-3 border-b border-border flex items-center justify-between shrink-0">
-            <span className="text-sm font-medium">Signal Log</span>
-            <span className="text-xs text-dim">{Math.min(signalLog.length, 100)} events</span>
+            <span className="text-base font-medium">Signal Log</span>
+            <span className="text-sm text-dim">{Math.min(signalLog.length, 100)} events</span>
           </div>
           <div className="flex-1 overflow-y-auto min-h-0 divide-y divide-border/50">
             {signalLog.length > 0 ? (
@@ -187,19 +187,19 @@ export default function Positions() {
                 const isClose = s.type === 'CLOSE'
                 return (
                   <div key={i} className="px-4 py-2 flex items-center gap-2.5 hover:bg-white/3 transition-colors">
-                    <span className="text-[9px] text-dim font-mono w-14 shrink-0">{s.time}</span>
+                    <span className="text-[11px] text-dim font-mono w-14 shrink-0">{s.time}</span>
                     <span className={clsx(
-                      'text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 w-10 text-center',
+                      'text-[11px] font-bold px-1.5 py-0.5 rounded shrink-0 w-10 text-center',
                       isBuy   ? 'bg-green/15 text-green'  :
                       isSell  ? 'bg-red/15 text-red'    :
                       isClose ? 'bg-amber/15 text-amber' : 'bg-border text-dim',
                     )}>{s.type}</span>
-                    <span className="text-xs font-mono font-medium flex-1 min-w-0 truncate">{s.symbol}</span>
+                    <span className="text-sm font-mono font-medium flex-1 min-w-0 truncate">{s.symbol}</span>
                     {s.price != null && (
-                      <span className="text-[10px] text-dim font-mono shrink-0">₹{s.price.toFixed(0)}</span>
+                      <span className="text-[12px] text-dim font-mono shrink-0">₹{s.price.toFixed(0)}</span>
                     )}
                     {s.pnl != null && (
-                      <span className={clsx('text-xs font-mono font-medium shrink-0', s.pnl >= 0 ? 'text-green' : 'text-red')}>
+                      <span className={clsx('text-sm font-mono font-medium shrink-0', s.pnl >= 0 ? 'text-green' : 'text-red')}>
                         {pnlFmt(s.pnl)}
                       </span>
                     )}
@@ -207,7 +207,7 @@ export default function Positions() {
                 )
               })
             ) : (
-              <div className="flex items-center justify-center h-full text-xs text-dim">
+              <div className="flex items-center justify-center h-full text-sm text-dim">
                 No signals logged yet
               </div>
             )}

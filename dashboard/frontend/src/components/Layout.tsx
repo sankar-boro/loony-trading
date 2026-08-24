@@ -48,10 +48,10 @@ export default function Layout() {
         {/* Logo */}
         <div className="px-4 pt-5 pb-4 border-b border-border">
           <div className="flex items-center gap-2.5">
-            <span className="text-blue text-xl font-bold leading-none">▲</span>
+            <span className="text-blue text-2xl font-bold leading-none">▲</span>
             <div>
-              <div className="text-sm font-semibold text-primary tracking-wide">LOONY</div>
-              <div className="text-[10px] text-dim font-mono tracking-widest">TRADING</div>
+              <div className="text-base font-semibold text-primary tracking-wide">LOONY</div>
+              <div className="text-[12px] text-dim font-mono tracking-widest">TRADING</div>
             </div>
           </div>
         </div>
@@ -64,13 +64,13 @@ export default function Layout() {
               to={to}
               end={to === '/'}
               className={({ isActive }) => clsx(
-                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150',
+                'flex items-center gap-3 px-3 py-2 rounded-lg text-base transition-all duration-150',
                 isActive
                   ? 'bg-blue/15 text-blue font-medium border border-blue/20'
                   : 'text-dim hover:text-primary hover:bg-white/5 border border-transparent',
               )}
             >
-              <span className="font-mono text-xs w-4 text-center opacity-60">{icon}</span>
+              <span className="font-mono text-sm w-4 text-center opacity-60">{icon}</span>
               <span>{label}</span>
             </NavLink>
           ))}
@@ -81,9 +81,9 @@ export default function Layout() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Dot on={marketOpen} pulse={marketOpen} />
-              <span className="text-xs text-dim">Market</span>
+              <span className="text-sm text-dim">Market</span>
             </div>
-            <span className="text-xs font-mono text-dim truncate max-w-[80px] text-right">
+            <span className="text-sm font-mono text-dim truncate max-w-[80px] text-right">
               {marketOpen
                 ? `${status?.mins_to_close}m left`
                 : status?.next_market_open?.split('•')[0]?.trim() ?? '—'}
@@ -93,9 +93,9 @@ export default function Layout() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Dot on={botRunning} pulse={botRunning} />
-              <span className="text-xs text-dim">Bot</span>
+              <span className="text-sm text-dim">Bot</span>
             </div>
-            <span className={clsx('text-xs font-mono', botRunning ? 'text-green' : 'text-dim')}>
+            <span className={clsx('text-sm font-mono', botRunning ? 'text-green' : 'text-dim')}>
               {botRunning ? 'running' : 'stopped'}
             </span>
           </div>
@@ -103,15 +103,15 @@ export default function Layout() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Dot on={tokenOk} />
-              <span className="text-xs text-dim">Token</span>
+              <span className="text-sm text-dim">Token</span>
             </div>
-            <span className={clsx('text-xs font-mono', tokenOk ? 'text-dim' : 'text-red')}>
+            <span className={clsx('text-sm font-mono', tokenOk ? 'text-dim' : 'text-red')}>
               {tokenOk ? `${status?.token_age_h?.toFixed(0)}h old` : 'missing'}
             </span>
           </div>
 
           <div className="pt-1 border-t border-border/50">
-            <span className="text-[10px] text-dim/50 font-mono">v1.1.0 · NSE</span>
+            <span className="text-[12px] text-dim/50 font-mono">v1.1.0 · NSE</span>
           </div>
         </div>
       </aside>
@@ -120,9 +120,9 @@ export default function Layout() {
       <main className="flex-1 min-w-0 h-full flex flex-col overflow-hidden bg-bg">
         {demoMode && (
           <div className="shrink-0 bg-amber/15 border-b border-amber/30 px-4 py-1.5 flex items-center gap-2">
-            <span className="text-amber text-xs">⚠</span>
-            <span className="text-[11px] text-amber font-medium tracking-wide">DEMO DATA</span>
-            <span className="text-[11px] text-dim">
+            <span className="text-amber text-sm">⚠</span>
+            <span className="text-[13px] text-amber font-medium tracking-wide">DEMO DATA</span>
+            <span className="text-[13px] text-dim">
               No live Upstox connection — prices, signals, and history shown are synthetic, not real market data.
             </span>
           </div>

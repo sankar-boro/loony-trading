@@ -96,8 +96,8 @@ function WatchlistPanel({
     <div className="w-52 shrink-0 flex flex-col bg-surface border-l border-border overflow-hidden">
       {/* Header */}
       <div className="px-3 py-2 border-b border-border flex items-center justify-between shrink-0">
-        <span className="text-xs font-semibold tracking-wide">MyStocks</span>
-        <span className="text-[10px] text-dim">{totalCount}</span>
+        <span className="text-sm font-semibold tracking-wide">MyStocks</span>
+        <span className="text-[12px] text-dim">{totalCount}</span>
       </div>
 
       {/* Search */}
@@ -106,14 +106,14 @@ function WatchlistPanel({
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search…"
-          className="w-full text-[11px] bg-bg border border-border/50 rounded px-2 py-1 focus:outline-none focus:border-blue placeholder:text-dim"
+          className="w-full text-[13px] bg-bg border border-border/50 rounded px-2 py-1 focus:outline-none focus:border-blue placeholder:text-dim"
         />
       </div>
 
       {/* Column headers */}
       <div className="grid grid-cols-[1fr_60px_50px] px-3 py-1 border-b border-border/50 shrink-0">
         {['Symbol', 'LTP', 'Chg%'].map(h => (
-          <span key={h} className="text-[9px] text-dim uppercase tracking-wide text-right first:text-left">{h}</span>
+          <span key={h} className="text-[11px] text-dim uppercase tracking-wide text-right first:text-left">{h}</span>
         ))}
       </div>
 
@@ -123,7 +123,7 @@ function WatchlistPanel({
         {/* Indices */}
         {filteredIndices.length > 0 && (
           <>
-            <div className="px-3 py-1 text-[9px] text-dim uppercase tracking-wider bg-bg/40">Indices</div>
+            <div className="px-3 py-1 text-[11px] text-dim uppercase tracking-wider bg-bg/40">Indices</div>
             {filteredIndices.map(sym => <StockRow key={sym} sym={sym} name={sym} active={active} prices={prices} onSelect={onSelect} />)}
           </>
         )}
@@ -136,7 +136,7 @@ function WatchlistPanel({
           if (!rows.length) return null
           return (
             <div key={sec.sector}>
-              <div className="px-3 py-1 flex items-center gap-1.5 text-[9px] text-dim uppercase tracking-wider bg-bg/40">
+              <div className="px-3 py-1 flex items-center gap-1.5 text-[11px] text-dim uppercase tracking-wider bg-bg/40">
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: sec.color }} />
                 {sec.sector}
               </div>
@@ -148,7 +148,7 @@ function WatchlistPanel({
         })}
 
         {filteredIndices.length === 0 && filteredStocks.length === 0 && (
-          <div className="px-3 py-6 text-xs text-dim text-center">No matches</div>
+          <div className="px-3 py-6 text-sm text-dim text-center">No matches</div>
         )}
       </div>
     </div>
@@ -174,18 +174,18 @@ function StockRow({ sym, name, active, prices, onSelect }: {
       )}
     >
       <div className="min-w-0">
-        <div className={clsx('text-xs font-mono font-medium truncate', isActive ? 'text-blue' : 'text-primary')}>
+        <div className={clsx('text-sm font-mono font-medium truncate', isActive ? 'text-blue' : 'text-primary')}>
           {sym}
         </div>
         {name !== sym && (
-          <div className="text-[9px] text-dim truncate">{name}</div>
+          <div className="text-[11px] text-dim truncate">{name}</div>
         )}
       </div>
-      <span className="text-[11px] font-mono text-right tabular-nums">
+      <span className="text-[13px] font-mono text-right tabular-nums">
         {ltp > 0 ? pr(ltp) : '—'}
       </span>
       <span className={clsx(
-        'text-[11px] font-mono text-right tabular-nums',
+        'text-[13px] font-mono text-right tabular-nums',
         ltp > 0 ? (up ? 'text-green' : 'text-red') : 'text-dim',
       )}>
         {ltp > 0 ? `${chgPct >= 0 ? '+' : ''}${chgPct.toFixed(2)}%` : '—'}
@@ -208,38 +208,38 @@ function WhyPanel({ symbol }: { symbol: string }) {
         onClick={() => setOpen(o => !o)}
         className="px-3 py-2 border-b border-border flex items-center justify-between shrink-0 hover:bg-white/3 transition-colors"
       >
-        <span className="text-xs font-semibold tracking-wide">Why is {symbol} moving?</span>
-        <span className="text-[10px] text-dim">{open ? '▲' : '▼'}</span>
+        <span className="text-sm font-semibold tracking-wide">Why is {symbol} moving?</span>
+        <span className="text-[12px] text-dim">{open ? '▲' : '▼'}</span>
       </button>
 
       {open && (
         <div className="flex-1 overflow-y-auto min-h-0 p-3 flex flex-col gap-3">
-          {isLoading && <span className="text-xs text-dim animate-pulse">Loading…</span>}
+          {isLoading && <span className="text-sm text-dim animate-pulse">Loading…</span>}
 
           {data && (
             <>
               {data.signal && (
                 <div className="flex items-center gap-2">
-                  <span className={clsx('px-1.5 py-0.5 rounded text-[9px] font-bold uppercase',
+                  <span className={clsx('px-1.5 py-0.5 rounded text-[11px] font-bold uppercase',
                     data.signal.direction === 'bullish' ? 'bg-green/15 text-green'
                       : data.signal.direction === 'bearish' ? 'bg-red/15 text-red'
                       : 'bg-white/5 text-dim')}>
                     {data.signal.direction}
                   </span>
-                  <span className="text-xs font-mono text-dim">
+                  <span className="text-sm font-mono text-dim">
                     score {data.signal.score} · {data.signal.confidence.toFixed(0)}% confidence
                   </span>
                 </div>
               )}
 
-              <p className="text-xs text-primary leading-relaxed">{data.conclusion}</p>
+              <p className="text-sm text-primary leading-relaxed">{data.conclusion}</p>
 
               {data.drivers.length > 0 && (
                 <div>
-                  <div className="text-[9px] text-dim uppercase tracking-wide mb-1.5">Drivers</div>
+                  <div className="text-[11px] text-dim uppercase tracking-wide mb-1.5">Drivers</div>
                   <div className="flex flex-col gap-1">
                     {data.drivers.slice(0, 4).map(d => (
-                      <div key={d.factor} className="flex items-center justify-between text-[11px]">
+                      <div key={d.factor} className="flex items-center justify-between text-[13px]">
                         <span className="text-dim">{d.label}</span>
                         <span className="font-mono">+{d.contribution}</span>
                       </div>
@@ -250,10 +250,10 @@ function WhyPanel({ symbol }: { symbol: string }) {
 
               {data.historical_analogue && (
                 <div>
-                  <div className="text-[9px] text-dim uppercase tracking-wide mb-1.5">
+                  <div className="text-[11px] text-dim uppercase tracking-wide mb-1.5">
                     Historical Analogue
                   </div>
-                  <div className="text-[11px] text-dim leading-relaxed">
+                  <div className="text-[13px] text-dim leading-relaxed">
                     {data.historical_analogue.sample_count} similar {data.historical_analogue.event_type} events:{' '}
                     <span className="text-primary font-mono">{data.historical_analogue.win_rate_pct}%</span> closed
                     higher next day (median {data.historical_analogue.median_return_pct}%)
@@ -263,15 +263,15 @@ function WhyPanel({ symbol }: { symbol: string }) {
 
               {data.recent_news.length > 0 && (
                 <div>
-                  <div className="text-[9px] text-dim uppercase tracking-wide mb-1.5">Recent News</div>
+                  <div className="text-[11px] text-dim uppercase tracking-wide mb-1.5">Recent News</div>
                   <div className="flex flex-col gap-2">
                     {data.recent_news.slice(0, 5).map((n, i) => (
                       <a
                         key={i} href={n.url} target="_blank" rel="noreferrer"
-                        className="block text-[11px] text-primary hover:text-blue transition-colors leading-snug"
+                        className="block text-[13px] text-primary hover:text-blue transition-colors leading-snug"
                       >
                         {n.headline}
-                        <span className="block text-[9px] text-dim font-mono mt-0.5">{n.source}</span>
+                        <span className="block text-[11px] text-dim font-mono mt-0.5">{n.source}</span>
                       </a>
                     ))}
                   </div>
@@ -279,7 +279,7 @@ function WhyPanel({ symbol }: { symbol: string }) {
               )}
 
               {!data.signal && data.recent_news.length === 0 && (
-                <span className="text-xs text-dim">No scored signal or recent news for {symbol}.</span>
+                <span className="text-sm text-dim">No scored signal or recent news for {symbol}.</span>
               )}
             </>
           )}
@@ -335,7 +335,7 @@ export default function Chart() {
       layout: {
         background: { type: ColorType.Solid, color: '#0f1117' },
         textColor: '#8892a4',
-        fontSize: 11,
+        fontSize: 13,
       },
       grid: {
         vertLines: { color: '#1a2030' },
@@ -430,7 +430,7 @@ export default function Chart() {
             title={tool.title}
             onClick={() => setActiveTool(i)}
             className={clsx(
-              'w-8 h-8 flex items-center justify-center rounded text-sm transition-colors',
+              'w-8 h-8 flex items-center justify-center rounded text-base transition-colors',
               activeTool === i
                 ? 'bg-blue/20 text-blue'
                 : 'text-dim hover:bg-white/5 hover:text-primary',
@@ -445,7 +445,7 @@ export default function Chart() {
         {/* Bottom toolbar icons */}
         {['⊙', '✕'].map((icon, i) => (
           <button key={i}
-            className="w-8 h-8 flex items-center justify-center rounded text-dim hover:bg-white/5 hover:text-primary transition-colors text-sm">
+            className="w-8 h-8 flex items-center justify-center rounded text-dim hover:bg-white/5 hover:text-primary transition-colors text-base">
             {icon}
           </button>
         ))}
@@ -462,7 +462,7 @@ export default function Chart() {
             <select
               value={symbol}
               onChange={e => setSymbol(e.target.value)}
-              className="bg-transparent text-sm font-semibold focus:outline-none cursor-pointer max-w-[140px]"
+              className="bg-transparent text-base font-semibold focus:outline-none cursor-pointer max-w-[140px]"
             >
               <optgroup label="Indices">
                 {['NIFTY50', 'BANKNIFTY', 'NIFTYIT', 'FINNIFTY'].map(s => (
@@ -477,7 +477,7 @@ export default function Chart() {
                 </optgroup>
               ))}
             </select>
-            <span className="text-[10px] text-dim whitespace-nowrap">NSE</span>
+            <span className="text-[12px] text-dim whitespace-nowrap">NSE</span>
           </div>
 
           {/* Interval buttons */}
@@ -487,7 +487,7 @@ export default function Chart() {
                 key={iv.value + iv.days}
                 onClick={() => setInterval(iv)}
                 className={clsx(
-                  'px-2.5 h-7 text-xs rounded transition-colors',
+                  'px-2.5 h-7 text-sm rounded transition-colors',
                   interval.value === iv.value && interval.label === iv.label
                     ? 'bg-blue text-white'
                     : 'text-dim hover:text-primary hover:bg-white/5',
@@ -500,8 +500,8 @@ export default function Chart() {
 
           {/* OHLCV strip */}
           {last ? (
-            <div className="flex items-center gap-3 px-3 text-xs font-mono overflow-x-auto flex-1">
-              <span className={clsx('font-bold text-sm', isUp ? 'text-green' : 'text-red')}>
+            <div className="flex items-center gap-3 px-3 text-sm font-mono overflow-x-auto flex-1">
+              <span className={clsx('font-bold text-base', isUp ? 'text-green' : 'text-red')}>
                 {pr(last.close)}
               </span>
               <span className={isUp ? 'text-green' : 'text-red'}>
@@ -515,8 +515,8 @@ export default function Chart() {
             </div>
           ) : (
             <div className="flex-1 flex items-center px-3">
-              {loading && <span className="text-xs text-dim animate-pulse">Loading…</span>}
-              {error && <span className="text-xs text-red">{error}</span>}
+              {loading && <span className="text-sm text-dim animate-pulse">Loading…</span>}
+              {error && <span className="text-sm text-red">{error}</span>}
             </div>
           )}
         </div>
@@ -524,7 +524,7 @@ export default function Chart() {
         {/* Chart area */}
         <div className="flex-1 min-h-0 relative overflow-hidden">
           {error && !loading ? (
-            <div className="absolute inset-0 flex items-center justify-center text-dim text-sm">
+            <div className="absolute inset-0 flex items-center justify-center text-dim text-base">
               {error}
             </div>
           ) : (
@@ -541,7 +541,7 @@ export default function Chart() {
                 key={r.label}
                 onClick={() => setRangeDays(r.days)}
                 className={clsx(
-                  'px-2.5 h-6 text-xs rounded transition-colors',
+                  'px-2.5 h-6 text-sm rounded transition-colors',
                   rangeDays === r.days
                     ? 'bg-blue/20 text-blue font-medium'
                     : 'text-dim hover:text-primary hover:bg-white/5',
@@ -555,10 +555,10 @@ export default function Chart() {
           <div className="flex-1" />
 
           {/* Status */}
-          <span className="text-[10px] text-dim font-mono">
+          <span className="text-[12px] text-dim font-mono">
             {data?.candles.length ?? 0} bars · {interval.label}
           </span>
-          <span className="text-[10px] text-dim font-mono ml-3">
+          <span className="text-[12px] text-dim font-mono ml-3">
             Powered by TBT
           </span>
         </div>

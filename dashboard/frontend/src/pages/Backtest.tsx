@@ -20,7 +20,7 @@ const PERIODS = [
 
 const inr    = (n: number) => `₹${Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
 const pnlFmt = (n: number) => `${n >= 0 ? '+' : '-'}${inr(n)}`
-const ttStyle = { background: '#161b27', border: '1px solid #252d3d', borderRadius: 8, fontSize: 11 }
+const ttStyle = { background: '#161b27', border: '1px solid #252d3d', borderRadius: 8, fontSize: 13 }
 
 // mis_squareoff is the intraday-gap Phase 3 fix (docs/intraday_gaps.md
 // §3) — an MIS-product backtest force-closing a position at 3:14 PM IST
@@ -34,8 +34,8 @@ const REASON_CLASS: Record<string, string> = {
 function Metric({ label, value, up }: { label: string; value: string; up?: boolean }) {
   return (
     <div className="bg-surface border border-border rounded-xl px-4 py-3">
-      <div className="text-[9px] text-dim uppercase tracking-wide mb-1">{label}</div>
-      <div className={clsx('text-lg font-mono font-semibold',
+      <div className="text-[11px] text-dim uppercase tracking-wide mb-1">{label}</div>
+      <div className={clsx('text-xl font-mono font-semibold',
         up === true ? 'text-green' : up === false ? 'text-red' : 'text-primary')}>
         {value}
       </div>
@@ -128,15 +128,15 @@ export default function Backtest() {
   return (
     <div className="flex flex-col h-full p-4 gap-3 overflow-hidden">
 
-      <h1 className="text-base font-semibold tracking-wide shrink-0">Backtest</h1>
+      <h1 className="text-lg font-semibold tracking-wide shrink-0">Backtest</h1>
 
       {/* Controls */}
       <div className="bg-surface border border-border rounded-xl p-4 flex flex-wrap gap-4 items-end shrink-0">
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-[9px] text-dim uppercase tracking-wide">Symbol</label>
+          <label className="text-[11px] text-dim uppercase tracking-wide">Symbol</label>
           <select value={symbol} onChange={e => setSymbol(e.target.value)}
-            className="bg-bg border border-border rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-blue min-w-[140px]">
+            className="bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue min-w-[140px]">
             <optgroup label="Indices">
               {['NIFTY50', 'BANKNIFTY', 'NIFTYIT'].map(s => <option key={s}>{s}</option>)}
             </optgroup>
@@ -151,9 +151,9 @@ export default function Backtest() {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-[9px] text-dim uppercase tracking-wide">Strategy</label>
+          <label className="text-[11px] text-dim uppercase tracking-wide">Strategy</label>
           <select value={effectiveStrategy} onChange={e => setStrategy(e.target.value)}
-            className="bg-bg border border-border rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-blue min-w-[180px]">
+            className="bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue min-w-[180px]">
             {(strategies.length ? strategies : ['vwap_reversion']).map(s => (
               <option key={s}>{s}</option>
             ))}
@@ -161,11 +161,11 @@ export default function Backtest() {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-[9px] text-dim uppercase tracking-wide">Period</label>
+          <label className="text-[11px] text-dim uppercase tracking-wide">Period</label>
           <div className="flex rounded-lg border border-border overflow-hidden">
             {PERIODS.map(p => (
               <button key={p.days} onClick={() => setPeriod(p)}
-                className={clsx('px-4 py-2 text-xs transition-colors',
+                className={clsx('px-4 py-2 text-sm transition-colors',
                   period.days === p.days ? 'bg-blue text-white' : 'text-dim hover:text-primary')}>
                 {p.label}
               </button>
@@ -174,26 +174,26 @@ export default function Backtest() {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-[9px] text-dim uppercase tracking-wide">Capital ₹</label>
+          <label className="text-[11px] text-dim uppercase tracking-wide">Capital ₹</label>
           <input
             type="number" value={capital} onChange={e => setCapital(Number(e.target.value))}
             step={50000} min={10000}
-            className="bg-bg border border-border rounded-lg px-3 py-2 text-xs w-36 focus:outline-none focus:border-blue"
+            className="bg-bg border border-border rounded-lg px-3 py-2 text-sm w-36 focus:outline-none focus:border-blue"
           />
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-[9px] text-dim uppercase tracking-wide">Options</label>
+          <label className="text-[11px] text-dim uppercase tracking-wide">Options</label>
           <div className="flex gap-3 items-center h-[34px]">
-            <label className="flex items-center gap-1.5 text-xs text-dim cursor-pointer">
+            <label className="flex items-center gap-1.5 text-sm text-dim cursor-pointer">
               <input type="checkbox" checked={benchmark} onChange={e => setBenchmark(e.target.checked)} />
               vs Nifty
             </label>
-            <label className="flex items-center gap-1.5 text-xs text-dim cursor-pointer">
+            <label className="flex items-center gap-1.5 text-sm text-dim cursor-pointer">
               <input type="checkbox" checked={walkForward} onChange={e => setWalkForward(e.target.checked)} />
               Walk-forward
             </label>
-            <label className="flex items-center gap-1.5 text-xs text-dim cursor-pointer">
+            <label className="flex items-center gap-1.5 text-sm text-dim cursor-pointer">
               <input type="checkbox" checked={monteCarlo} onChange={e => setMonteCarlo(e.target.checked)} />
               Monte Carlo
             </label>
@@ -203,7 +203,7 @@ export default function Backtest() {
         <button
           onClick={run}
           disabled={status === 'running'}
-          className="px-6 py-2 rounded-lg bg-blue text-white text-xs font-medium
+          className="px-6 py-2 rounded-lg bg-blue text-white text-sm font-medium
                      hover:bg-blue/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
         >
           {status === 'running' ? (
@@ -217,7 +217,7 @@ export default function Backtest() {
 
       {/* Error */}
       {status === 'error' && (
-        <div className="bg-red/10 border border-red/30 rounded-xl px-4 py-3 text-xs text-red shrink-0">
+        <div className="bg-red/10 border border-red/30 rounded-xl px-4 py-3 text-sm text-red shrink-0">
           {errMsg}
         </div>
       )}
@@ -226,8 +226,8 @@ export default function Backtest() {
       {status === 'idle' && !result && (
         <div className="flex-1 bg-surface border border-border rounded-xl flex flex-col items-center justify-center gap-2 text-dim">
           <span className="text-4xl opacity-20">▷</span>
-          <span className="text-sm">Configure and run a backtest above</span>
-          <span className="text-xs">Results will appear here</span>
+          <span className="text-base">Configure and run a backtest above</span>
+          <span className="text-sm">Results will appear here</span>
         </div>
       )}
 
@@ -250,30 +250,30 @@ export default function Backtest() {
           {/* Benchmark comparison */}
           {result.benchmark && (
             <div className="bg-surface border border-border rounded-xl px-4 py-3 flex flex-wrap gap-x-6 gap-y-2 items-center shrink-0">
-              <span className="text-[9px] text-dim uppercase tracking-wide">vs Nifty 50</span>
-              <span className="text-xs text-dim">Strategy <b className="text-primary font-mono">{result.benchmark.strat_return_pct.toFixed(2)}%</b></span>
-              <span className="text-xs text-dim">Nifty <b className="text-primary font-mono">{result.benchmark.bench_return_pct.toFixed(2)}%</b></span>
-              <span className="text-xs text-dim">Alpha <b className={clsx('font-mono', result.benchmark.alpha_pct >= 0 ? 'text-green' : 'text-red')}>{result.benchmark.alpha_pct.toFixed(2)}%</b></span>
-              <span className="text-xs text-dim">Beta <b className="text-primary font-mono">{result.benchmark.beta.toFixed(3)}</b></span>
-              <span className="text-xs text-dim">Info Ratio <b className="text-primary font-mono">{result.benchmark.info_ratio.toFixed(3)}</b></span>
+              <span className="text-[11px] text-dim uppercase tracking-wide">vs Nifty 50</span>
+              <span className="text-sm text-dim">Strategy <b className="text-primary font-mono">{result.benchmark.strat_return_pct.toFixed(2)}%</b></span>
+              <span className="text-sm text-dim">Nifty <b className="text-primary font-mono">{result.benchmark.bench_return_pct.toFixed(2)}%</b></span>
+              <span className="text-sm text-dim">Alpha <b className={clsx('font-mono', result.benchmark.alpha_pct >= 0 ? 'text-green' : 'text-red')}>{result.benchmark.alpha_pct.toFixed(2)}%</b></span>
+              <span className="text-sm text-dim">Beta <b className="text-primary font-mono">{result.benchmark.beta.toFixed(3)}</b></span>
+              <span className="text-sm text-dim">Info Ratio <b className="text-primary font-mono">{result.benchmark.info_ratio.toFixed(3)}</b></span>
             </div>
           )}
 
           {/* Monte Carlo */}
           {result.monte_carlo && !result.monte_carlo.error && (
             <div className="bg-surface border border-border rounded-xl px-4 py-3 flex flex-wrap gap-x-6 gap-y-2 items-center shrink-0">
-              <span className="text-[9px] text-dim uppercase tracking-wide">Monte Carlo (500 sims)</span>
-              <span className="text-xs text-dim">Sharpe 5–95% <b className="text-primary font-mono">{result.monte_carlo.sharpe_p5.toFixed(2)} – {result.monte_carlo.sharpe_p95.toFixed(2)}</b></span>
-              <span className="text-xs text-dim">Max DD 95% <b className="text-red font-mono">{result.monte_carlo.max_dd_p95.toFixed(2)}%</b></span>
-              <span className="text-xs text-dim">P(Sharpe&gt;0) <b className="text-primary font-mono">{result.monte_carlo.p_value_sharpe.toFixed(1)}%</b></span>
+              <span className="text-[11px] text-dim uppercase tracking-wide">Monte Carlo (500 sims)</span>
+              <span className="text-sm text-dim">Sharpe 5–95% <b className="text-primary font-mono">{result.monte_carlo.sharpe_p5.toFixed(2)} – {result.monte_carlo.sharpe_p95.toFixed(2)}</b></span>
+              <span className="text-sm text-dim">Max DD 95% <b className="text-red font-mono">{result.monte_carlo.max_dd_p95.toFixed(2)}%</b></span>
+              <span className="text-sm text-dim">P(Sharpe&gt;0) <b className="text-primary font-mono">{result.monte_carlo.p_value_sharpe.toFixed(1)}%</b></span>
             </div>
           )}
 
           {/* Walk-forward splits */}
           {wfSplits && wfSplits.length > 0 && (
             <div className="bg-surface border border-border rounded-xl p-3 shrink-0 overflow-x-auto">
-              <div className="text-[9px] text-dim uppercase tracking-wide mb-2">Walk-forward — out-of-sample splits</div>
-              <table className="text-xs w-full min-w-[480px]">
+              <div className="text-[11px] text-dim uppercase tracking-wide mb-2">Walk-forward — out-of-sample splits</div>
+              <table className="text-sm w-full min-w-[480px]">
                 <thead>
                   <tr className="text-dim text-left">
                     <th className="font-normal pb-1">Split</th>
@@ -308,7 +308,7 @@ export default function Backtest() {
             {/* Equity curve */}
             {eqData.length > 1 && (
               <div className="bg-surface border border-border rounded-xl p-4 flex flex-col overflow-hidden">
-                <div className="text-xs font-medium mb-1 text-dim uppercase tracking-wide">
+                <div className="text-sm font-medium mb-1 text-dim uppercase tracking-wide">
                   {symbol} · {effectiveStrategy} · {period.label}
                 </div>
                 <div className="flex-1 min-h-0">
@@ -321,8 +321,8 @@ export default function Backtest() {
                         </linearGradient>
                       </defs>
                       <CartesianGrid stroke="#252d3d" strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="i" tick={{ fill: '#8892a4', fontSize: 9 }} tickLine={false} axisLine={false} />
-                      <YAxis tick={{ fill: '#8892a4', fontSize: 9 }} tickLine={false} axisLine={false}
+                      <XAxis dataKey="i" tick={{ fill: '#8892a4', fontSize: 11 }} tickLine={false} axisLine={false} />
+                      <YAxis tick={{ fill: '#8892a4', fontSize: 11 }} tickLine={false} axisLine={false}
                              width={52} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
                       <ReferenceLine y={capital} stroke="#4b5563" strokeDasharray="4 2" />
                       <Tooltip formatter={(v: any) => [pnlFmt(Number(v)), 'Equity']} contentStyle={ttStyle} />
@@ -337,14 +337,14 @@ export default function Backtest() {
             {/* P&L distribution */}
             {histData.length > 0 && (
               <div className="bg-surface border border-border rounded-xl p-4 flex flex-col overflow-hidden">
-                <div className="text-xs font-medium mb-1 text-dim uppercase tracking-wide">P&L Distribution</div>
+                <div className="text-sm font-medium mb-1 text-dim uppercase tracking-wide">P&L Distribution</div>
                 <div className="flex-1 min-h-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={histData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                       <CartesianGrid stroke="#252d3d" strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="bin" tick={{ fill: '#8892a4', fontSize: 9 }} tickLine={false} axisLine={false}
+                      <XAxis dataKey="bin" tick={{ fill: '#8892a4', fontSize: 11 }} tickLine={false} axisLine={false}
                              tickFormatter={v => `${(Number(v) / 1000).toFixed(0)}k`} />
-                      <YAxis tick={{ fill: '#8892a4', fontSize: 9 }} tickLine={false} axisLine={false} width={28} />
+                      <YAxis tick={{ fill: '#8892a4', fontSize: 11 }} tickLine={false} axisLine={false} width={28} />
                       <ReferenceLine x={0} stroke="#4b5563" />
                       <Tooltip formatter={(v, n, p) => [v, 'Count']}
                                labelFormatter={v => `₹${Number(v).toFixed(0)}`} contentStyle={ttStyle} />
@@ -363,10 +363,10 @@ export default function Backtest() {
           {/* Trade log — exit reasons incl. mis_squareoff (docs/intraday_gaps.md §3) */}
           {result.trades && result.trades.length > 0 && (
             <div className="bg-surface border border-border rounded-xl p-3 shrink-0 max-h-56 overflow-auto">
-              <div className="text-[9px] text-dim uppercase tracking-wide mb-2 sticky top-0 bg-surface">
+              <div className="text-[11px] text-dim uppercase tracking-wide mb-2 sticky top-0 bg-surface">
                 Trade Log ({result.trades.length})
               </div>
-              <table className="text-xs w-full min-w-[520px] font-mono">
+              <table className="text-sm w-full min-w-[520px] font-mono">
                 <thead>
                   <tr className="text-dim text-left sticky top-4 bg-surface">
                     <th className="font-normal pb-1">Dir</th>
@@ -386,7 +386,7 @@ export default function Backtest() {
                       <td className="py-1 text-dim">{t.entry_bar}→{t.exit_bar}</td>
                       <td className={clsx('py-1', t.pnl >= 0 ? 'text-green' : 'text-red')}>{pnlFmt(t.pnl)}</td>
                       <td className="py-1">
-                        <span className={clsx('px-1.5 py-0.5 rounded text-[9px] font-bold', REASON_CLASS[t.reason] ?? 'bg-white/5 text-dim')}>
+                        <span className={clsx('px-1.5 py-0.5 rounded text-[11px] font-bold', REASON_CLASS[t.reason] ?? 'bg-white/5 text-dim')}>
                           {t.reason}
                         </span>
                       </td>

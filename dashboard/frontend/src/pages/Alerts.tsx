@@ -19,12 +19,12 @@ function TriggerHistory({ alertId }: { alertId: number }) {
   const { data } = useSWR<AlertTriggerDTO[]>(`/api/alerts/${alertId}/triggers`, fetcher)
   const triggers = data ?? []
   if (triggers.length === 0) {
-    return <div className="text-[11px] text-dim px-3 py-2">No triggers yet.</div>
+    return <div className="text-[13px] text-dim px-3 py-2">No triggers yet.</div>
   }
   return (
     <div className="flex flex-col gap-1 px-3 py-2">
       {triggers.slice(0, 10).map(t => (
-        <div key={t.id} className="flex items-center justify-between text-[11px]">
+        <div key={t.id} className="flex items-center justify-between text-[13px]">
           <span className="font-mono text-primary">{t.symbol}</span>
           <span className="text-dim font-mono">{JSON.stringify(t.matched_values)}</span>
           <span className="text-dim">{new Date(t.created_at).toLocaleTimeString('en-IN')}</span>
@@ -90,11 +90,11 @@ export default function Alerts() {
   return (
     <div className="flex flex-col h-full p-4 gap-3 overflow-hidden">
       <div className="flex items-center gap-3 shrink-0">
-        <h1 className="text-base font-semibold tracking-wide">Alerts</h1>
+        <h1 className="text-lg font-semibold tracking-wide">Alerts</h1>
         <button
           onClick={handleEvaluate}
           disabled={evaluating}
-          className="ml-auto px-3 py-1.5 rounded-lg text-xs bg-blue/15 text-blue hover:bg-blue/25 transition-colors disabled:opacity-50"
+          className="ml-auto px-3 py-1.5 rounded-lg text-sm bg-blue/15 text-blue hover:bg-blue/25 transition-colors disabled:opacity-50"
         >
           {evaluating ? 'Evaluating…' : 'Run evaluation now'}
         </button>
@@ -103,16 +103,16 @@ export default function Alerts() {
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-3 min-h-0 overflow-hidden">
         {/* Create form */}
         <div className="bg-surface border border-border rounded-xl p-3 flex flex-col gap-2.5 overflow-y-auto">
-          <div className="text-[9px] text-dim uppercase tracking-wide">New Alert</div>
+          <div className="text-[11px] text-dim uppercase tracking-wide">New Alert</div>
           <input
             value={name} onChange={e => setName(e.target.value)}
             placeholder="Alert name…"
-            className="bg-bg border border-border rounded-lg px-3 py-1.5 text-xs text-primary placeholder:text-dim"
+            className="bg-bg border border-border rounded-lg px-3 py-1.5 text-sm text-primary placeholder:text-dim"
           />
           <input
             value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())}
             placeholder="Symbol (blank = whole universe)…"
-            className="bg-bg border border-border rounded-lg px-3 py-1.5 text-xs text-primary placeholder:text-dim"
+            className="bg-bg border border-border rounded-lg px-3 py-1.5 text-sm text-primary placeholder:text-dim"
           />
 
           <div className="flex flex-col gap-1.5">
@@ -120,36 +120,36 @@ export default function Alerts() {
               <div key={i} className="flex items-center gap-1">
                 <select
                   value={row.field} onChange={e => updateRow(i, { field: e.target.value })}
-                  className="flex-1 bg-bg border border-border rounded px-1.5 py-1 text-[11px] text-primary min-w-0"
+                  className="flex-1 bg-bg border border-border rounded px-1.5 py-1 text-[13px] text-primary min-w-0"
                 >
                   {FIELDS.map(f => <option key={f} value={f}>{f}</option>)}
                 </select>
                 <select
                   value={row.op} onChange={e => updateRow(i, { op: e.target.value })}
-                  className="bg-bg border border-border rounded px-1.5 py-1 text-[11px] text-primary"
+                  className="bg-bg border border-border rounded px-1.5 py-1 text-[13px] text-primary"
                 >
                   {OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
                 <input
                   value={row.value} onChange={e => updateRow(i, { value: e.target.value })}
                   placeholder="value"
-                  className="w-16 bg-bg border border-border rounded px-1.5 py-1 text-[11px] text-primary placeholder:text-dim"
+                  className="w-16 bg-bg border border-border rounded px-1.5 py-1 text-[13px] text-primary placeholder:text-dim"
                 />
                 {rows.length > 1 && (
-                  <button onClick={() => removeRow(i)} className="text-dim hover:text-red text-xs px-1">✕</button>
+                  <button onClick={() => removeRow(i)} className="text-dim hover:text-red text-sm px-1">✕</button>
                 )}
               </div>
             ))}
-            <button onClick={addRow} className="text-[10px] text-blue text-left hover:text-blue/80">
+            <button onClick={addRow} className="text-[12px] text-blue text-left hover:text-blue/80">
               + AND condition
             </button>
           </div>
 
-          {formError && <div className="text-[10px] text-red">{formError}</div>}
+          {formError && <div className="text-[12px] text-red">{formError}</div>}
 
           <button
             onClick={handleCreate}
-            className="px-3 py-1.5 rounded-lg text-xs bg-blue text-white font-medium hover:bg-blue/90 transition-colors"
+            className="px-3 py-1.5 rounded-lg text-sm bg-blue text-white font-medium hover:bg-blue/90 transition-colors"
           >
             Create Alert
           </button>
@@ -160,8 +160,8 @@ export default function Alerts() {
           <div className="flex-1 overflow-y-auto min-h-0">
             {(alerts ?? []).length === 0 && (
               <div className="flex flex-col items-center justify-center h-full gap-2 text-dim">
-                <span className="text-2xl opacity-30">🔔</span>
-                <span className="text-sm">No alerts yet</span>
+                <span className="text-3xl opacity-30">🔔</span>
+                <span className="text-base">No alerts yet</span>
               </div>
             )}
             {(alerts ?? []).map(a => (
@@ -174,25 +174,25 @@ export default function Alerts() {
                     title={a.is_active ? 'Active — click to disable' : 'Disabled — click to enable'}
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">
-                      {a.name} {a.symbol && <span className="text-dim font-mono text-xs">({a.symbol})</span>}
+                    <div className="text-base font-medium truncate">
+                      {a.name} {a.symbol && <span className="text-dim font-mono text-sm">({a.symbol})</span>}
                     </div>
-                    <div className="text-[10px] text-dim font-mono truncate">
+                    <div className="text-[12px] text-dim font-mono truncate">
                       {Object.entries(a.condition).map(([k, v]) => k.replace('__', ' ') + ' ' + v).join(' AND ')}
                     </div>
                   </div>
-                  <span className="text-[10px] text-dim shrink-0">
+                  <span className="text-[12px] text-dim shrink-0">
                     {a.triggered_at ? `last fired ${new Date(a.triggered_at).toLocaleTimeString('en-IN')}` : 'never fired'}
                   </span>
                   <button
                     onClick={() => setExpandedId(expandedId === a.id ? null : a.id)}
-                    className="text-[10px] text-blue shrink-0"
+                    className="text-[12px] text-blue shrink-0"
                   >
                     {expandedId === a.id ? 'hide' : 'history'}
                   </button>
                   <button
                     onClick={() => handleDelete(a.id)}
-                    className="text-[10px] text-red shrink-0"
+                    className="text-[12px] text-red shrink-0"
                   >
                     delete
                   </button>

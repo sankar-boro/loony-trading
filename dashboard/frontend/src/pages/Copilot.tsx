@@ -23,7 +23,7 @@ function ConfidenceBadge({ confidence }: { confidence: 'low' | 'medium' | 'high'
     : confidence === 'medium' ? 'bg-amber-500/15 text-amber-400'
     : 'bg-white/5 text-dim'
   return (
-    <span className={clsx('px-1.5 py-0.5 rounded text-[9px] font-bold uppercase', cls)}>
+    <span className={clsx('px-1.5 py-0.5 rounded text-[11px] font-bold uppercase', cls)}>
       {confidence} confidence
     </span>
   )
@@ -60,8 +60,8 @@ export default function Copilot() {
   return (
     <div className="flex flex-col h-full p-4 gap-3 overflow-hidden">
       <div className="shrink-0">
-        <h1 className="text-base font-semibold tracking-wide">Market Copilot</h1>
-        <p className="text-xs text-dim mt-0.5">
+        <h1 className="text-lg font-semibold tracking-wide">Market Copilot</h1>
+        <p className="text-sm text-dim mt-0.5">
           Answers are grounded in signals, news, and historical analogues already in the
           database — never invented. It says "insufficient evidence" when the data doesn't
           support an answer.
@@ -72,12 +72,12 @@ export default function Copilot() {
         <div className="flex-1 overflow-y-auto min-h-0 p-4 flex flex-col gap-3">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center flex-1 gap-4 text-dim">
-              <span className="text-2xl opacity-30">◈</span>
+              <span className="text-3xl opacity-30">◈</span>
               <div className="flex flex-col gap-1.5 items-center">
                 {SUGGESTIONS.map(s => (
                   <button
                     key={s} onClick={() => ask(s)}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-primary transition-colors"
+                    className="text-sm px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-primary transition-colors"
                   >
                     {s}
                   </button>
@@ -89,7 +89,7 @@ export default function Copilot() {
           {messages.map((m, i) => (
             <div key={i} className={clsx('flex', m.role === 'user' ? 'justify-end' : 'justify-start')}>
               <div className={clsx(
-                'max-w-[75%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed',
+                'max-w-[75%] rounded-xl px-3.5 py-2.5 text-base leading-relaxed',
                 m.role === 'user' ? 'bg-blue text-white' : 'bg-white/5 text-primary',
               )}>
                 <p>{m.text}</p>
@@ -98,7 +98,7 @@ export default function Copilot() {
                   <div className="mt-2 flex items-center gap-2 flex-wrap">
                     <ConfidenceBadge confidence={m.confidence} />
                     {m.insufficientEvidence && (
-                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-red/15 text-red">
+                      <span className="px-1.5 py-0.5 rounded text-[11px] font-bold uppercase bg-red/15 text-red">
                         Insufficient evidence
                       </span>
                     )}
@@ -107,10 +107,10 @@ export default function Copilot() {
 
                 {m.evidence && m.evidence.length > 0 && (
                   <div className="mt-2 pt-2 border-t border-border/50">
-                    <div className="text-[9px] text-dim uppercase tracking-wide mb-1">Evidence</div>
+                    <div className="text-[11px] text-dim uppercase tracking-wide mb-1">Evidence</div>
                     <ul className="flex flex-col gap-0.5">
                       {m.evidence.map((e, j) => (
-                        <li key={j} className="text-[10px] text-dim font-mono">{e}</li>
+                        <li key={j} className="text-[12px] text-dim font-mono">{e}</li>
                       ))}
                     </ul>
                   </div>
@@ -121,7 +121,7 @@ export default function Copilot() {
 
           {loading && (
             <div className="flex justify-start">
-              <div className="bg-white/5 rounded-xl px-3.5 py-2.5 text-sm text-dim animate-pulse">
+              <div className="bg-white/5 rounded-xl px-3.5 py-2.5 text-base text-dim animate-pulse">
                 Thinking…
               </div>
             </div>
@@ -137,11 +137,11 @@ export default function Copilot() {
             value={input}
             onChange={e => setInput(e.target.value)}
             placeholder="Ask about signals, news, or why a stock is moving…"
-            className="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-sm text-primary placeholder:text-dim focus:outline-none focus:border-blue"
+            className="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-base text-primary placeholder:text-dim focus:outline-none focus:border-blue"
           />
           <button
             type="submit" disabled={loading || !input.trim()}
-            className="px-4 py-2 rounded-lg text-xs bg-blue text-white font-medium hover:bg-blue/90 transition-colors disabled:opacity-40"
+            className="px-4 py-2 rounded-lg text-sm bg-blue text-white font-medium hover:bg-blue/90 transition-colors disabled:opacity-40"
           >
             Ask
           </button>

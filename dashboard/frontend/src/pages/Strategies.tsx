@@ -9,7 +9,7 @@ import clsx from 'clsx'
 
 const inr    = (n: number) => `₹${Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
 const pnlFmt = (n: number) => `${n >= 0 ? '+' : '-'}${inr(n)}`
-const ttStyle = { background: '#161b27', border: '1px solid #252d3d', borderRadius: 8, fontSize: 11 }
+const ttStyle = { background: '#161b27', border: '1px solid #252d3d', borderRadius: 8, fontSize: 13 }
 
 const COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6',
@@ -56,8 +56,8 @@ export default function Strategies() {
 
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">
-        <h1 className="text-base font-semibold tracking-wide">Strategies</h1>
-        <span className="text-xs text-dim">
+        <h1 className="text-lg font-semibold tracking-wide">Strategies</h1>
+        <span className="text-sm text-dim">
           tune: <code className="text-blue">python scripts/tune_weights.py</code>
         </span>
       </div>
@@ -67,7 +67,7 @@ export default function Strategies() {
 
         {/* Allocation donut */}
         <div className="bg-surface border border-border rounded-xl p-4 flex flex-col">
-          <div className="text-xs font-medium mb-2 text-dim uppercase tracking-wide">Allocation</div>
+          <div className="text-sm font-medium mb-2 text-dim uppercase tracking-wide">Allocation</div>
           {donutData.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height={120}>
@@ -85,7 +85,7 @@ export default function Strategies() {
               </ResponsiveContainer>
               <div className="space-y-1 overflow-y-auto flex-1">
                 {donutData.map((d, i) => (
-                  <div key={d.name} className="flex items-center gap-2 text-[10px] font-mono">
+                  <div key={d.name} className="flex items-center gap-2 text-[12px] font-mono">
                     <span className="w-2 h-2 rounded-full shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
                     <span className="text-dim truncate flex-1">{d.name}</span>
                     <span className="text-primary">{d.value.toFixed(2)}</span>
@@ -94,22 +94,22 @@ export default function Strategies() {
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-xs text-dim">No weights</div>
+            <div className="flex-1 flex items-center justify-center text-sm text-dim">No weights</div>
           )}
         </div>
 
         {/* Weights table */}
         <div className="bg-surface border border-border rounded-xl flex flex-col overflow-hidden">
           <div className="px-4 py-3 border-b border-border flex items-center justify-between shrink-0">
-            <span className="text-sm font-medium">All Strategies</span>
-            <span className="text-xs text-dim">{enabled.size} enabled / {allNames.length} total</span>
+            <span className="text-base font-medium">All Strategies</span>
+            <span className="text-sm text-dim">{enabled.size} enabled / {allNames.length} total</span>
           </div>
           <div className="flex-1 overflow-y-auto min-h-0">
-            <table className="w-full text-xs">
+            <table className="w-full text-sm">
               <thead className="sticky top-0 bg-surface z-10 border-b border-border">
                 <tr>
                   {['Strategy', 'Weight', '', 'Status'].map(h => (
-                    <th key={h} className="text-left px-4 py-2 text-[9px] uppercase tracking-wide text-dim font-medium">
+                    <th key={h} className="text-left px-4 py-2 text-[11px] uppercase tracking-wide text-dim font-medium">
                       {h}
                     </th>
                   ))}
@@ -131,7 +131,7 @@ export default function Strategies() {
                       </td>
                       <td className="px-4 py-2">
                         <span className={clsx(
-                          'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-medium',
+                          'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium',
                           on ? 'bg-green/10 text-green' : 'bg-border text-dim',
                         )}>
                           <span className={clsx('w-1.5 h-1.5 rounded-full', on ? 'bg-green' : 'bg-muted')} />
@@ -153,14 +153,14 @@ export default function Strategies() {
 
           {/* Horizontal bar chart */}
           <div className="bg-surface border border-border rounded-xl p-4 flex flex-col overflow-hidden">
-            <div className="text-xs font-medium mb-3 text-dim uppercase tracking-wide">Net P&L by Strategy</div>
+            <div className="text-sm font-medium mb-3 text-dim uppercase tracking-wide">Net P&L by Strategy</div>
             <div className="flex-1 min-h-0 overflow-y-auto">
               <ResponsiveContainer width="100%" height={Math.max(160, stratStats.length * 30)}>
                 <BarChart data={stratStats} layout="vertical" margin={{ left: 120, right: 20, top: 0, bottom: 0 }}>
                   <CartesianGrid stroke="#252d3d" strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tick={{ fill: '#8892a4', fontSize: 9 }} tickLine={false} axisLine={false}
+                  <XAxis type="number" tick={{ fill: '#8892a4', fontSize: 11 }} tickLine={false} axisLine={false}
                          tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-                  <YAxis type="category" dataKey="name" tick={{ fill: '#e2e8f0', fontSize: 9 }}
+                  <YAxis type="category" dataKey="name" tick={{ fill: '#e2e8f0', fontSize: 11 }}
                          tickLine={false} axisLine={false} width={120} />
                   <ReferenceLine x={0} stroke="#4b5563" />
                   <Tooltip formatter={(v: any) => [pnlFmt(Number(v)), 'P&L']} contentStyle={ttStyle} />
@@ -177,14 +177,14 @@ export default function Strategies() {
           {/* Per-strategy table */}
           <div className="bg-surface border border-border rounded-xl flex flex-col overflow-hidden">
             <div className="px-4 py-3 border-b border-border shrink-0">
-              <span className="text-sm font-medium">Performance</span>
+              <span className="text-base font-medium">Performance</span>
             </div>
             <div className="flex-1 overflow-y-auto min-h-0">
-              <table className="w-full text-xs font-mono">
+              <table className="w-full text-sm font-mono">
                 <thead className="sticky top-0 bg-surface z-10 border-b border-border">
                   <tr>
                     {['Strategy', 'N', 'Win%', 'P&L'].map(h => (
-                      <th key={h} className="text-left px-4 py-2 text-[9px] uppercase tracking-wide text-dim font-medium">
+                      <th key={h} className="text-left px-4 py-2 text-[11px] uppercase tracking-wide text-dim font-medium">
                         {h}
                       </th>
                     ))}
@@ -210,9 +210,9 @@ export default function Strategies() {
         </div>
       ) : (
         <div className="flex-1 bg-surface border border-border rounded-xl flex flex-col items-center justify-center gap-2 text-dim">
-          <span className="text-3xl opacity-20">◇</span>
-          <span className="text-sm">No trade data yet</span>
-          <code className="text-xs text-blue mt-1">python scripts/paper_trade.py</code>
+          <span className="text-4xl opacity-20">◇</span>
+          <span className="text-base">No trade data yet</span>
+          <code className="text-sm text-blue mt-1">python scripts/paper_trade.py</code>
         </div>
       )}
     </div>
