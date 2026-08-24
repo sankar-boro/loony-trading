@@ -7,6 +7,7 @@ from strategies.base import BaseStrategy, Signal, SignalType
 from strategies.meta_engine import MetaStrategyEngine
 from utils.math_utils import sharpe_ratio, sortino_ratio, max_drawdown, profit_factor
 from utils.logger import get_logger
+from utils.timeutils import is_mis_squareoff_time
 
 logger = get_logger("backtester")
 
@@ -81,19 +82,36 @@ class Backtester:
             window = df.iloc[:i]
             price = float(df["close"].iloc[i])
 
+            # MIS positions get force-closed by the broker at 3:20 PM IST
+            # (we simulate the controlled 3:14 PM close, same as the live
+            # bot's should_squareoff_mis()) — an intraday-product backtest
+            # must not let a position ride across that boundary, or its
+            # results wouldn't reflect what live execution would actually
+            # allow. See docs/intraday_gaps.md §3/§7 item 3.
+            bar_ts = df.index[i] if isinstance(df.index, pd.DatetimeIndex) else None
+            mis_squareoff_now = (
+                self.product == "MIS" and bar_ts is not None
+                and is_mis_squareoff_time(bar_ts)
+            )
+
             # Check open position for exit
             if position is not None:
-                exit_hit = (
+                sl_hit = (
                     (position["direction"] == 1 and price <= position["sl"]) or
-                    (position["direction"] == -1 and price >= position["sl"]) or
+                    (position["direction"] == -1 and price >= position["sl"])
+                )
+                tp_hit = (
                     (position["direction"] == 1 and price >= position["tp"]) or
                     (position["direction"] == -1 and price <= position["tp"])
                 )
+                exit_hit = sl_hit or tp_hit or mis_squareoff_now
                 if exit_hit:
-                    reason = "stop_loss" if (
-                        (position["direction"] == 1 and price <= position["sl"]) or
-                        (position["direction"] == -1 and price >= position["sl"])
-                    ) else "take_profit"
+                    if sl_hit:
+                        reason = "stop_loss"
+                    elif tp_hit:
+                        reason = "take_profit"
+                    else:
+                        reason = "mis_squareoff"
                     exit_price = self._apply_slippage(price, -position["direction"])
                     pnl = (exit_price - position["entry"]) * position["direction"] * position["size"]
                     pnl -= self.commission_pct * exit_price * position["size"]
@@ -115,6 +133,11 @@ class Backtester:
             equity_curve.append(capital)
 
             if position is not None:
+                continue
+
+            # Don't open a fresh MIS position this late in the session —
+            # live, there'd be no time left before the forced close above.
+            if mis_squareoff_now:
                 continue
 
             # Generate signal

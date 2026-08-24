@@ -36,6 +36,19 @@ def should_squareoff_mis() -> bool:
     return now_ist().time() >= _MIS_SQUAREOFF_TIME
 
 
+def is_mis_squareoff_time(ts: datetime) -> bool:
+    """Same 3:14 PM IST threshold as should_squareoff_mis(), but for an
+    arbitrary timestamp instead of "now" — lets the backtester simulate
+    MIS auto-squareoff on historical bars (docs/intraday_gaps.md §3/§7
+    item 3), instead of letting an intraday-product backtest hold a
+    position across what would be a forced live close. Naive timestamps
+    are treated as already being in IST, matching this project's
+    convention elsewhere (e.g. strategies/breakout/range_breakout.py)."""
+    if ts.tzinfo is not None:
+        ts = ts.astimezone(IST)
+    return ts.time() >= _MIS_SQUAREOFF_TIME
+
+
 def minutes_to_squareoff() -> int:
     """Minutes until the MIS squareoff window (3:14 PM IST). 0 if already past."""
     ist = now_ist()
