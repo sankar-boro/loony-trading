@@ -26,9 +26,29 @@ class TechnicalIndicators:
         return series.rolling(period).apply(lambda x: np.dot(x, weights) / weights.sum(), raw=True)
 
     @staticmethod
+    def session_cumsum(series: pd.Series, index: pd.Index) -> pd.Series:
+        """Cumulative sum that resets at each session boundary (calendar
+        day) when `index` carries real timestamps, so VWAP-style running
+        sums don't silently blend across trading days — see
+        docs/intraday_gaps.md §3. NSE's session (09:15-15:30 IST) never
+        crosses a UTC calendar-day boundary, so normalizing by date works
+        whether the index is UTC or IST. Falls back to a plain cumsum for
+        an index with no date info (e.g. a bare RangeIndex), preserving
+        prior behaviour for callers that don't have timestamps.
+
+        Shared by vwap()/vwap_bands() here and by
+        strategies/microstructure/anchored_vwap.py, so both use one
+        session-boundary definition rather than two that could drift."""
+        if isinstance(index, pd.DatetimeIndex):
+            return series.groupby(index.normalize()).cumsum()
+        return series.cumsum()
+
+    @staticmethod
     def vwap(df: pd.DataFrame) -> pd.Series:
         tp = (df["high"] + df["low"] + df["close"]) / 3
-        return (tp * df["volume"]).cumsum() / df["volume"].cumsum()
+        cum_tpv = TechnicalIndicators.session_cumsum(tp * df["volume"], df.index)
+        cum_vol = TechnicalIndicators.session_cumsum(df["volume"], df.index)
+        return cum_tpv / cum_vol
 
     # ── Oscillators ───────────────────────────────────────────────────────────
 
@@ -151,7 +171,9 @@ class TechnicalIndicators:
     def vwap_bands(df: pd.DataFrame, std_dev: float = 2.0) -> tuple[pd.Series, pd.Series, pd.Series]:
         vwap = TechnicalIndicators.vwap(df)
         tp = (df["high"] + df["low"] + df["close"]) / 3
-        variance = ((tp - vwap) ** 2 * df["volume"]).cumsum() / df["volume"].cumsum()
+        cum_var_num = TechnicalIndicators.session_cumsum((tp - vwap) ** 2 * df["volume"], df.index)
+        cum_vol = TechnicalIndicators.session_cumsum(df["volume"], df.index)
+        variance = cum_var_num / cum_vol
         std = variance.apply(np.sqrt)
         return vwap + std_dev * std, vwap, vwap - std_dev * std
 

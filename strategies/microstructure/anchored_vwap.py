@@ -38,12 +38,18 @@ def compute_anchored_vwap(df: pd.DataFrame) -> Tuple[pd.Series, pd.Series, pd.Se
     tp = (df["high"] + df["low"] + df["close"]) / 3.0
     volume = df["volume"]
 
-    cum_vol  = volume.cumsum()
-    cum_tpv  = (tp * volume).cumsum()
+    # session_cumsum resets at each session boundary (calendar day) when
+    # df.index carries real timestamps — this used to be a plain
+    # .cumsum() across the whole df regardless of how many sessions it
+    # spanned, silently contradicting this function's own "reset at the
+    # start of each trading session" docstring above. See
+    # docs/intraday_gaps.md §3.
+    cum_vol  = TI.session_cumsum(volume, df.index)
+    cum_tpv  = TI.session_cumsum(tp * volume, df.index)
     vwap     = cum_tpv / cum_vol.replace(0, np.nan)
 
     # Volume-weighted variance
-    cum_tp2v = (tp ** 2 * volume).cumsum()
+    cum_tp2v = TI.session_cumsum(tp ** 2 * volume, df.index)
     variance = (cum_tp2v / cum_vol.replace(0, np.nan)) - vwap ** 2
     variance = variance.clip(lower=0)
     std      = variance.apply(np.sqrt)
