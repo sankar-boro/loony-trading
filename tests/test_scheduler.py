@@ -33,7 +33,17 @@ def test_scheduler_starts_and_schedules_all_jobs_when_enabled():
         assert sched is not None
         assert sched.running
         job_ids = {j.id for j in sched.get_jobs()}
-        assert job_ids == {"news_ingest", "signal_engine", "alert_evaluation", "historical_backfill"}
+        assert job_ids == {"news_ingest", "signal_engine", "alert_evaluation",
+                           "historical_backfill", "ml_retrain"}
+    finally:
+        scheduler_app.stop_scheduler()
+
+
+def test_ml_retrain_job_can_be_disabled():
+    cfg = {"scheduler": {"enabled": True, "ml_retrain_enabled": False}}
+    sched = scheduler_app.start_scheduler(cfg)
+    try:
+        assert "ml_retrain" not in {j.id for j in sched.get_jobs()}
     finally:
         scheduler_app.stop_scheduler()
 

@@ -25,11 +25,11 @@ class BaseMLModel(ABC):
     def predict(self, X: np.ndarray) -> np.ndarray: ...
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
-        # Default: one-hot from discrete prediction
+        # Default: one-hot from discrete prediction (classes 0=sell, 1=hold, 2=buy)
         preds = self.predict(X)
         result = np.zeros((len(preds), 3))
         for i, p in enumerate(preds):
-            result[i, int(p) + 1] = 1.0
+            result[i, int(p)] = 1.0
         return result
 
     def save(self) -> None:
@@ -51,11 +51,10 @@ class BaseMLModel(ABC):
     @staticmethod
     def make_labels(df: pd.DataFrame, forward_bars: int = 5,
                      threshold: float = 0.005) -> np.ndarray:
-        """Generate 3-class labels: 0=sell, 1=hold, 2=buy."""
-        future_return = df["close"].shift(-forward_bars) / df["close"] - 1
-        labels = np.where(future_return > threshold, 2,
-                          np.where(future_return < -threshold, 0, 1))
-        return labels
+        """Generate 3-class labels: 0=sell, 1=hold, 2=buy; NaN where the
+        future is not known yet (the last `forward_bars` rows)."""
+        from .dataset import make_labels
+        return make_labels(df["close"], forward_bars, threshold)
 
     @staticmethod
     def train_test_split_time(X: np.ndarray, y: np.ndarray,

@@ -46,7 +46,6 @@ class UpstoxTradingBot:
         from risk_manager import RiskManager
         from portfolio_manager import PortfolioManager
         from strategies.meta_engine import MetaStrategyEngine
-        from ml_models import ModelTrainer
 
         self.cfg = cfg
         self.mode = mode
@@ -106,7 +105,6 @@ class UpstoxTradingBot:
 
         # Strategy engine + ML
         self.meta_engine = MetaStrategyEngine(cfg, ml_model=None)
-        self._trainer = ModelTrainer(cfg)
         self._df_cache: dict = {}   # symbol → DataFrame — read by strategies, kept fresh intraday (see _refresh_live_df)
         self._df_cache_base: dict = {}   # immutable historical fetch, before today's live bars are spliced on
         self._live_bars = LiveBarAggregator()   # docs/intraday_gaps.md §1 fix — turns live ticks into fresh bars
@@ -212,6 +210,9 @@ class UpstoxTradingBot:
                     self._df_cache_base[key] = df_intra   # kept as the pre-session base — see _refresh_live_df
 
     async def _train_or_load_models(self) -> None:
+        """Load saved models only. Training happens offline through the gated
+        scripts/train_ml.py (or the weekly scheduler job) — never here, so a
+        model that failed the out-of-sample check can't slip in at startup."""
         from ml_models import XGBoostModel, LightGBMModel, EnsembleModel
 
         if self.meta_engine.has_ml_model():
@@ -221,20 +222,9 @@ class UpstoxTradingBot:
         lgbm = LightGBMModel(self.cfg)
         if xgb.load() and lgbm.load():
             model = EnsembleModel([xgb, lgbm])
+            model.feature_cols = xgb.feature_cols
             self.meta_engine.update_ml_model(model)
             logger.info("Loaded pretrained ML models")
-            return
-
-        train_sym = self.equity_symbols[0] if self.equity_symbols else None
-        if train_sym and train_sym in self._df_cache:
-            df = self._df_cache[train_sym]
-            if len(df) > 300:
-                logger.info(f"Training ML models on {train_sym}...")
-                loop = asyncio.get_running_loop()
-                ensemble = await loop.run_in_executor(None, self._trainer.train_all, df)
-                if ensemble:
-                    self.meta_engine.update_ml_model(ensemble)
-                    logger.info("ML models trained")
 
     # ── Tick handler (real-time) ────────────────────────────────────────────────
 
@@ -729,32 +719,13 @@ def run_backtest(cfg: dict, market: str = "india") -> None:
 # ── ML training ────────────────────────────────────────────────────────────────
 
 def run_training(cfg: dict) -> None:
-    from ml_models import ModelTrainer
-    from data_engine.upstox import UpstoxAuth, InstrumentRegistry, UpstoxDataEngine
-
-    up_cfg = cfg.get("exchanges", {}).get("upstox", {})
-    auth = UpstoxAuth(
-        api_key=up_cfg.get("api_key", ""),
-        api_secret=up_cfg.get("api_secret", ""),
-        redirect_uri=up_cfg.get("redirect_uri", ""),
-    )
-    auth.load_token()
-    registry = InstrumentRegistry()
-    registry.load()
-    data_engine = UpstoxDataEngine(auth, registry)
-    trainer = ModelTrainer(cfg)
-
-    symbols = cfg.get("assets", {}).get("india_equity", ["RELIANCE"])
-    lookback = cfg.get("ml", {}).get("train_lookback_days", 365)
-
-    for sym in symbols[:3]:   # train on top 3 liquid stocks
-        df = data_engine.fetch_ohlcv(sym, "1d", lookback_days=lookback)
-        if df is not None and len(df) > 300:
-            logger.info(f"Training on {sym} ({len(df)} bars)...")
-            ensemble = trainer.train_all(df)
-            if ensemble:
-                logger.info(f"  {sym} — done")
-                break  # single model trained on most liquid stock is fine
+    """Same gated training as scripts/train_ml.py: the model is saved only if
+    it beats the naive baselines out of sample, and is never auto-enabled."""
+    from scripts.train_ml import retrain
+    days = cfg.get("ml", {}).get("train_lookback_days", 730)
+    report = retrain(days=max(days, 365), verbose=True)
+    if not report.get("ok"):
+        logger.error(report.get("error"))
 
 
 # ── Upstox OAuth flow ──────────────────────────────────────────────────────────

@@ -4,7 +4,7 @@ Single checklist for what is built, what is still to do, and the bugs found in t
 code. It replaces the old `todo.md`, `todo/` (P1–P4 gap audit) and `known_issues.md`.
 
 **Last verified against the code:** 2026-10-09 (commit `3fd55bd`).
-Offline test suite: **506 tests, all passing**.
+Offline test suite: **521 tests, all passing**.
 
 Legend: `[x]` done and verified in code · `[ ]` open (todo, partial, or a bug).
 
@@ -113,9 +113,12 @@ Legend: `[x]` done and verified in code · `[ ]` open (todo, partial, or a bug).
 
 ### Data and ML
 
-- [ ] Train and ship ML models. `models/` only contains `hmm/`; `ml_classifier` is also not in the `enabled` list, so ML signals never fire
-- [ ] `train_ml.py` should add `ml_classifier` to `strategies.enabled` after training
-- [ ] Weekly retraining job (cron or scheduler)
+- [x] ML training and prediction share one feature/dataset definition (`ml_models/dataset.py`); the model's saved `feature_cols` are used at prediction time
+- [x] Honest evaluation: per-symbol time split with a 5-bar gap, reported against two naive baselines (always the most common class; always the more common move)
+- [x] `train_ml.py --enable` adds `ml_classifier` to `strategies.enabled`, only if the model beats both baselines; a model that doesn't is not saved (`--save-anyway` to override)
+- [x] Weekly retraining job (`scheduler.ml_retrain_*`, Sundays 06:00 IST): replaces `models/ensemble.pkl` only if the new model beats the baselines, never enables the strategy
+- [ ] **ML model with a real edge.** Trained 2026-10-09 on 10 large caps × 2 years of daily bars, 51 features: 40.9% out-of-sample accuracy vs 48.7% for always predicting "sell"; buy/sell calls right 41.0% vs 48.7%. No model saved, `ml_classifier` stays disabled. Options: intraday bars, other labels/horizons, new features (news, flows) — judged on the same out-of-sample gate
+- [ ] `train_ml.py` fetches raw candles itself and skips `UpstoxDataEngine`'s corporate-action adjustment, so splits (e.g. KOTAKBANK) can distort labels
 - [ ] Online-learning drift detector (`PageHinkleyDetector`) is not connected to a retraining loop
 - [ ] Reinforcement learning agent is a skeleton only
 - [ ] Automated pair discovery across the universe (correlation + cointegration scan)
@@ -128,7 +131,7 @@ Legend: `[x]` done and verified in code · `[ ]` open (todo, partial, or a bug).
 
 - [ ] Split `requirements.txt` into prod and dev (`tensorflow`, `pytest`, `stable-baselines3` optional)
 - [ ] `yfinance` is used by `advanced_features.py` for cross-asset features but is not in `requirements.txt`
-- [ ] Tests for `ModelTrainer`, `EnsembleModel` and `train_ml.py`
+- [x] Tests for the training pipeline, `EnsembleModel` and `train_ml.py` (`tests/test_ml_pipeline.py`); `ModelTrainer` (main.py's fallback trainer) is still only covered indirectly
 - [ ] `loony.sh status` hardcodes port 8000
 - [ ] Walk-forward optimisation pipeline (Bayesian optimisation → backtest → deploy)
 - [ ] Execution quality report (slippage vs VWAP)
@@ -156,6 +159,12 @@ Found in the 2026-10-09 audit. All fixed the same day, with regression tests in
 - [x] **Dashboard backtest map used the old `candlestick_pattern` name.** `candle_patterns` added (old name kept as an alias).
 - [x] **`PEADStrategy` and `ExpiryDayStrategy` had no `name`.** Now `pead` and `expiry_day`; they are still not registered in the engine (see §3).
 - [x] **`dashboard.port: 8501` was stale.** Set to 8000.
+- [x] **ML strategy could never fire.** Training used `advanced_build()` features, prediction used `build()` without the saved column list; every prediction raised and the strategy's blanket `except` returned `None` silently. Fixed via `ml_models/dataset.py`; failures are now logged once.
+- [x] **`make_labels` marked the last 5 bars "hold"** instead of unknown (a NaN comparison is False), so they were trained on as holds. Now NaN and dropped.
+- [x] **ML "out-of-sample" accuracy was not out of sample.** The 80/20 split ran over symbols concatenated end to end, so the test set was the last two stocks over the same dates. Now split by time within each symbol.
+- [x] **`BaseMLModel.predict_proba` default indexed class `p + 1`** (out of range for class 2).
+- [x] **Ungated training paths.** `main.py --mode train` trained on one stock with no out-of-sample check, and the bot trained and saved its own model at startup whenever none existed. `--mode train` now runs the gated `retrain()`; startup only loads saved models.
+- [x] **10 hardcoded ISINs were stale**, so Upstox returned no data at all for KOTAKBANK, CANBK, BAJFINANCE, SHRIRAMFIN, COFORGE, EICHERMOT, DRREDDY, HAL, HPCL and PAGEIND (charts, signals, backtests, orders). Updated in `config/instruments.py` and the three duplicate maps; verified against live candle data. `tests/test_instrument_isins.py` checks the registry against the Upstox master file and the copies against the registry.
 
 ## 5. Documentation problems
 
@@ -202,7 +211,7 @@ Ticked = registered in `MetaStrategyEngine` and able to fire. "Enabled" = in `st
 - [x] `gift_nifty_gap` — gap · enabled (market open only)
 - [x] `fii_dii` — institutional · enabled (NIFTY/BANKNIFTY only)
 - [x] `pair_trading` — stat arb · runs as a side-car outside the enabled list
-- [ ] `ml_classifier` — ML · registered but no trained model and not enabled
+- [ ] `ml_classifier` — ML · registered; latest training did not beat the baselines, so no model and not enabled
 - [ ] `iron_condor` — options · not in engine
 - [ ] `gamma_scalping` — options · not in engine
 - [ ] `theta_decay` — options · not in engine

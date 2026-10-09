@@ -95,10 +95,13 @@ Runs all enabled strategies against historical data. Results appear in
 
 ### ML Model Training
 ```bash
-python main.py --mode train
+python scripts/train_ml.py            # or: python main.py --mode train
+python scripts/train_ml.py --enable   # also turn on ml_classifier if it passes
 ```
-Pulls 180 days of historical data, builds features, trains XGBoost + LightGBM +
-LSTM models, saves to `models/`.
+Pulls 2 years of daily bars for 10 large caps, trains XGBoost + LightGBM, and
+tests them on the last 20% of each stock's history. The model is saved to
+`models/ensemble.pkl` only if it beats the naive baselines; `--enable` adds
+`ml_classifier` to the enabled strategies only in that case.
 
 ### Live Trading
 ```bash
@@ -165,7 +168,7 @@ Log fields:
 ## 8. Run Tests
 
 ```bash
-# All offline tests (~506 tests, ~30 seconds)
+# All offline tests (~521 tests, ~30 seconds)
 pytest tests/ -v --ignore=tests/test_live_upstox.py
 
 # Specific module

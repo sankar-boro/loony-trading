@@ -33,16 +33,16 @@ STOCK_UNIVERSE: Dict[str, dict] = {
     "ICICIBANK":   {"name": "ICICI Bank",                 "isin": "INE090A01021", "sector": "Banking",      "industry": "Private Bank",         "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "SBIN":        {"name": "State Bank of India",        "isin": "INE062A01020", "sector": "Banking",      "industry": "PSU Bank",             "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "AXISBANK":    {"name": "Axis Bank",                  "isin": "INE238A01034", "sector": "Banking",      "industry": "Private Bank",         "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
-    "KOTAKBANK":   {"name": "Kotak Mahindra Bank",        "isin": "INE237A01028", "sector": "Banking",      "industry": "Private Bank",         "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
+    "KOTAKBANK":   {"name": "Kotak Mahindra Bank",        "isin": "INE237A01036", "sector": "Banking",      "industry": "Private Bank",         "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "INDUSINDBK":  {"name": "IndusInd Bank",              "isin": "INE095A01012", "sector": "Banking",      "industry": "Private Bank",         "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "BANKBARODA":  {"name": "Bank of Baroda",             "isin": "INE028A01039", "sector": "Banking",      "industry": "PSU Bank",             "market_cap": "Large Cap", "fno": True,  "nifty50": False, "nifty_next": True},
     "PNB":         {"name": "Punjab National Bank",       "isin": "INE160A01022", "sector": "Banking",      "industry": "PSU Bank",             "market_cap": "Large Cap", "fno": True,  "nifty50": False, "nifty_next": True},
-    "CANBK":       {"name": "Canara Bank",                "isin": "INE476A01014", "sector": "Banking",      "industry": "PSU Bank",             "market_cap": "Large Cap", "fno": True,  "nifty50": False, "nifty_next": True},
+    "CANBK":       {"name": "Canara Bank",                "isin": "INE476A01022", "sector": "Banking",      "industry": "PSU Bank",             "market_cap": "Large Cap", "fno": True,  "nifty50": False, "nifty_next": True},
     "FEDERALBNK":  {"name": "Federal Bank",               "isin": "INE171A01029", "sector": "Banking",      "industry": "Private Bank",         "market_cap": "Mid Cap",   "fno": True,  "nifty50": False, "nifty_next": False},
-    "BAJFINANCE":  {"name": "Bajaj Finance",              "isin": "INE296A01024", "sector": "Finance",      "industry": "NBFC",                 "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
+    "BAJFINANCE":  {"name": "Bajaj Finance",              "isin": "INE296A01032", "sector": "Finance",      "industry": "NBFC",                 "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "BAJAJFINSV":  {"name": "Bajaj Finserv",              "isin": "INE918I01026", "sector": "Finance",      "industry": "Financial Services",   "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "CHOLAFIN":    {"name": "Cholamandalam Investment",   "isin": "INE121A01024", "sector": "Finance",      "industry": "NBFC",                 "market_cap": "Large Cap", "fno": True,  "nifty50": False, "nifty_next": True},
-    "SHRIRAMFIN":  {"name": "Shriram Finance",            "isin": "INE721A01013", "sector": "Finance",      "industry": "NBFC",                 "market_cap": "Large Cap", "fno": True,  "nifty50": False, "nifty_next": True},
+    "SHRIRAMFIN":  {"name": "Shriram Finance",            "isin": "INE721A01047", "sector": "Finance",      "industry": "NBFC",                 "market_cap": "Large Cap", "fno": True,  "nifty50": False, "nifty_next": True},
     "HDFCLIFE":    {"name": "HDFC Life Insurance",        "isin": "INE795G01014", "sector": "Finance",      "industry": "Life Insurance",       "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "SBILIFE":     {"name": "SBI Life Insurance",         "isin": "INE123W01016", "sector": "Finance",      "industry": "Life Insurance",       "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
 
@@ -55,14 +55,14 @@ STOCK_UNIVERSE: Dict[str, dict] = {
     "LTIM":        {"name": "LTIMindtree",                "isin": "INE214T01019", "sector": "IT",           "industry": "IT Services",          "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "PERSISTENT":  {"name": "Persistent Systems",         "isin": "INE262H01021", "sector": "IT",           "industry": "Software",             "market_cap": "Mid Cap",   "fno": True,  "nifty50": False, "nifty_next": True},
     "MPHASIS":     {"name": "Mphasis",                    "isin": "INE356A01018", "sector": "IT",           "industry": "Software",             "market_cap": "Mid Cap",   "fno": True,  "nifty50": False, "nifty_next": False},
-    "COFORGE":     {"name": "Coforge",                    "isin": "INE591G01017", "sector": "IT",           "industry": "Software",             "market_cap": "Mid Cap",   "fno": True,  "nifty50": False, "nifty_next": False},
+    "COFORGE":     {"name": "Coforge",                    "isin": "INE591G01025", "sector": "IT",           "industry": "Software",             "market_cap": "Mid Cap",   "fno": True,  "nifty50": False, "nifty_next": False},
 
     # ── Energy & Oil/Gas ──────────────────────────────────────────────────────
     "RELIANCE":    {"name": "Reliance Industries",        "isin": "INE002A01018", "sector": "Energy",       "industry": "Oil & Gas",            "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "ONGC":        {"name": "ONGC",                       "isin": "INE213A01029", "sector": "Energy",       "industry": "Oil Exploration",      "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "IOC":         {"name": "Indian Oil Corporation",     "isin": "INE242A01010", "sector": "Energy",       "industry": "Oil Refinery",         "market_cap": "Large Cap", "fno": True,  "nifty50": False, "nifty_next": True},
     "BPCL":        {"name": "BPCL",                       "isin": "INE029A01011", "sector": "Energy",       "industry": "Oil Refinery",         "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
-    "HPCL":        {"name": "HPCL",                       "isin": "INE142A01065", "sector": "Energy",       "industry": "Oil Refinery",         "market_cap": "Large Cap", "fno": True,  "nifty50": False, "nifty_next": True},
+    "HPCL":        {"name": "HPCL",                       "isin": "INE094A01015", "sector": "Energy",       "industry": "Oil Refinery",         "market_cap": "Large Cap", "fno": True,  "nifty50": False, "nifty_next": True},
     "GAIL":        {"name": "GAIL India",                 "isin": "INE129A01019", "sector": "Energy",       "industry": "Gas Distribution",     "market_cap": "Large Cap", "fno": True,  "nifty50": False, "nifty_next": True},
     "NTPC":        {"name": "NTPC",                       "isin": "INE733E01010", "sector": "Energy",       "industry": "Power Generation",     "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "POWERGRID":   {"name": "Power Grid Corporation",     "isin": "INE752E01010", "sector": "Energy",       "industry": "Power Transmission",   "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
@@ -76,7 +76,7 @@ STOCK_UNIVERSE: Dict[str, dict] = {
     "MARUTI":      {"name": "Maruti Suzuki",              "isin": "INE585B01010", "sector": "Automobile",   "industry": "Passenger Vehicles",   "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "TATAMOTORS":  {"name": "Tata Motors",                "isin": "INE155A01022", "sector": "Automobile",   "industry": "Auto & EV",            "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "MM":          {"name": "Mahindra & Mahindra",        "isin": "INE101A01026", "sector": "Automobile",   "industry": "Auto & EV",            "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
-    "EICHERMOT":   {"name": "Eicher Motors",              "isin": "INE066A01013", "sector": "Automobile",   "industry": "Motorcycles",          "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
+    "EICHERMOT":   {"name": "Eicher Motors",              "isin": "INE066A01021", "sector": "Automobile",   "industry": "Motorcycles",          "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "HEROMOTOCO":  {"name": "Hero MotoCorp",              "isin": "INE158A01026", "sector": "Automobile",   "industry": "2-Wheeler",            "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "BAJAJ-AUTO":  {"name": "Bajaj Auto",                 "isin": "INE917I01010", "sector": "Automobile",   "industry": "2-Wheeler",            "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "TVSMOTOR":    {"name": "TVS Motor",                  "isin": "INE494B01023", "sector": "Automobile",   "industry": "2-Wheeler",            "market_cap": "Large Cap", "fno": True,  "nifty50": False, "nifty_next": True},
@@ -84,7 +84,7 @@ STOCK_UNIVERSE: Dict[str, dict] = {
 
     # ── Pharma & Healthcare ───────────────────────────────────────────────────
     "SUNPHARMA":   {"name": "Sun Pharma",                 "isin": "INE044A01036", "sector": "Pharma",       "industry": "Pharmaceuticals",      "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
-    "DRREDDY":     {"name": "Dr. Reddy's Labs",           "isin": "INE089A01023", "sector": "Pharma",       "industry": "Pharmaceuticals",      "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
+    "DRREDDY":     {"name": "Dr. Reddy's Labs",           "isin": "INE089A01031", "sector": "Pharma",       "industry": "Pharmaceuticals",      "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "CIPLA":       {"name": "Cipla",                      "isin": "INE059A01026", "sector": "Pharma",       "industry": "Pharmaceuticals",      "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "DIVISLAB":    {"name": "Divi's Laboratories",        "isin": "INE361B01024", "sector": "Pharma",       "industry": "Pharmaceuticals",      "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "APOLLOHOSP":  {"name": "Apollo Hospitals",           "isin": "INE437A01024", "sector": "Healthcare",   "industry": "Hospitals",            "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
@@ -113,7 +113,7 @@ STOCK_UNIVERSE: Dict[str, dict] = {
     "SIEMENS":     {"name": "Siemens India",              "isin": "INE003A01024", "sector": "Industrials",  "industry": "Capital Goods",        "market_cap": "Large Cap", "fno": True,  "nifty50": False, "nifty_next": True},
     "ABB":         {"name": "ABB India",                  "isin": "INE117A01022", "sector": "Industrials",  "industry": "Capital Goods",        "market_cap": "Large Cap", "fno": False, "nifty50": False, "nifty_next": True},
     "BEL":         {"name": "Bharat Electronics",         "isin": "INE263A01024", "sector": "Defence",      "industry": "Defence Electronics",  "market_cap": "Large Cap", "fno": True,  "nifty50": False, "nifty_next": True},
-    "HAL":         {"name": "Hindustan Aeronautics",      "isin": "INE066F01012", "sector": "Defence",      "industry": "Aerospace & Defence",  "market_cap": "Large Cap", "fno": True,  "nifty50": False, "nifty_next": True},
+    "HAL":         {"name": "Hindustan Aeronautics",      "isin": "INE066F01020", "sector": "Defence",      "industry": "Aerospace & Defence",  "market_cap": "Large Cap", "fno": True,  "nifty50": False, "nifty_next": True},
 
     # ── Metals & Mining ───────────────────────────────────────────────────────
     "TATASTEEL":   {"name": "Tata Steel",                 "isin": "INE081A01020", "sector": "Metals",       "industry": "Steel",                "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
@@ -134,7 +134,7 @@ STOCK_UNIVERSE: Dict[str, dict] = {
     "ASIANPAINT":  {"name": "Asian Paints",               "isin": "INE021A01026", "sector": "Consumer",     "industry": "Paints",               "market_cap": "Large Cap", "fno": True,  "nifty50": True,  "nifty_next": False},
     "PIDILITIND":  {"name": "Pidilite Industries",        "isin": "INE318A01026", "sector": "Consumer",     "industry": "Adhesives & Chemicals","market_cap": "Large Cap", "fno": True,  "nifty50": False, "nifty_next": True},
     "BERGEPAINT":  {"name": "Berger Paints",              "isin": "INE463A01038", "sector": "Consumer",     "industry": "Paints",               "market_cap": "Large Cap", "fno": True,  "nifty50": False, "nifty_next": True},
-    "PAGEIND":     {"name": "Page Industries (Jockey)",   "isin": "INE461G01038", "sector": "Consumer",     "industry": "Apparel",              "market_cap": "Mid Cap",   "fno": True,  "nifty50": False, "nifty_next": False},
+    "PAGEIND":     {"name": "Page Industries (Jockey)",   "isin": "INE761H01022", "sector": "Consumer",     "industry": "Apparel",              "market_cap": "Mid Cap",   "fno": True,  "nifty50": False, "nifty_next": False},
 
     # ── Real Estate ───────────────────────────────────────────────────────────
     "DLF":         {"name": "DLF",                        "isin": "INE271C01023", "sector": "Real Estate",  "industry": "Residential RE",       "market_cap": "Large Cap", "fno": True,  "nifty50": False, "nifty_next": True},

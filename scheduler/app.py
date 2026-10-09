@@ -76,6 +76,18 @@ def start_scheduler(cfg: dict) -> Optional[BackgroundScheduler]:
         id="historical_backfill", max_instances=1, coalesce=True,
     )
 
+    if sched_cfg.get("ml_retrain_enabled", True):
+        sched.add_job(
+            lambda: jobs.ml_retrain_job(sched_cfg.get("ml_retrain_days", 730)),
+            CronTrigger(
+                day_of_week=sched_cfg.get("ml_retrain_day_of_week", "sun"),
+                hour=sched_cfg.get("ml_retrain_hour", 6),
+                minute=0,
+                timezone=tz,
+            ),
+            id="ml_retrain", max_instances=1, coalesce=True,
+        )
+
     # Intraday signal/alert jobs — separate opt-in track, coexisting with
     # the daily jobs above rather than replacing them (docs/intraday_gaps.md
     # §6/§7 item 6). Always market-hours-gated regardless of

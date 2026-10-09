@@ -200,6 +200,10 @@ scheduler:
   historical_backfill_hour: 18         # IST, after market close + buffer
   historical_backfill_minute: 0
   historical_backfill_min_age_days: 7  # matches backfill_historical_events.py default
+  ml_retrain_enabled: true             # weekly scripts/train_ml.py retrain; only replaces
+  ml_retrain_day_of_week: sun          # models/ensemble.pkl if the new model beats the
+  ml_retrain_hour: 6                   # baselines, and never enables ml_classifier
+  ml_retrain_days: 730
 
   # ── Intraday track (docs/intraday_gaps.md §6) ───────────────────────────────
   # Separate opt-in from the daily jobs above — both can run at once,

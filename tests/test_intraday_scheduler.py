@@ -37,7 +37,7 @@ def test_intraday_jobs_present_when_intraday_enabled():
     try:
         job_ids = {j.id for j in sched.get_jobs()}
         assert {"news_ingest", "signal_engine", "alert_evaluation", "historical_backfill",
-                "intraday_signal_engine", "intraday_alert_evaluation"} == job_ids
+                "ml_retrain", "intraday_signal_engine", "intraday_alert_evaluation"} == job_ids
     finally:
         scheduler_app.stop_scheduler()
 

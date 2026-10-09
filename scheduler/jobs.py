@@ -106,6 +106,20 @@ def intraday_alert_evaluation_job(timeframe: str = "30m") -> JobRun:
     return _run_tracked("intraday_alert_evaluation", _do)
 
 
+def ml_retrain_job(days: int = 730) -> JobRun:
+    """Weekly ML retrain. The new model replaces models/ensemble.pkl only if
+    it beats the naive baselines out of sample; it never enables the
+    strategy. A running bot picks the new model up on its next start."""
+    def _do() -> dict:
+        from scripts.train_ml import retrain
+        report = retrain(days=days)
+        if not report.get("ok"):
+            raise RuntimeError(report.get("error", "retrain failed"))
+        return {k: report[k] for k in ("saved", "passed_gate", "accuracy",
+                                       "baseline_accuracy", "trade_precision", "test_samples")}
+    return _run_tracked("ml_retrain", _do)
+
+
 def historical_backfill_job(min_age_days: int = 7) -> JobRun:
     def _do() -> dict:
         from scripts.backfill_historical_events import run_organic_backfill

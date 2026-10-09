@@ -2,7 +2,19 @@ import pandas as pd
 import numpy as np
 from typing import Optional
 from strategies.base import BaseStrategy, Signal, SignalType
-from feature_engine.feature_builder import FeatureBuilder
+from ml_models.dataset import build_features, feature_columns, feature_row
+from utils.logger import get_logger
+
+logger = get_logger("ml_strategy")
+
+
+def _trained_columns(model) -> list[str]:
+    """Feature columns the model was trained on (ensemble or its first member)."""
+    cols = getattr(model, "feature_cols", None)
+    if not cols:
+        members = getattr(model, "models", None) or []
+        cols = getattr(members[0], "feature_cols", None) if members else None
+    return list(cols or [])
 
 
 class MLClassifierStrategy(BaseStrategy):
@@ -17,24 +29,32 @@ class MLClassifierStrategy(BaseStrategy):
     def __init__(self, cfg: dict, model=None):
         super().__init__(cfg)
         self.model = model
-        self.feature_builder = FeatureBuilder()
+        self._warned: set[str] = set()
         self.min_confidence = cfg.get("ml_min_confidence", 0.6)
 
     def set_model(self, model) -> None:
         self.model = model
+        self._warned.clear()
+
+    def _warn_once(self, key: str, msg: str) -> None:
+        if key not in self._warned:
+            self._warned.add(key)
+            logger.warning(msg)
 
     def generate_signal(self, df: pd.DataFrame, symbol: str) -> Optional[Signal]:
         if self.model is None or not self.validate_df(df, 60):
             return None
 
         try:
-            features = self.feature_builder.build(df)
-            if features.empty:
+            # Use exactly the columns, in the order, the model was trained on.
+            cols = _trained_columns(self.model)
+            if not cols:
+                self._warn_once("no_cols", "ML model has no saved feature columns — retrain with "
+                                           "scripts/train_ml.py; using current feature set")
+                cols = feature_columns(build_features(df))
+            X = feature_row(df, cols)
+            if X is None:
                 return None
-
-            feature_cols = [c for c in features.columns
-                            if c not in ("open", "high", "low", "close", "volume")]
-            X = features[feature_cols].iloc[-1:].values
 
             if hasattr(self.model, "predict_proba"):
                 proba = self.model.predict_proba(X)[0]
@@ -63,4 +83,5 @@ class MLClassifierStrategy(BaseStrategy):
                 metadata={"model": type(self.model).__name__},
             )
         except Exception as e:
+            self._warn_once(type(e).__name__, f"ML prediction failed for {symbol}: {e}")
             return None

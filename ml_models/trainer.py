@@ -25,14 +25,13 @@ class ModelTrainer:
         self._exclude_cols = {"open", "high", "low", "close", "volume"}
 
     def prepare_data(self, df: pd.DataFrame):
-        features = self.feature_builder.build(df)
-        labels = BaseMLModel.make_labels(features, self.forward_bars, self.threshold)
-        feature_cols = [c for c in features.columns if c not in self._exclude_cols]
-        X = features[feature_cols].values
-        y = labels
-        # Drop NaN rows
-        valid = ~np.isnan(X).any(axis=1) & ~np.isnan(y)
-        return X[valid], y[valid].astype(int), feature_cols
+        from .dataset import build_features, feature_columns, make_labels
+        features = build_features(df)
+        labels = make_labels(features["close"], self.forward_bars, self.threshold)
+        feature_cols = feature_columns(features)
+        X = features[feature_cols].to_numpy(dtype=float)
+        valid = ~np.isnan(X).any(axis=1) & ~np.isnan(labels)
+        return X[valid], labels[valid].astype(int), feature_cols
 
     def train_all(self, df: pd.DataFrame) -> EnsembleModel:
         X, y, feature_cols = self.prepare_data(df)
@@ -53,16 +52,17 @@ class ModelTrainer:
             lstm.feature_cols = feature_cols
             models.append(lstm)
 
+        # Weight members on later data they were not trained on.
+        from .dataset import time_split
+        tr, te = time_split(len(X), 0.2, self.forward_bars)
         for m in models:
             m.feature_cols = feature_cols
-            m.train(X, y)
+            m.train(X[tr], y[tr])
             m.save()
 
         ensemble = EnsembleModel(models)
-        split = int(len(X) * 0.8)
-        if split < len(X):
-            ensemble.update_weights_by_accuracy(X[split:], y[split:])
-
+        ensemble.feature_cols = feature_cols
+        ensemble.update_weights_by_accuracy(X[te], y[te])
         return ensemble
 
     def get_feature_matrix(self, df: pd.DataFrame) -> tuple[np.ndarray, list[str]]:
