@@ -449,6 +449,19 @@ class UpstoxExecutor:
             logger.error(f"Positions error: {e}")
             return []
 
+    async def fetch_broker_quantities(self) -> tuple[dict[str, int], dict[str, int]]:
+        """(total, today) net quantity per instrument key, for reconciliation.
+
+        Unlike get_positions()/get_holdings(), this raises on any API failure:
+        an error must never be mistaken for "the broker holds nothing"."""
+        from execution_engine.reconcile import broker_net_quantities
+        pos = await self._get_async("/portfolio/short-term-positions")
+        hold = await self._get_async("/portfolio/long-term-holdings")
+        for resp in (pos, hold):
+            if resp.get("status") != "success":
+                raise RuntimeError(f"Upstox portfolio API error: {resp.get('errors') or resp}")
+        return broker_net_quantities(pos.get("data") or [], hold.get("data") or [])
+
     def get_holdings(self) -> List[dict]:
         """Long-term holdings (delivery equity)."""
         try:

@@ -88,6 +88,8 @@ execution:
   retry_attempts: 3
   retry_delay_ms: 500
   latency_budget_ms: 100
+  reconcile_interval_sec: 300    # live: compare bot positions with Upstox every 5 min
+  max_tick_jump_pct: 0.20        # drop ticks moving >20% from the last price (corrupt data)
 
 data:
   lookback_days: 365

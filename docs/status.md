@@ -4,7 +4,7 @@ Single checklist for what is built, what is still to do, and the bugs found in t
 code. It replaces the old `todo.md`, `todo/` (P1–P4 gap audit) and `known_issues.md`.
 
 **Last verified against the code:** 2026-10-09 (commit `3fd55bd`).
-Offline test suite: **483 tests, all passing** after the bug fixes in [§4](#4-bugs-found-in-the-code).
+Offline test suite: **506 tests, all passing**.
 
 Legend: `[x]` done and verified in code · `[ ]` open (todo, partial, or a bug).
 
@@ -92,6 +92,9 @@ Legend: `[x]` done and verified in code · `[ ]` open (todo, partial, or a bug).
 - [x] Scheduler: APScheduler jobs for news, signals, alerts and backfill (`scheduler/`)
 - [x] Dashboard pages: Dashboard, Chart, Positions, Trades, Strategies, Backtest, Daily P&L, News, Signals, Copilot, Watchlists, Alerts, Portfolio Risk, Intraday Lab, Docs
 - [x] Paper performance by strategy on the dashboard (Strategies page) and `strategy_report.py`
+- [x] `main.py` saves open positions to `data/live_positions.json` on every open/close (and every 5 s) and restores them after a crash. Only its own file, in the same mode, is restored; intraday positions from an earlier day are dropped. Live positions show on the dashboard. Tests: `tests/test_bot_state_persistence.py`
+- [x] Live reconciliation against Upstox positions + holdings (`execution_engine/reconcile.py`): at startup and every `execution.reconcile_interval_sec`. Positions the broker does not back are shrunk to what it holds (immediately at startup, after two checks in a row during the session); today's broker positions the bot does not track are alerted. API errors never change the book. Tests: `tests/test_reconcile.py`
+- [x] Tick sanity check in `main.py`: ticks ≤ 0 or moving more than `execution.max_tick_jump_pct` (20%) are dropped before stops and strategies see them; a new level is accepted after 3 consistent ticks
 
 ---
 
@@ -99,8 +102,6 @@ Legend: `[x]` done and verified in code · `[ ]` open (todo, partial, or a bug).
 
 ### Trading and execution
 
-- [ ] Position state persistence for `main.py` (live mode). Only `paper_trade.py` saves and restores `live_positions.json`; a crash in live mode still loses `RiskManager` positions
-- [ ] Portfolio reconciliation against the Upstox positions / holdings API
 - [ ] Pair trading: place both legs atomically
 - [ ] Options strategies (iron condor, gamma scalping, theta decay, straddle, expiry day): not in `MetaStrategyEngine`; they need a live IV surface, strike/expiry selection and multi-leg P&L tracking
 - [ ] PEAD strategy: no earnings-surprise data feed; not in the engine
@@ -121,7 +122,6 @@ Legend: `[x]` done and verified in code · `[ ]` open (todo, partial, or a bug).
 - [ ] Earnings calendar / NSE announcements scraper
 - [ ] FII/DII scrape scheduled after NSE publishes (~17:30 IST)
 - [ ] Intraday 5m/15m data: Upstox returns HTTP 400 for these intervals on this account; the intraday track defaults to 30m
-- [ ] Price sanity check on ticks (`_validate_tick()`: drop LTP ≤ 0 or >20% jumps) — proposed in P4-2, never added
 - [ ] Regime detector still has 5 regimes; no BREAKOUT / MEAN_REVERTING / CRISIS states
 
 ### Infrastructure and tests

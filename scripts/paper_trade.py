@@ -647,6 +647,8 @@ def _load_state(portfolio: PaperPortfolio, max_age_hours: float = 1.0) -> int:
             return 0
         if abs(state.get("initial_capital", 0) - portfolio.initial_capital) > 1:
             return 0  # different session — don't restore
+        if state.get("source") == "main":
+            return 0  # written by main.py's bot, not a paper_trade.py session
         portfolio.cash = float(state.get("cash", portfolio.cash))
         portfolio.closed_trades = [
             ClosedTrade(**t) for t in state.get("closed_trades", [])

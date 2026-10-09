@@ -26,6 +26,10 @@ from utils.trade_logger import TradeLogger
 
 logger = get_logger("main", level=settings.get("system.log_level", "INFO"))
 
+ROOT = Path(__file__).resolve().parent
+STATE_FILE = ROOT / "data" / "live_positions.json"   # also read by the dashboard
+_STATE_HEARTBEAT_SEC = 5   # rewrite at least this often so the dashboard sees the bot as running
+
 
 # ── Upstox Bot ─────────────────────────────────────────────────────────────────
 
@@ -109,6 +113,13 @@ class UpstoxTradingBot:
         self._tick_counter: dict = {}
         self._mis_squareoff_date = None   # IST date the MIS squareoff last ran
         self._last_price: dict[str, float] = {}
+        self._state_file = STATE_FILE
+        self._state_saved_version = -1
+        self._state_saved_at = 0.0
+        self._recon_strikes: dict[str, int] = {}   # instrument key → consecutive mismatches
+        self._recon_alerted: set = set()            # (date, key) already alerted as untracked
+        self._recon_task = None
+        self._suspect_ticks: dict[str, list[float]] = {}   # symbol → rejected prices in a row
 
     # ── Startup ────────────────────────────────────────────────────────────────
 
@@ -141,6 +152,7 @@ class UpstoxTradingBot:
                     "Run: bash scripts/auto_login.sh"
                 )
 
+        self._restore_state()
         self._check_ml_models()
         await self._load_historical_data()
         await self._train_or_load_models()
@@ -152,6 +164,10 @@ class UpstoxTradingBot:
                 logger.info("Paper mode: starting polling on cached data for testing")
                 await self._run_paper_simulation()
                 return
+
+        if self.mode == "live":
+            await self._reconcile(at_startup=True)
+            self._recon_task = asyncio.create_task(self._reconcile_loop())
 
         logger.info("Starting real-time WebSocket feed...")
         await self.feed.start(self.all_symbols, mode="full")
@@ -269,11 +285,219 @@ class UpstoxTradingBot:
                 await self._close_tracked(pos, price, "mis_squareoff",
                                           send_order=self.mode != "live")
 
+    # ── Position state persistence ─────────────────────────────────────────────
+
+    def _save_state(self, force: bool = False) -> None:
+        """Write open positions to data/live_positions.json after any open or
+        close, and at least every few seconds (the dashboard's heartbeat).
+        Written atomically so a crash mid-write never leaves a corrupt file."""
+        import json
+        from utils.timeutils import now_ist
+        rm = self.risk_manager
+        changed = rm.version != self._state_saved_version
+        if not (force or changed or time.time() - self._state_saved_at >= _STATE_HEARTBEAT_SEC):
+            return
+        product = self.executor._default_product.value
+        positions = []
+        for row in rm.to_state()["positions"]:
+            price = self._last_price.get(row["symbol"], row["entry_price"])
+            positions.append({
+                **row,
+                "product": product,
+                "current_price": price,
+                "unrealised_pnl": (price - row["entry_price"]) * row["direction"] * row["size"],
+            })
+        exposure = sum(p["entry_price"] * p["size"] for p in positions)
+        state = {
+            "source": "main",
+            "mode": self.mode,
+            "saved_at": time.time(),
+            "session_date": now_ist().date().isoformat(),
+            "initial_capital": rm.initial_capital,
+            "capital": rm.capital,
+            "cash": rm.capital - exposure,
+            "daily_pnl": rm.daily_pnl,
+            "daily_trade_count": rm.daily_trade_count,
+            "positions": positions,
+        }
+        try:
+            self._state_file.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self._state_file.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(state, indent=2))
+            tmp.replace(self._state_file)
+            self._state_saved_version = rm.version
+            self._state_saved_at = state["saved_at"]
+        except OSError as exc:
+            logger.error(f"Could not save position state: {exc}")
+
+    def _restore_state(self) -> int:
+        """Reload open positions after a crash or restart. Returns how many
+        were restored.
+
+        Only a file written by this bot in the same mode is used (never
+        paper_trade.py's file, never paper positions into live). Intraday
+        (MIS) positions from an earlier session are dropped — the broker
+        squared them off at 15:20 that day."""
+        import json
+        from utils.timeutils import now_ist
+        if not self._state_file.exists():
+            return 0
+        try:
+            state = json.loads(self._state_file.read_text())
+        except (OSError, ValueError) as exc:
+            logger.error(f"Could not read position state {self._state_file}: {exc}")
+            return 0
+        if state.get("source") != "main" or state.get("mode") != self.mode:
+            logger.info(f"Ignoring {self._state_file.name}: written by "
+                        f"{state.get('source', 'paper_trade.py')} in {state.get('mode', '?')} mode")
+            return 0
+
+        same_session = state.get("session_date") == now_ist().date().isoformat()
+        keep, dropped = [], []
+        for row in state.get("positions", []):
+            if row.get("product") == "MIS" and not same_session:
+                dropped.append(row["symbol"])
+            else:
+                keep.append(row)
+        if dropped:
+            logger.warning(f"Not restoring intraday positions from {state.get('session_date')} "
+                           f"(squared off by the broker): {', '.join(dropped)}")
+
+        rm = self.risk_manager
+        rm.capital = float(state.get("capital", rm.capital))
+        if same_session:
+            rm.daily_pnl = float(state.get("daily_pnl", 0.0))
+            rm.daily_trade_count = int(state.get("daily_trade_count", 0))
+        restored = rm.restore_positions(keep)
+        if restored:
+            logger.warning(f"Restored {restored} open position(s) from {self._state_file.name}: "
+                           + ", ".join(f"{r['symbol']} x{r['size']:g}" for r in keep))
+        return restored
+
+    # ── Broker reconciliation (live) ───────────────────────────────────────────
+
+    async def _reconcile_loop(self) -> None:
+        interval = self.cfg.get("execution", {}).get("reconcile_interval_sec", 300)
+        while True:
+            await asyncio.sleep(interval)
+            await self._reconcile()
+
+    async def _reconcile(self, at_startup: bool = False) -> None:
+        """Compare the bot's book with Upstox and fix positions the broker
+        does not back.
+
+        A position the broker does not hold is shrunk to what the broker has
+        (no order is sent). At startup that happens immediately; during the
+        session it needs two checks in a row, so an order still being filled
+        is not mistaken for a missing position. Positions opened today at the
+        broker that the bot does not track are only alerted, once per day."""
+        from execution_engine.reconcile import compare_books
+        from utils.timeutils import now_ist
+        try:
+            broker_total, broker_today = await self.executor.fetch_broker_quantities()
+        except Exception as exc:
+            logger.warning(f"Reconciliation skipped — could not read Upstox positions: {exc}")
+            return
+
+        rm = self.risk_manager
+        expected: dict[str, float] = {}
+        key_to_symbol: dict[str, str] = {}
+        for symbol, pos_list in rm.positions.items():
+            key = self.executor._resolve_key(symbol)
+            if not key or not pos_list:
+                continue
+            key_to_symbol[key] = symbol
+            expected[key] = expected.get(key, 0.0) + sum(p.direction * p.size for p in pos_list)
+
+        mismatches = compare_books(expected, broker_total, broker_today)
+        missing_keys = {m.key for m in mismatches if m.kind == "missing_at_broker"}
+        for key in list(self._recon_strikes):
+            if key not in missing_keys:
+                del self._recon_strikes[key]   # resolved (e.g. the order finished filling)
+
+        today = now_ist().date()
+        for m in mismatches:
+            if m.kind == "untracked_at_broker":
+                if (today, m.key) not in self._recon_alerted:
+                    self._recon_alerted.add((today, m.key))
+                    msg = (f"⚠️ Upstox has a position the bot is not tracking: "
+                           f"{m.key} qty {m.broker_qty:+d}")
+                    logger.warning(msg)
+                    await self.notifier.send(msg)
+                continue
+
+            symbol = key_to_symbol[m.key]
+            self._recon_strikes[m.key] = self._recon_strikes.get(m.key, 0) + 1
+            if not at_startup and self._recon_strikes[m.key] < 2:
+                logger.warning(f"Reconciliation: {symbol} bot={m.bot_qty:+g} broker={m.broker_qty:+d} "
+                               "— will correct if still different on the next check")
+                continue
+            self._shrink_to_broker(symbol, m.broker_cover)
+            del self._recon_strikes[m.key]
+            msg = (f"🛑 {symbol}: bot thought it held {m.bot_qty:+g}, Upstox has {m.broker_qty:+d}. "
+                   f"Bot position reduced to {m.broker_cover:g}; no order sent. Check the account.")
+            logger.error(msg)
+            await self.notifier.send(msg)
+
+    def _shrink_to_broker(self, symbol: str, cover: float) -> None:
+        """Reduce the bot's positions in `symbol` to the size the broker backs,
+        dropping the newest first. P&L for the removed part is booked at the
+        last seen price, since the actual exit is unknown."""
+        rm = self.risk_manager
+        price = self._last_price.get(symbol)
+        remaining = cover
+        for pos in list(rm.positions.get(symbol, [])):   # oldest first: keep these
+            if remaining >= pos.size:
+                remaining -= pos.size
+            elif remaining > 0:
+                pos.size = remaining
+                remaining = 0
+                rm.version += 1
+            else:
+                rm.close_position(pos, price if price is not None else pos.entry_price,
+                                  "reconcile_missing_at_broker")
+
     async def _on_tick(self, event: dict) -> None:
+        try:
+            await self._process_tick(event)
+        finally:
+            self._save_state()
+
+    def _is_sane_tick(self, symbol: str, price: float) -> bool:
+        """Reject corrupt ticks before they reach stops or strategies.
+
+        A price ≤ 0, or a jump of more than execution.max_tick_jump_pct
+        (default 20%, the widest NSE circuit band) from the last accepted
+        price, is dropped. If the next ticks keep agreeing on the new level
+        (3 in a row within 1% of each other) it is real — e.g. a split
+        re-basing the feed — and is accepted."""
+        if price <= 0:
+            return False
+        last = self._last_price.get(symbol)
+        if not last:
+            return True
+        limit = self.cfg.get("execution", {}).get("max_tick_jump_pct", 0.20)
+        if abs(price - last) / last <= limit:
+            self._suspect_ticks.pop(symbol, None)
+            return True
+        run = self._suspect_ticks.setdefault(symbol, [])
+        if run and abs(price - run[-1]) / run[-1] > 0.01:
+            run.clear()   # the bad prices don't agree with each other either
+        run.append(price)
+        if len(run) >= 3:
+            logger.warning(f"{symbol}: accepting new price level {price:.2f} "
+                           f"(was {last:.2f}) after {len(run)} consistent ticks")
+            self._suspect_ticks.pop(symbol, None)
+            return True
+        logger.warning(f"{symbol}: dropped suspicious tick {price:.2f} "
+                       f"({(price - last) / last:+.1%} vs last {last:.2f})")
+        return False
+
+    async def _process_tick(self, event: dict) -> None:
         from utils.timeutils import is_mis_squareoff_time, now_ist
         symbol = event.get("symbol", "")
         price  = float(event.get("close", event.get("ltp", 0)))
-        if price <= 0:
+        if not self._is_sane_tick(symbol, price):
             return
         self._last_price[symbol] = price
 
@@ -389,11 +613,15 @@ class UpstoxTradingBot:
                 if (best.signal_type in (SignalType.BUY, SignalType.SELL)
                         and await self._handle_existing_position(best, best.price)):
                     await self.executor.execute_signal(best)
+        self._save_state(force=True)
         metrics = self.portfolio.metrics()
         logger.info(f"Paper simulation metrics: {metrics}")
 
     async def stop(self) -> None:
+        if self._recon_task:
+            self._recon_task.cancel()
         await self.feed.stop()
+        self._save_state(force=True)
         logger.info("Bot stopped")
 
 

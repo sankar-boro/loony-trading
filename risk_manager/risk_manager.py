@@ -1,6 +1,6 @@
 from __future__ import annotations
 import math
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from typing import Dict, List, Optional
 from strategies.base import Signal, SignalType
 from utils.logger import get_logger
@@ -38,6 +38,7 @@ class Position:
     strategy: str
     peak_price: float = 0.0
     pnl: float = 0.0
+    entry_time: str = ""     # ISO timestamp, set when the position is opened
 
     def update_trailing_stop(self, current_price: float) -> None:
         if self.direction == 1 and current_price > self.peak_price:
@@ -84,6 +85,7 @@ class RiskManager:
         self.positions: Dict[str, List[Position]] = {}   # symbol -> positions
         self.daily_pnl = 0.0
         self.daily_trade_count = 0
+        self.version = 0   # bumped on every open/close, so callers know when to persist
 
     # ── Signal validation ─────────────────────────────────────────────────────
 
@@ -160,9 +162,11 @@ class RiskManager:
             trailing_stop_pct=self.cfg.get("trailing_stop_pct", 0.02),
             strategy=signal.strategy,
             peak_price=signal.price,
+            entry_time=signal.ts,
         )
         self.positions.setdefault(signal.symbol, []).append(pos)
         self.daily_trade_count += 1
+        self.version += 1
         logger.info(f"Position opened: {signal.symbol} {signal.signal_type.value} "
                     f"size={size:.6f} entry={signal.price} SL={signal.stop_loss:.4f}")
         return pos
@@ -175,6 +179,7 @@ class RiskManager:
         symbol = pos.symbol
         if symbol in self.positions and pos in self.positions[symbol]:
             self.positions[symbol].remove(pos)
+        self.version += 1
         logger.info(f"Position closed: {symbol} pnl={pnl:.4f} reason={reason}")
         return pnl
 
@@ -193,6 +198,25 @@ class RiskManager:
                 elif pos.should_take_profit(price):
                     to_close.append((pos, "take_profit"))
         return to_close
+
+    # ── Persistence ────────────────────────────────────────────────────────────
+
+    def to_state(self) -> dict:
+        return {
+            "capital": self.capital,
+            "daily_pnl": self.daily_pnl,
+            "daily_trade_count": self.daily_trade_count,
+            "positions": [asdict(p) for lst in self.positions.values() for p in lst],
+        }
+
+    def restore_positions(self, rows: list[dict]) -> int:
+        """Re-create open positions from saved rows (unknown keys are ignored)."""
+        known = {f.name for f in fields(Position)}
+        for row in rows:
+            pos = Position(**{k: v for k, v in row.items() if k in known})
+            self.positions.setdefault(pos.symbol, []).append(pos)
+        self.version += 1
+        return len(rows)
 
     def reset_daily(self) -> None:
         self.daily_pnl = 0.0

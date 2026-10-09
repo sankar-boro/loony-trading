@@ -1,6 +1,6 @@
 # Testing Guide
 
-483 offline tests + 60 live Upstox API tests. All offline tests pass as of 2026-10-09.
+506 offline tests + 60 live Upstox API tests. All offline tests pass as of 2026-10-09.
 
 ---
 
@@ -52,7 +52,8 @@ open htmlcov/index.html
 | `test_news_pipeline.py`, `test_ai_client.py`, `test_copilot.py` | — | News ingestion/classification, AI client, Copilot |
 | `test_watchlists_and_alerts.py`, `test_portfolio_risk.py` | — | Watchlists, alerts, portfolio risk |
 | `test_scheduler.py`, `test_db_models.py`, `test_backtest_router.py`, `test_demo_ohlcv.py` | — | Scheduler, DB models, backtest API, demo data |
-| `test_bot_position_safety.py`, `test_token_expiry.py` | — | MIS squareoff, one position per symbol, 03:30 IST token expiry |
+| `test_bot_position_safety.py`, `test_token_expiry.py` | — | MIS squareoff, one position per symbol, tick sanity check, 03:30 IST token expiry |
+| `test_bot_state_persistence.py`, `test_reconcile.py` | — | Live position save/restore, reconciliation with Upstox |
 | `test_live_upstox.py` | 60 | **Live Upstox API** (requires token) |
 
 ---

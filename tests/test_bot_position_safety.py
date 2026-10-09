@@ -52,6 +52,11 @@ class _FakeBot:
     _squareoff_mis = UpstoxTradingBot._squareoff_mis
     _handle_existing_position = UpstoxTradingBot._handle_existing_position
     _on_tick = UpstoxTradingBot._on_tick
+    _process_tick = UpstoxTradingBot._process_tick
+    _is_sane_tick = UpstoxTradingBot._is_sane_tick
+
+    def _save_state(self, force=False):
+        pass
 
     def __init__(self, mode: str = "paper", product: str = "MIS"):
         self.mode = mode
@@ -70,6 +75,8 @@ class _FakeBot:
         self._df_cache_base = {}
         self._last_price = {}
         self._mis_squareoff_date = None
+        self._suspect_ticks = {}
+        self.cfg = {}
 
 
 def _signal(symbol: str, side: SignalType, price: float = 100.0) -> Signal:
@@ -187,3 +194,41 @@ def test_risk_manager_rejects_second_position_in_symbol():
     assert rm.validate_signal(_signal("RELIANCE", SignalType.BUY)) is False
     assert rm.validate_signal(_signal("RELIANCE", SignalType.SELL)) is False
     assert rm.validate_signal(_signal("TCS", SignalType.BUY)) is True
+
+
+# ── Tick sanity check ───────────────────────────────────────────────────────
+
+def test_zero_and_spike_ticks_are_dropped():
+    bot = _FakeBot()
+    assert bot._is_sane_tick("RELIANCE", 0) is False
+    assert bot._is_sane_tick("RELIANCE", 100.0) is True
+    bot._last_price["RELIANCE"] = 100.0
+    assert bot._is_sane_tick("RELIANCE", 119.0) is True     # within 20%
+    assert bot._is_sane_tick("RELIANCE", 1000.0) is False   # 10x spike
+
+
+def test_spike_tick_never_reaches_stop_check(monkeypatch):
+    bot = _FakeBot()
+    _at(monkeypatch, 11, 0)
+    _open(bot, "RELIANCE")                     # long, stop at 98
+    bot._last_price["RELIANCE"] = 100.0
+
+    asyncio.run(bot._on_tick({"symbol": "RELIANCE", "close": 1.0}))   # corrupt tick
+
+    assert bot.risk_manager.open_count == 1
+    assert bot._last_price["RELIANCE"] == 100.0
+
+
+def test_consistent_new_level_is_accepted_after_three_ticks():
+    bot = _FakeBot()
+    bot._last_price["RELIANCE"] = 100.0
+    assert bot._is_sane_tick("RELIANCE", 50.0) is False
+    assert bot._is_sane_tick("RELIANCE", 50.2) is False
+    assert bot._is_sane_tick("RELIANCE", 50.1) is True     # e.g. a 1:1 bonus re-basing
+
+
+def test_inconsistent_bad_ticks_keep_being_dropped():
+    bot = _FakeBot()
+    bot._last_price["RELIANCE"] = 100.0
+    for p in (50.0, 300.0, 10.0, 500.0):
+        assert bot._is_sane_tick("RELIANCE", p) is False

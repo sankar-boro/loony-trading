@@ -165,7 +165,7 @@ Log fields:
 ## 8. Run Tests
 
 ```bash
-# All offline tests (~483 tests, ~30 seconds)
+# All offline tests (~506 tests, ~30 seconds)
 pytest tests/ -v --ignore=tests/test_live_upstox.py
 
 # Specific module
