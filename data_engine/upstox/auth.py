@@ -12,9 +12,11 @@ Auto-refresh is attempted at startup if the stored token is expired.
 from __future__ import annotations
 import json
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo
 
 from utils.logger import get_logger
 
@@ -23,6 +25,28 @@ logger = get_logger("upstox.auth")
 _AUTH_BASE = "https://api.upstox.com/v2"
 _AUTH_DIALOG = "https://api.upstox.com/v2/login/authorization/dialog"
 _TOKEN_URL = f"{_AUTH_BASE}/login/authorization/token"
+
+_IST = ZoneInfo("Asia/Kolkata")
+
+
+def token_expires_at(obtained_at: float) -> float:
+    """Epoch time at which a daily Upstox access token stops working.
+
+    Tokens are not valid for a fixed number of hours: every token expires at
+    03:30 IST the morning after it was issued (or the same morning, if it was
+    issued between midnight and 03:30).
+    """
+    issued = datetime.fromtimestamp(obtained_at, _IST)
+    expiry = issued.replace(hour=3, minute=30, second=0, microsecond=0)
+    if expiry <= issued:
+        expiry += timedelta(days=1)
+    return expiry.timestamp()
+
+
+def token_hours_left(obtained_at: float, now: float | None = None) -> float:
+    """Hours until the token expires; zero or negative once it has expired."""
+    now = time.time() if now is None else now
+    return (token_expires_at(obtained_at) - now) / 3600
 
 
 class UpstoxAuth:
@@ -84,14 +108,14 @@ class UpstoxAuth:
             json.dump(data, f, indent=2)
 
     def load_token(self) -> Optional[str]:
-        """Load token from disk. Returns None if missing or expired (>24 h old)."""
+        """Load token from disk. Returns None if missing or expired (past 03:30 IST)."""
         if not self.token_file.exists():
             return None
         try:
             with open(self.token_file) as f:
                 data = json.load(f)
             age_hours = (time.time() - data.get("obtained_at", 0)) / 3600
-            if age_hours >= 23:  # Upstox tokens are valid for one trading session
+            if token_hours_left(data.get("obtained_at", 0)) <= 0:
                 logger.warning("Upstox token expired — re-authentication required")
                 return None
             self._token_data = data
@@ -116,8 +140,7 @@ class UpstoxAuth:
     def is_valid(self) -> bool:
         if not self._token_data:
             return False
-        age = time.time() - self._token_data.get("obtained_at", 0)
-        return age < 82800  # 23 hours
+        return token_hours_left(self._token_data.get("obtained_at", 0)) > 0
 
 
 class UpstoxAuthServer:

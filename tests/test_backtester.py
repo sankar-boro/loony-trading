@@ -93,3 +93,13 @@ def test_empty_trades_metrics_include_new_fields():
     metrics = bt._compute_metrics([], np.array([10_000.0]))
     assert metrics["median_trade_return_pct"] == 0.0
     assert metrics["avg_holding_bars"] == 0.0
+
+
+def test_walk_forward_splits_get_warmup_from_preceding_bars():
+    # 500 bars, 5 splits → 100-bar splits. With warmup 200 the old code skipped
+    # every split (each was shorter than warmup + 10); now each split borrows
+    # its warmup from the bars before it.
+    cfg = {**CFG, "data": {"warmup_bars": 200}}
+    bt = Backtester(cfg, initial_capital=10_000)
+    results = bt.run_walk_forward(make_df(500), "TEST", strategy=EmaCrossoverStrategy(cfg))
+    assert len(results) == 3   # splits starting at bars 200, 300, 400

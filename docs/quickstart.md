@@ -165,7 +165,7 @@ Log fields:
 ## 8. Run Tests
 
 ```bash
-# All offline tests (~467 tests, ~30 seconds)
+# All offline tests (~483 tests, ~30 seconds)
 pytest tests/ -v --ignore=tests/test_live_upstox.py
 
 # Specific module
@@ -199,5 +199,5 @@ docker compose logs -f # watch logs
 - [ ] `python main.py --mode auth` — Upstox OAuth completed
 - [ ] `python main.py --mode paper` — paper trading running
 - [ ] `bash dashboard/start.sh` — dashboard open
-- [ ] `pytest tests/ --ignore=tests/test_live_upstox.py` — offline tests pass (8 known failures, see [status.md](status.md#4-bugs-found-in-the-code))
+- [ ] `pytest tests/ --ignore=tests/test_live_upstox.py` — all offline tests pass
 - [ ] `tail -f logs/trading.log` — watching live logs

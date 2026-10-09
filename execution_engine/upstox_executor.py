@@ -123,9 +123,11 @@ class UpstoxExecutor:
         self._retry_attempts = self.cfg.get("retry_attempts", 3)
         self._session = None
 
-        # India-specific defaults
+        # India-specific defaults. `exchanges.upstox.default_product` is the
+        # documented setting; `execution.upstox_product` still overrides it.
         self._default_product = UpstoxProduct(
-            self.cfg.get("upstox_product", "CNC")
+            self.cfg.get("upstox_product")
+            or cfg.get("exchanges", {}).get("upstox", {}).get("default_product", "CNC")
         )
 
     def on_fill(self, callback: Callable) -> None:
@@ -178,19 +180,19 @@ class UpstoxExecutor:
     # docs/intraday_gaps.md §4/§7 item 4.
 
     async def _post_async(self, endpoint: str, payload: dict) -> dict:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._post, endpoint, payload)
 
     async def _get_async(self, endpoint: str, params: dict | None = None) -> dict:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._get, endpoint, params)
 
     async def _put_async(self, endpoint: str, payload: dict) -> dict:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._put, endpoint, payload)
 
     async def _delete_async(self, endpoint: str, params: dict) -> dict:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._delete, endpoint, params)
 
     # ── Signal execution ──────────────────────────────────────────────────────

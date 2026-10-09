@@ -76,8 +76,8 @@ def _get_token() -> str:
     if tf.exists():
         try:
             d = json.loads(tf.read_text())
-            age = (time.time() - d.get("obtained_at", 0)) / 3600
-            if d.get("access_token") and age < 23:
+            from data_engine.upstox.auth import token_hours_left
+            if d.get("access_token") and token_hours_left(d.get("obtained_at", 0)) > 0:
                 return d["access_token"]
         except Exception:
             pass
@@ -131,7 +131,7 @@ def _make_cfg() -> dict:
             "commission": 0.001,
             "slippage_pct": 0.001,
         },
-        "data": {"warmup_bars": 50},
+        "data": {"warmup_bars": 200},
         "system": {"mode": "paper"},
     }
 
@@ -326,7 +326,7 @@ def main():
         print(f"\n  {dim(f'Fetching {sym}...')} ", end="", flush=True)
 
         try:
-            df_raw = _fetch_ohlcv(token, ikey, DAYS + 60)
+            df_raw = _fetch_ohlcv(token, ikey, DAYS + 300)   # +~200 trading days for warmup_bars
         except PermissionError as exc:
             print(f"{R}{exc}{E}")
             sys.exit(1)

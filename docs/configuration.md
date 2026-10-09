@@ -71,7 +71,7 @@ exchanges:
     access_token: "${UPSTOX_ACCESS_TOKEN}"
     token_file: "data/upstox_token.json"
     auth_port: 3561
-    default_product: "CNC"           # CNC=delivery | MIS=intraday | NRML=F&O
+    default_product: "CNC"           # CNC=delivery | MIS=intraday | NRML=F&O (execution.upstox_product overrides)
 ```
 
 **Upstox products:**
@@ -294,7 +294,7 @@ notifications:
 ```yaml
 dashboard:
   host: "0.0.0.0"
-  port: 8501                 # stale — the dashboard actually serves on 8000 (API) / 5163 (Vite dev)
+  port: 8000                 # FastAPI; the Vite dev server runs on 5163
   refresh_interval_sec: 5    # how often the dashboard polls for new data
 ```
 

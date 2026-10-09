@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from datetime import date, timedelta
 import httpx
-from ..utils import get_token
+from ..utils import get_token, token_expired
 from ..config import _WATCHLIST_SYMS
 from config.instruments import INSTRUMENTS as _IKEYS
 
@@ -10,7 +10,7 @@ router = APIRouter()
 @router.get("/watchlist")
 async def get_watchlist() -> dict:
     token, age_h = get_token()
-    if not token or age_h > 23:
+    if not token or token_expired(age_h):
         return {}
 
     keys = [_IKEYS[s] for s in _WATCHLIST_SYMS if s in _IKEYS]

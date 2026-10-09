@@ -128,6 +128,10 @@ class MetaStrategyEngine:
         self._pair_strategy = PairTradingStrategy(cfg)
         logger.info(f"MetaEngine loaded {len(self.strategies)} strategies")
 
+    def has_ml_model(self) -> bool:
+        return any(isinstance(s, MLClassifierStrategy) and s.model is not None
+                   for s in self.strategies)
+
     def update_ml_model(self, model) -> None:
         for s in self.strategies:
             if isinstance(s, MLClassifierStrategy):

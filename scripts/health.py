@@ -105,13 +105,15 @@ def main():
             try:
                 d = json.loads(tf.read_text())
                 tok = d.get("access_token", "")
+                from data_engine.upstox.auth import token_hours_left
                 age_h = (time.time() - d.get("obtained_at", 0)) / 3600
+                left_h = token_hours_left(d.get("obtained_at", 0))
                 _tok[0] = tok or env_tok
-                if age_h > 23:
-                    return False, f"expired ({age_h:.1f}h old)"
-                if age_h > 20:
-                    return "warn", f"{age_h:.1f}h old — expires soon"
-                return True, f"{age_h:.1f}h old"
+                if left_h <= 0:
+                    return False, f"expired at 03:30 IST ({age_h:.1f}h old)"
+                if left_h <= 3:
+                    return "warn", f"{age_h:.1f}h old — expires in {left_h:.1f}h"
+                return True, f"{age_h:.1f}h old, expires in {left_h:.1f}h"
             except Exception as exc:
                 return False, str(exc)
         if env_tok:

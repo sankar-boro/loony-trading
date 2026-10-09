@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from datetime import date, timedelta
 import httpx
-from ..utils import get_token
+from ..utils import get_token, token_expired
 from config.instruments import INSTRUMENTS as _IKEYS
 
 router = APIRouter()
@@ -9,7 +9,7 @@ router = APIRouter()
 @router.get("/chart/{symbol}")
 async def get_chart(symbol: str, interval: str = Query("day"), days: int = Query(365, ge=1, le=730)) -> dict:
     token, age_h = get_token()
-    if not token or age_h > 23:
+    if not token or token_expired(age_h):
         raise HTTPException(401, "Token missing or expired")
 
     ikey = _IKEYS.get(symbol.upper())

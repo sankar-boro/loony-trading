@@ -21,6 +21,14 @@ def read_jsonl(path: Path) -> list[dict]:
         pass
     return records
 
+def token_expired(age_h: float) -> bool:
+    """True once a token file of this age has passed its 03:30 IST expiry.
+    A negative age means there is no token file (env-var token, age unknown)."""
+    if age_h < 0:
+        return False
+    from data_engine.upstox.auth import token_hours_left
+    return token_hours_left(time.time() - age_h * 3600) <= 0
+
 def get_token() -> tuple[str, float]:
     env = os.environ.get("UPSTOX_ACCESS_TOKEN", "").strip()
     if _TOKEN_FILE.exists():

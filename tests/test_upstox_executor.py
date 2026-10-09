@@ -83,7 +83,7 @@ def test_paper_fill_buy_adds_slippage(executor):
         transaction_type="BUY",
         price=2900.0,
     )
-    asyncio.get_event_loop().run_until_complete(
+    asyncio.run(
         executor._paper_fill(order, 2900.0)
     )
     assert order.status == "complete"
@@ -99,7 +99,7 @@ def test_paper_fill_sell_subtracts_slippage(executor):
         transaction_type="SELL",
         price=2900.0,
     )
-    asyncio.get_event_loop().run_until_complete(
+    asyncio.run(
         executor._paper_fill(order, 2900.0)
     )
     assert order.avg_price < 2900.0  # slippage subtracted on sell
@@ -109,7 +109,7 @@ def test_paper_fill_sell_subtracts_slippage(executor):
 
 def test_execute_signal_paper_returns_order(executor):
     sig = make_signal()
-    order = asyncio.get_event_loop().run_until_complete(
+    order = asyncio.run(
         executor.execute_signal(sig)
     )
     assert order is not None
@@ -124,14 +124,14 @@ def test_execute_signal_sell(executor):
         signal_type=SignalType.SELL, price=2900.0,
         stop_loss=2960.0, take_profit=2760.0, confidence=0.75,
     )
-    order = asyncio.get_event_loop().run_until_complete(executor.execute_signal(sig))
+    order = asyncio.run(executor.execute_signal(sig))
     assert order is not None
     assert order.transaction_type == "SELL"
 
 
 def test_execute_signal_low_confidence_rejected(executor):
     sig = make_signal(conf=0.30)  # below validation threshold of 0.5
-    order = asyncio.get_event_loop().run_until_complete(executor.execute_signal(sig))
+    order = asyncio.run(executor.execute_signal(sig))
     assert order is None
 
 
@@ -141,7 +141,7 @@ def test_execute_unknown_symbol_returns_none(executor):
         signal_type=SignalType.BUY, price=100.0,
         stop_loss=95.0, take_profit=110.0, confidence=0.8,
     )
-    order = asyncio.get_event_loop().run_until_complete(executor.execute_signal(sig))
+    order = asyncio.run(executor.execute_signal(sig))
     assert order is None
 
 
@@ -149,11 +149,11 @@ def test_execute_unknown_symbol_returns_none(executor):
 
 def test_close_position_paper(executor):
     sig = make_signal()
-    asyncio.get_event_loop().run_until_complete(executor.execute_signal(sig))
+    asyncio.run(executor.execute_signal(sig))
     pos_list = executor.risk_manager.positions.get("RELIANCE", [])
     assert len(pos_list) > 0
     pos = pos_list[0]
-    close_order = asyncio.get_event_loop().run_until_complete(
+    close_order = asyncio.run(
         executor.close_position(pos, 2950.0, "take_profit")
     )
     assert close_order is not None
@@ -208,5 +208,12 @@ def test_resolve_key_unknown(executor):
 
 def test_order_history_grows(executor):
     sig = make_signal()
-    asyncio.get_event_loop().run_until_complete(executor.execute_signal(sig))
+    asyncio.run(executor.execute_signal(sig))
     assert len(executor.order_history) == 1
+
+
+def test_default_product_read_from_exchange_config():
+    execution = {k: v for k, v in CFG["execution"].items() if k != "upstox_product"}
+    cfg = {**CFG, "execution": execution, "exchanges": {"upstox": {"default_product": "MIS"}}}
+    ex = UpstoxExecutor(make_auth(), make_registry(), RiskManager(cfg, 500_000), cfg, mode="paper")
+    assert ex._default_product.value == "MIS"

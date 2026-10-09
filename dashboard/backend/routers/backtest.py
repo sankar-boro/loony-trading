@@ -7,7 +7,7 @@ from typing import List
 import pandas as pd
 import numpy as np
 import requests as req_lib
-from ..utils import get_token
+from ..utils import get_token, token_expired
 from config.instruments import INSTRUMENTS as _IKEYS
 from ..services.state import get_backtest_jobs
 
@@ -21,6 +21,15 @@ _TF_CONFIG = {
     "30m": ("30minute", 60),
     "15m": ("15minute", 45),
 }
+
+# Approximate bars per NSE session, used to fetch enough extra history for
+# the backtester's warmup_bars before the requested window.
+_BARS_PER_DAY = {"day": 1, "60minute": 7, "30minute": 13, "15minute": 25}
+
+
+def _warmup_calendar_days(interval: str, warmup_bars: int) -> int:
+    trading_days = -(-warmup_bars // _BARS_PER_DAY.get(interval, 1))   # ceil
+    return trading_days * 7 // 5 + 10   # weekends + holidays buffer
 
 # class BacktestRequest(BaseModel):
 #     symbol:     str
@@ -62,7 +71,6 @@ def _choose_token(req: BacktestRequest) -> tuple[str, float]:
 def _make_cfg(req: BacktestRequest) -> dict:
     from config.loader import Settings
     cfg = Settings().as_dict()
-    cfg.setdefault("data", {})["warmup_bars"] = 50
     cfg.setdefault("system", {})["mode"] = "backtest"
     if req.risk:
         cfg.setdefault("risk", {}).update(req.risk)
@@ -180,7 +188,7 @@ def _run_backtest_sync(job_id: str, req: BacktestRequest) -> None:
     jobs[job_id]["status"] = "running"
     try:
         token, age_h = _choose_token(req)
-        if not token or age_h > 23:
+        if not token or token_expired(age_h):
             raise ValueError("Token missing or expired")
 
         symbols = [s.strip().upper() for s in req.symbols if s.strip()]
@@ -209,7 +217,11 @@ def _run_backtest_sync(job_id: str, req: BacktestRequest) -> None:
                 if not ikey:
                     raise ValueError(f"Unknown symbol: {symbol}")
 
-                df = _fetch_ohlcv(token, ikey, interval, days)
+                # warmup_bars comes from config/settings.yaml (same as the CLI);
+                # fetch that much extra history so the requested window is traded in full.
+                warmup = _make_cfg(req).get("data", {}).get("warmup_bars", 200)
+                df = _fetch_ohlcv(token, ikey, interval,
+                                  days + _warmup_calendar_days(interval, warmup))
                 if len(df) < 60:
                     raise ValueError(f"Only {len(df)} candles — need 60+")
 
@@ -243,7 +255,8 @@ def _run_backtest_sync(job_id: str, req: BacktestRequest) -> None:
                         "range_breakout":      ("strategies.breakout", "RangeBreakoutStrategy"),
                         "supertrend":          ("strategies.trend", "SupertrendStrategy"),
                         "donchian_breakout":   ("strategies.trend", "DonchianBreakoutStrategy"),
-                        "candlestick_pattern": ("strategies.candlestick", "CandlestickPatternStrategy"),
+                        "candle_patterns":     ("strategies.candlestick", "CandlestickPatternStrategy"),
+                        "candlestick_pattern": ("strategies.candlestick", "CandlestickPatternStrategy"),  # old name
                     }
                     strat_name = strategies_to_run[0]
                     if strat_name in _STRAT_MAP:

@@ -245,7 +245,9 @@ class Backtester:
         for i in range(1, n_splits):
             test_start = i * step
             test_end = min((i + 1) * step, len(df))
-            test_df = df.iloc[test_start:test_end]
+            # Warm indicators up on the bars just before the split, so the
+            # split itself is traded in full instead of losing warmup_bars.
+            test_df = df.iloc[max(0, test_start - self.warmup_bars):test_end]
             if len(test_df) < self.warmup_bars + 10:
                 continue
             r = self.run(test_df, symbol, strategy=strategy, engine=engine)

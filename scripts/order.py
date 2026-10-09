@@ -91,8 +91,8 @@ def _find_token(explicit=None, sandbox=False) -> str:
     if tf.exists():
         try:
             d = json.loads(tf.read_text())
-            age = (time.time() - d.get("obtained_at", 0)) / 3600
-            if d.get("access_token") and age < 23:
+            from data_engine.upstox.auth import token_hours_left
+            if d.get("access_token") and token_hours_left(d.get("obtained_at", 0)) > 0:
                 return d["access_token"]
         except Exception:
             pass

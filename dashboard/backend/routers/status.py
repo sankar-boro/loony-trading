@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from data_engine.upstox.market_hours import is_market_open, minutes_to_close, next_market_open
-from ..utils import get_token
+from ..utils import get_token, token_expired
 from ..config import _STATE_FILE, _BOT_STALE
 import json
 import time
@@ -19,7 +19,7 @@ def get_status() -> dict:
             pass
     open_ = is_market_open()
     nxt   = next_market_open()
-    token_valid = bool(token) and age_h < 23
+    token_valid = bool(token) and not token_expired(age_h)
     return {
         "bot_running":      bot_running,
         "market_open":      open_,
@@ -35,7 +35,6 @@ def get_status() -> dict:
 @router.get("/health")
 def get_health():
     from fastapi.responses import JSONResponse
-    from ..utils import get_token
     from ..config import _EQUITY_FILE, _STATE_FILE, ROOT
     token, age_h = get_token()
     checks = {}
@@ -44,7 +43,7 @@ def get_health():
     if not token:
         checks["token"] = "missing"
         healthy = False
-    elif age_h > 23:
+    elif token_expired(age_h):
         checks["token"] = f"expired ({age_h:.0f}h)"
         healthy = False
     else:

@@ -98,6 +98,8 @@ class ExpiryDayStrategy(BaseStrategy):
     Implements three sub-strategies based on time of day and market context.
     """
 
+    name = "expiry_day"
+
     def __init__(self, cfg: dict = None):
         super().__init__(cfg or {})
         self.lot_size         = int(self.cfg.get("lot_size", BANKNIFTY_LOT_SIZE))

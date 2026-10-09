@@ -88,8 +88,9 @@ def _find_token(explicit=None) -> tuple[str, str]:
     if tf.exists():
         try:
             d = json.loads(tf.read_text())
+            from data_engine.upstox.auth import token_hours_left
             age = (time.time() - d.get("obtained_at", 0)) / 3600
-            if d.get("access_token") and age < 23:
+            if d.get("access_token") and token_hours_left(d.get("obtained_at", 0)) > 0:
                 return d["access_token"], f"token file (age {age:.1f}h)"
         except Exception:
             pass

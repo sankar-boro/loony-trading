@@ -255,9 +255,9 @@ def load_token(explicit: str = None, sandbox: bool = False) -> str:
         try:
             with open(token_file) as f:
                 data = json.load(f)
-            age_h = (time.time() - data.get("obtained_at", 0)) / 3600
+            from data_engine.upstox.auth import token_hours_left
             t = data.get("access_token", "")
-            if t and age_h < 23:
+            if t and token_hours_left(data.get("obtained_at", 0)) > 0:
                 return t
         except Exception:
             pass

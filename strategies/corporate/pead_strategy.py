@@ -82,6 +82,8 @@ class PEADStrategy(BaseStrategy):
             executor.place(signal)
     """
 
+    name = "pead"
+
     def __init__(self, cfg: dict = None):
         super().__init__(cfg or {})
         self.surprise_threshold  = float(self.cfg.get("surprise_threshold_pct", SURPRISE_THRESHOLD_PCT))

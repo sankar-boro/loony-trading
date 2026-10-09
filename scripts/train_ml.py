@@ -63,8 +63,9 @@ def _get_token() -> str:
         try:
             d = json.loads(tf.read_text())
             token = d.get("access_token", "")
+            from data_engine.upstox.auth import token_hours_left
             age_h = (time.time() - d.get("obtained_at", 0)) / 3600
-            if age_h > 23:
+            if token_hours_left(d.get("obtained_at", 0)) <= 0:
                 print(f"{R}Token expired ({age_h:.1f}h old). Run: python scripts/upstox_login.py{E}")
                 sys.exit(1)
         except Exception:

@@ -4,7 +4,7 @@ Single checklist for what is built, what is still to do, and the bugs found in t
 code. It replaces the old `todo.md`, `todo/` (P1–P4 gap audit) and `known_issues.md`.
 
 **Last verified against the code:** 2026-10-09 (commit `3fd55bd`).
-Offline test suite at that point: **467 tests, 459 pass, 8 fail** (see [Bugs](#4-bugs-found-in-the-code)).
+Offline test suite: **483 tests, all passing** after the bug fixes in [§4](#4-bugs-found-in-the-code).
 
 Legend: `[x]` done and verified in code · `[ ]` open (todo, partial, or a bug).
 
@@ -138,22 +138,24 @@ Legend: `[x]` done and verified in code · `[ ]` open (todo, partial, or a bug).
 
 ## 4. Bugs found in the code
 
-Ordered by impact.
+Found in the 2026-10-09 audit. All fixed the same day, with regression tests in
+`tests/test_bot_position_safety.py`, `tests/test_token_expiry.py`,
+`tests/test_backtester.py` and `tests/test_upstox_executor.py`.
 
-- [ ] **MIS squareoff leaves stale positions in `RiskManager` (live mode).** `main.py` `_on_tick` fires `squareoff_all_mis()` but never removes those positions from `risk_manager.positions`. Later stop-loss / take-profit hits call `executor.close_position()` on positions the broker already closed, which sends an order in the opposite direction and opens a new, unmanaged position.
-- [ ] **MIS squareoff does nothing in `main.py` paper mode.** `squareoff_all_mis()` returns immediately when `paper=True` ("caller handles virtual positions"), but `main.py` does not close its virtual positions. Paper MIS positions stay open overnight.
-- [ ] **New entries are still taken after 3:14 PM.** After the squareoff flag is set, `_on_tick` keeps calling `execute_signal()`, so the bot can open fresh MIS positions between 15:14 and 15:30 that the broker will force-close.
-- [ ] **No duplicate / opposite position guard.** `RiskManager.validate_signal()` only checks the concurrent-trade cap, daily drawdown and confidence. Repeated BUY signals on the same symbol stack new positions, and a SELL signal while long opens a short instead of closing the long.
-- [ ] **Token expiry is computed from age, not the real expiry.** Upstox tokens expire at 03:30 IST the next day, but `main.py`, `check_token.py` and `health.py` treat a token as valid for 23 h from `obtained_at`. A token obtained at 09:00 is reported valid until 08:00 next day while it actually died at 03:30.
-- [ ] **ML model check looks for the wrong files.** `main.py` `_check_ml_models()` looks for `models/{SYMBOL}_ensemble.pkl`, but `train_ml.py` writes, and `MetaStrategyEngine` loads, `models/ensemble.pkl`. The warning fires even when a model exists. `main.py _train_or_load_models()` uses a third path (`models/xgboost.pkl` + `models/lightgbm.pkl` via `BaseModel.save()`).
-- [ ] **`BaseModel.model_dir` is relative to the working directory** (`Path("models")`), so models are saved/loaded in the wrong place when a script is run from another directory.
-- [ ] **8 tests fail on Python 3.12+.** `tests/test_upstox_executor.py` calls `asyncio.get_event_loop()` outside a running loop, which now raises `RuntimeError`. Use `asyncio.run()` instead. `main.py:208` also uses the deprecated `asyncio.get_event_loop()` inside a coroutine (should be `get_running_loop()`).
-- [ ] **Only the first 5 equity symbols get intraday data** in `main.py` `_load_historical_data()`. Every other symbol is scored against the daily cache, which is never refreshed during the session.
-- [ ] **Backtest warmup is inconsistent.** `settings.yaml` sets `warmup_bars: 200`, but the dashboard backtest router (`routers/backtest.py:65`) and `seed_dashboard_data.py` force `50`.
-- [ ] **`PEADStrategy` and `ExpiryDayStrategy` define no `name`,** so they cannot be enabled by name even if added to the engine.
-- [ ] **`dashboard.port: 8501` in `settings.yaml` is stale.** The dashboard runs on 8000 (API) / 5163 (Vite dev).
-
----
+- [x] **MIS squareoff left stale positions in `RiskManager` (live mode).** After the broker squareoff, a later stop-loss sent an opposite order on an already-flat position and opened a new, unmanaged one. `main.py` `_squareoff_mis()` now removes squared-off positions from the risk book without sending a second order.
+- [x] **MIS squareoff did nothing in `main.py` paper mode.** Tracked paper positions are now closed through simulated fills.
+- [x] **New entries were taken after 3:14 PM.** `_on_tick` no longer opens intraday positions after the cut-off. The squareoff flag now resets each trading day instead of firing only once per process.
+- [x] **No duplicate / opposite position guard.** A same-direction signal on an open symbol is ignored. An opposite signal closes the position and stays flat instead of flipping. `RiskManager.validate_signal()` also rejects a second position in a symbol.
+- [x] **Token expiry computed as 23 h from issue.** New `token_expires_at()` / `token_hours_left()` in `data_engine/upstox/auth.py` use the real 03:30 IST expiry. `main.py`, `check_token.py`, `health.py`, `status.py`, the other scripts and the dashboard routers all use them.
+- [x] **`exchanges.upstox.default_product` was ignored.** The executor only read `execution.upstox_product`, so orders were always CNC and setting MIS did nothing. The documented key is now read (`execution.upstox_product` still overrides it).
+- [x] **ML model check looked for the wrong files.** `_check_ml_models()` now checks `models/ensemble.pkl` (or `xgboost.pkl` + `lightgbm.pkl`). `_train_or_load_models()` keeps the ensemble the engine already loaded instead of replacing it.
+- [x] **`BaseModel.model_dir` was relative to the working directory.** Now anchored to the project's `models/`.
+- [x] **8 tests failed on Python 3.12+** (`asyncio.get_event_loop()` outside a loop). Tests use `asyncio.run()`; `main.py` and the executor use `get_running_loop()`.
+- [x] **Only the first 5 equity symbols got intraday data** in `main.py`. All equity symbols are seeded now, with a short pause between requests.
+- [x] **Backtest warmup was inconsistent** (dashboard API and seed script forced 50, config says 200). The API now uses the configured `warmup_bars` and fetches that much extra history before the requested window. Walk-forward splits borrow their warmup from the preceding bars instead of being skipped.
+- [x] **Dashboard backtest map used the old `candlestick_pattern` name.** `candle_patterns` added (old name kept as an alias).
+- [x] **`PEADStrategy` and `ExpiryDayStrategy` had no `name`.** Now `pead` and `expiry_day`; they are still not registered in the engine (see §3).
+- [x] **`dashboard.port: 8501` was stale.** Set to 8000.
 
 ## 5. Documentation problems
 
@@ -205,6 +207,6 @@ Ticked = registered in `MetaStrategyEngine` and able to fire. "Enabled" = in `st
 - [ ] `gamma_scalping` — options · not in engine
 - [ ] `theta_decay` — options · not in engine
 - [ ] `straddle_strangle` — options · not in engine
-- [ ] `expiry_day` (`ExpiryDayStrategy`) — options · not in engine, no `name`
-- [ ] `pead` (`PEADStrategy`) — corporate · not in engine, no earnings feed, no `name`
+- [ ] `expiry_day` (`ExpiryDayStrategy`) — options · not in engine
+- [ ] `pead` (`PEADStrategy`) — corporate · not in engine, no earnings feed
 - [ ] stock delivery % signal (`FIIDIIStrategy.get_stock_delivery_signal()`) — institutional · never called

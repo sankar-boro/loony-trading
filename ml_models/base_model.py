@@ -15,7 +15,7 @@ class BaseMLModel(ABC):
         self.model = None
         self.feature_cols: list[str] = []
         self.is_trained = False
-        self.model_dir = Path("models")
+        self.model_dir = Path(__file__).resolve().parent.parent / "models"
         self.model_dir.mkdir(exist_ok=True)
 
     @abstractmethod

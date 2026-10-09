@@ -47,11 +47,13 @@ def _token_status() -> tuple[str, str, str]:
         try:
             d = json.loads(tf.read_text())
             tok = d.get("access_token", "") or env
+            from data_engine.upstox.auth import token_hours_left
             age_h = (time.time() - d.get("obtained_at", 0)) / 3600
-            if age_h > 23:
-                return tok, f"{R}EXPIRED{E}", f"{age_h:.1f}h old"
-            if age_h > 20:
-                return tok, f"{Y}EXPIRING{E}", f"{age_h:.1f}h — renew soon"
+            left_h = token_hours_left(d.get("obtained_at", 0))
+            if left_h <= 0:
+                return tok, f"{R}EXPIRED{E}", f"{age_h:.1f}h old (expired 03:30 IST)"
+            if left_h <= 3:
+                return tok, f"{Y}EXPIRING{E}", f"expires in {left_h:.1f}h — renew soon"
             return tok, f"{G}valid{E}", f"{age_h:.1f}h old"
         except Exception:
             pass

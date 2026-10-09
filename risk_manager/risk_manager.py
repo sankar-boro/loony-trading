@@ -104,6 +104,12 @@ class RiskManager:
             logger.debug(f"Signal confidence too low: {signal.confidence:.2f}")
             return False
 
+        # One position per symbol: never pyramid into the same direction, and
+        # never open the other way on top of an open position (close it first).
+        if self.positions.get(signal.symbol):
+            logger.debug(f"Position already open in {signal.symbol} — signal ignored")
+            return False
+
         return True
 
     # ── Position sizing ────────────────────────────────────────────────────────

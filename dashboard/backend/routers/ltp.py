@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Query
 import httpx
-from ..utils import get_token
+from ..utils import get_token, token_expired
 from config.instruments import INSTRUMENTS as _IKEYS
 
 router = APIRouter()
@@ -8,7 +8,7 @@ router = APIRouter()
 @router.get("/ltp")
 async def get_ltp(symbols: str = Query(...)) -> dict[str, float]:
     token, age_h = get_token()
-    if not token or age_h > 23:
+    if not token or token_expired(age_h):
         return {}
 
     sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]

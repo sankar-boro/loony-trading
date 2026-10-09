@@ -94,8 +94,7 @@ class UpstoxTradingBot:
         self.risk_manager = RiskManager(cfg, initial_capital)
         self.portfolio = PortfolioManager(cfg, initial_capital)
 
-        # Execution
-        product = UpstoxProduct(up_cfg.get("default_product", "CNC"))
+        # Execution (the executor reads exchanges.upstox.default_product itself)
         self.executor = UpstoxExecutor(
             self.auth, self.registry, self.risk_manager, cfg, mode=mode
         )
@@ -108,7 +107,8 @@ class UpstoxTradingBot:
         self._df_cache_base: dict = {}   # immutable historical fetch, before today's live bars are spliced on
         self._live_bars = LiveBarAggregator()   # docs/intraday_gaps.md §1 fix — turns live ticks into fresh bars
         self._tick_counter: dict = {}
-        self._mis_squaredoff: bool = False
+        self._mis_squareoff_date = None   # IST date the MIS squareoff last ran
+        self._last_price: dict[str, float] = {}
 
     # ── Startup ────────────────────────────────────────────────────────────────
 
@@ -132,11 +132,14 @@ class UpstoxTradingBot:
                     f"Upstox token is expired (age {token_age_h:.1f}h). "
                     "Paper mode continuing but API calls may fail."
                 )
-        elif token_age_h >= 20:
-            logger.warning(
-                f"Upstox token is {token_age_h:.1f}h old — expires in "
-                f"{23 - token_age_h:.1f}h. Run: bash scripts/auto_login.sh"
-            )
+        else:
+            from data_engine.upstox.auth import token_hours_left
+            hours_left = token_hours_left(self.auth._token_data.get("obtained_at", 0))
+            if hours_left <= 3:
+                logger.warning(
+                    f"Upstox token expires in {hours_left:.1f}h (03:30 IST). "
+                    "Run: bash scripts/auto_login.sh"
+                )
 
         self._check_ml_models()
         await self._load_historical_data()
@@ -154,20 +157,19 @@ class UpstoxTradingBot:
         await self.feed.start(self.all_symbols, mode="full")
 
     def _check_ml_models(self) -> None:
+        # One shared model, not one per symbol: MetaStrategyEngine loads
+        # models/ensemble.pkl (written by scripts/train_ml.py), and
+        # _train_or_load_models falls back to models/xgboost.pkl + lightgbm.pkl.
         models_dir = Path(__file__).resolve().parent / "models"
-        missing = [
-            sym for sym in self.equity_symbols
-            if not (models_dir / f"{sym}_ensemble.pkl").exists()
-        ]
-        if missing:
-            logger.warning(
-                f"No ML models for: {', '.join(missing[:5])}"
-                f"{'...' if len(missing) > 5 else ''}. "
-                "MLClassifierStrategy will be skipped for these symbols. "
-                "Run: python main.py --mode train"
-            )
+        if (models_dir / "ensemble.pkl").exists():
+            logger.info("ML model found: models/ensemble.pkl")
+        elif (models_dir / "xgboost.pkl").exists() and (models_dir / "lightgbm.pkl").exists():
+            logger.info("ML models found: models/xgboost.pkl + models/lightgbm.pkl")
         else:
-            logger.info(f"ML models found for all {len(self.equity_symbols)} equity symbols")
+            logger.warning(
+                "No trained ML model in models/ — MLClassifierStrategy will not fire. "
+                "Run: python scripts/train_ml.py"
+            )
 
     async def _load_historical_data(self) -> None:
         lookback = self.cfg.get("data", {}).get("lookback_days", 365)
@@ -179,9 +181,13 @@ class UpstoxTradingBot:
                 self._df_cache[sym] = df
                 logger.info(f"  {sym}: {len(df)} bars ({self.primary_tf})")
 
-        # Also fetch intraday for equity symbols
+        # Also fetch intraday for every equity symbol, so none of them falls
+        # back to the (never refreshed) daily cache. A short pause between
+        # requests keeps us under Upstox's historical-API rate limit.
         if self.intraday_tf != self.primary_tf:
-            for sym in self.equity_symbols[:5]:   # first 5 to avoid rate limiting
+            for i, sym in enumerate(self.equity_symbols):
+                if i:
+                    await asyncio.sleep(0.25)
                 df_intra = self.data_engine.fetch_ohlcv(sym, self.intraday_tf,
                                                          lookback_days=60)
                 if not df_intra.empty:
@@ -191,6 +197,9 @@ class UpstoxTradingBot:
 
     async def _train_or_load_models(self) -> None:
         from ml_models import XGBoostModel, LightGBMModel, EnsembleModel
+
+        if self.meta_engine.has_ml_model():
+            return   # models/ensemble.pkl was already loaded by MetaStrategyEngine
 
         xgb  = XGBoostModel(self.cfg)
         lgbm = LightGBMModel(self.cfg)
@@ -205,7 +214,7 @@ class UpstoxTradingBot:
             df = self._df_cache[train_sym]
             if len(df) > 300:
                 logger.info(f"Training ML models on {train_sym}...")
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 ensemble = await loop.run_in_executor(None, self._trainer.train_all, df)
                 if ensemble:
                     self.meta_engine.update_ml_model(ensemble)
@@ -224,32 +233,63 @@ class UpstoxTradingBot:
         live = self._live_bars.get_bars(symbol, self.intraday_tf)
         self._df_cache[key] = merge_live_onto_history(base, live)
 
+    def _is_intraday_product(self) -> bool:
+        return self.executor._default_product.value == "MIS"
+
+    async def _close_tracked(self, pos, price: float, reason: str, send_order: bool = True) -> None:
+        """Close a position the bot is tracking. With send_order=False the
+        position is only removed from the books (the broker already closed it)."""
+        if send_order:
+            order = await self.executor.close_position(pos, price, reason)
+            if not order:
+                return
+            pnl = pos.pnl   # set by RiskManager.close_position at the fill price
+        else:
+            pnl = self.risk_manager.close_position(pos, price, reason)
+        self.trade_logger.log_position_close(pos, price, pnl, reason)
+        self.portfolio.record_trade(pos.symbol, pnl, pos.strategy)
+        await self.notifier.send(f"🔴 Closed {pos.symbol} | {reason} | PnL: ₹{pnl:+.2f}")
+
+    async def _squareoff_mis(self) -> None:
+        """Close every intraday (MIS) position once the 3:14 PM IST cut-off passes.
+
+        Live: the broker-side squareoff sends the closing orders, then the
+        positions are dropped from the risk book without sending a second
+        order (which would open a new position the other way). Paper: the
+        executor has nothing to close at the broker, so each tracked position
+        is closed through a simulated fill."""
+        logger.info("MIS squareoff triggered at 3:14 PM IST — closing all intraday positions")
+        if self.mode == "live":
+            await self.executor.squareoff_all_mis()
+        if not self._is_intraday_product():
+            return
+        for pos_list in list(self.risk_manager.positions.values()):
+            for pos in list(pos_list):
+                price = self._last_price.get(pos.symbol, pos.entry_price)
+                await self._close_tracked(pos, price, "mis_squareoff",
+                                          send_order=self.mode != "live")
+
     async def _on_tick(self, event: dict) -> None:
-        from utils.timeutils import should_squareoff_mis
+        from utils.timeutils import is_mis_squareoff_time, now_ist
         symbol = event.get("symbol", "")
         price  = float(event.get("close", event.get("ltp", 0)))
         if price <= 0:
             return
+        self._last_price[symbol] = price
 
-        # MIS squareoff at 3:14 PM IST — fires exactly once per session
-        if should_squareoff_mis() and not self._mis_squaredoff:
-            self._mis_squaredoff = True
-            logger.info("MIS squareoff triggered at 3:14 PM IST — closing all intraday positions")
-            asyncio.create_task(self.executor.squareoff_all_mis())
+        # MIS squareoff at 3:14 PM IST — once per trading day
+        ist_now = now_ist()
+        past_cutoff = is_mis_squareoff_time(ist_now)
+        if past_cutoff and self._mis_squareoff_date != ist_now.date():
+            self._mis_squareoff_date = ist_now.date()
+            await self._squareoff_mis()
 
         self.portfolio.update_price(symbol, price)
 
         # Check stops on every tick
         to_close = self.risk_manager.update_all({symbol: price})
         for pos, reason in to_close:
-            order = await self.executor.close_position(pos, price, reason)
-            if order:
-                pnl = pos.mark(price)
-                self.trade_logger.log_position_close(pos, price, pnl, reason)
-                self.portfolio.record_trade(symbol, pnl, pos.strategy)
-                await self.notifier.send(
-                    f"🔴 Closed {symbol} | {reason} | PnL: ₹{pnl:+.2f}"
-                )
+            await self._close_tracked(pos, price, reason)
 
         # Generate strategy signals on real candle close, not a tick-count
         # guess — docs/intraday_gaps.md §1. For symbols with an intraday
@@ -277,7 +317,9 @@ class UpstoxTradingBot:
         if df is None or len(df) < 60:
             return
 
-        if self.portfolio.is_correlated(symbol, list(self.risk_manager.positions.keys())):
+        # No new intraday entries after the squareoff cut-off: the broker
+        # would force-close them minutes later.
+        if past_cutoff and self._is_intraday_product():
             return
 
         signals = self.meta_engine.generate_signals(symbol, df)
@@ -289,12 +331,33 @@ class UpstoxTradingBot:
         if best.signal_type not in (SignalType.BUY, SignalType.SELL):
             return
 
+        if not await self._handle_existing_position(best, price):
+            return
+
+        others = [s for s, lst in self.risk_manager.positions.items() if lst and s != symbol]
+        if self.portfolio.is_correlated(symbol, others):
+            return
+
         order = await self.executor.execute_signal(best)
         if order and order.status == "complete":
             await self.notifier.send(
                 f"🟢 {best.signal_type.value} {symbol} @ ₹{best.price:.2f} "
                 f"| {best.strategy} | conf={best.confidence:.0%}"
             )
+
+    async def _handle_existing_position(self, signal, price: float) -> bool:
+        """Apply a signal to any position already open in its symbol.
+        Returns True only when the symbol is flat and a new entry may be placed.
+
+        Same direction → ignored (no pyramiding). Opposite direction → the
+        open position is closed and the bot stays flat rather than flipping."""
+        open_pos = self.risk_manager.positions.get(signal.symbol, [])
+        if not open_pos:
+            return True
+        if any(p.direction != signal.direction for p in open_pos):
+            for pos in list(open_pos):
+                await self._close_tracked(pos, price, "signal_reversal")
+        return False
 
     async def _on_fill(self, order) -> None:
         from utils.trade_logger import TradeLogger
@@ -323,7 +386,8 @@ class UpstoxTradingBot:
             signals = self.meta_engine.generate_signals(symbol, df)
             if signals:
                 best = max(signals, key=lambda s: s.confidence)
-                if best.signal_type in (SignalType.BUY, SignalType.SELL):
+                if (best.signal_type in (SignalType.BUY, SignalType.SELL)
+                        and await self._handle_existing_position(best, best.price)):
                     await self.executor.execute_signal(best)
         metrics = self.portfolio.metrics()
         logger.info(f"Paper simulation metrics: {metrics}")
