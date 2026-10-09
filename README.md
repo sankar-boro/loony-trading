@@ -18,7 +18,7 @@ ML signal stacking, live risk management, and Telegram alerts.
 | [docs/strategies.md](docs/strategies.md) | All 25+ strategies — logic, params, signals |
 | [docs/configuration.md](docs/configuration.md) | Full config reference (settings.yaml + .env) |
 | [docs/testing.md](docs/testing.md) | Running tests, live API tests, reading logs |
-| [docs/known_issues.md](docs/known_issues.md) | Known bugs, missing pieces, improvement roadmap |
+| [docs/status.md](docs/status.md) | Checklist: what's done, what's left, known bugs |
 
 ---
 

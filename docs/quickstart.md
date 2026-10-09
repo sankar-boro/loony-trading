@@ -122,9 +122,16 @@ Pages:
 - **Chart** — TradingView-style candlestick chart per symbol
 - **Positions** — open positions
 - **Trades** — trade log
-- **Strategies** — signal table with strategy attribution
+- **Strategies** — per-strategy trade stats and signal attribution
 - **Backtest** — historical performance metrics
 - **Daily PnL** — equity curve, drawdown chart
+- **News** — classified news events
+- **Signals** — composite signal scores per stock
+- **Copilot** — AI Q&A over signals and news
+- **Watchlists** / **Alerts** — your lists and rule-based alerts
+- **Portfolio Risk** — exposure and correlation
+- **Intraday Lab** — intraday scans and alert evaluation
+- **Docs** — these markdown docs, rendered
 
 ---
 
@@ -158,8 +165,8 @@ Log fields:
 ## 8. Run Tests
 
 ```bash
-# All offline tests (342 tests, ~30 seconds)
-pytest tests/ -v
+# All offline tests (~467 tests, ~30 seconds)
+pytest tests/ -v --ignore=tests/test_live_upstox.py
 
 # Specific module
 pytest tests/test_strategies.py -v
@@ -179,7 +186,7 @@ pytest tests/ --cov=. --cov-report=html
 
 ```bash
 cp .env.example .env   # fill credentials
-docker compose up -d   # starts bot + dashboard on port 8501
+docker compose up -d   # starts Postgres, Redis, bot + dashboard on port 8000
 docker compose logs -f # watch logs
 ```
 
@@ -187,12 +194,10 @@ docker compose logs -f # watch logs
 
 ## 10. Typical First Session Checklist
 
-```
-[ ] pip install -r requirements.txt       — dependencies installed
-[ ] .env configured with API keys         — credentials set
-[ ] python main.py --mode auth            — Upstox OAuth completed
-[ ] python main.py --mode paper           — paper trading running
-[ ] bash dashboard/start.sh               — dashboard open
-[ ] pytest tests/ -v                      — all 342 tests pass
-[ ] tail -f logs/trading.log              — watching live logs
-```
+- [ ] `pip install -r requirements.txt` — dependencies installed
+- [ ] `.env` configured with API keys — credentials set
+- [ ] `python main.py --mode auth` — Upstox OAuth completed
+- [ ] `python main.py --mode paper` — paper trading running
+- [ ] `bash dashboard/start.sh` — dashboard open
+- [ ] `pytest tests/ --ignore=tests/test_live_upstox.py` — offline tests pass (8 known failures, see [status.md](status.md#4-bugs-found-in-the-code))
+- [ ] `tail -f logs/trading.log` — watching live logs

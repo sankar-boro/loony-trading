@@ -157,7 +157,8 @@ iv = implied_volatility(market_price=250, S=24000, K=24000, T=30, r=0.065, opt="
 
 See [strategies.md](strategies.md) for full detail on each strategy.
 
-**Quick count:** 25+ strategies across 14 categories.
+**Quick count:** 25+ strategies across 14 categories. 23 are registered in the
+engine (plus pair trading as a side-car); options strategies and PEAD are not wired yet — see [status.md](status.md#6-strategy-status).
 
 ---
 
@@ -511,9 +512,17 @@ bash dashboard/start.sh --prod   # production build
 | Chart | TradingView-style candlestick chart per symbol |
 | Positions | Open positions |
 | Trades | Trade log |
-| Strategies | Table of all strategy signals with strength scores |
+| Strategies | Per-strategy trade count, win rate and P&L |
 | Backtest | Performance metrics, Monte Carlo results |
 | Daily PnL | Equity curve, drawdown chart |
+| News | Classified news events per stock |
+| Signals | Composite signal scores, "why is it moving" |
+| Copilot | AI Q&A over signals and news |
+| Watchlists | Named stock lists |
+| Alerts | Rule-based alerts and trigger history |
+| Portfolio Risk | Exposure, concentration, correlation |
+| Intraday Lab | Intraday scans and alert evaluation |
+| Docs | These markdown docs, rendered in the browser |
 
 ---
 

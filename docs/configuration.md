@@ -133,54 +133,62 @@ risk:
 
 ```yaml
 strategies:
-  enabled:
-    - ema_crossover
-    - rsi_mean_reversion
+  enabled:                 # current defaults, picked from a 2-year backtest
+    - vwap_reversion
     - bollinger_reversion
-    - breakout_atr
-    - macd_momentum
-    - order_book_imbalance
-    - pair_trading
-    - ml_classifier
+    - donchian_breakout
+    - zscore_reversion
+    - rsi_momentum
+    - candle_patterns
+    - volume_momentum
+    - vix_strategy
+    - gift_nifty_gap
+    - fii_dii
+    - anchored_vwap
+    - cumulative_delta
+    - volume_profile
   weights:
-    ema_crossover: 1.0
-    rsi_mean_reversion: 1.0
-    ml_classifier: 1.2
+    vwap_reversion: 1.5
+    bollinger_reversion: 1.2
+    # ... see config/settings.yaml
 ```
 
-To enable more strategies, add to the `enabled` list. Available names:
+`scripts/tune_weights.py` recomputes `enabled` and `weights` from backtests.
+`pair_trading` runs as a side-car and does not need to be listed.
+
+To enable more strategies, add to the `enabled` list. Available names (must match
+the strategy's `name` exactly — an unknown name is silently ignored):
 
 | Name | Category |
 |---|---|
 | `ema_crossover` | Trend |
 | `supertrend` | Trend |
 | `donchian_breakout` | Trend |
-| `multi_timeframe_trend` | Trend |
+| `mtf_trend` | Trend |
 | `rsi_mean_reversion` | Mean reversion |
 | `bollinger_reversion` | Mean reversion |
 | `zscore_reversion` | Mean reversion |
 | `vwap_reversion` | Mean reversion |
 | `breakout_atr` | Breakout |
 | `range_breakout` | Breakout |
-| `support_resistance` | Breakout |
+| `sr_breakout` | Breakout |
 | `macd_momentum` | Momentum |
 | `rsi_momentum` | Momentum |
 | `volume_momentum` | Momentum |
+| `candle_patterns` | Price action |
 | `order_book_imbalance` | Microstructure |
 | `anchored_vwap` | Microstructure |
 | `cumulative_delta` | Microstructure |
 | `volume_profile` | Microstructure |
 | `pair_trading` | Stat arb |
 | `vix_strategy` | Volatility |
-| `fii_dii_flow` | Institutional |
+| `fii_dii` | Institutional |
 | `gift_nifty_gap` | Gap |
-| `pead` | Corporate |
-| `ml_classifier` | ML |
-| `gamma_scalping` | Options |
-| `iron_condor` | Options |
-| `theta_decay` | Options |
-| `straddle_strangle` | Options |
-| `expiry_day` | Options |
+| `ml_classifier` | ML (needs a trained model) |
+
+Not available yet (not registered in `MetaStrategyEngine`, so listing them does nothing):
+`pead`, `gamma_scalping`, `iron_condor`, `theta_decay`, `straddle_strangle`,
+`expiry_day`. See [status.md](status.md#6-strategy-status).
 
 ---
 
@@ -248,10 +256,11 @@ india_market:
   close_time: "15:30"          # IST — NSE equity session close
   pre_open: "09:00"            # pre-open order matching
   auto_squareoff_time: "15:15" # MIS auto-squareoff
-  holidays: []                 # add "YYYY-MM-DD" strings for NSE holidays
+  holidays: [...]              # fallback list; live list is fetched from NSE
 ```
 
-Add holidays for the year:
+The holiday calendar is fetched from NSE and cached in `data/nse_holidays.json`.
+The `holidays` list is the fallback when NSE is unreachable (2026 is already filled in):
 ```yaml
   holidays:
     - "2026-01-26"   # Republic Day
@@ -285,7 +294,7 @@ notifications:
 ```yaml
 dashboard:
   host: "0.0.0.0"
-  port: 8501
+  port: 8501                 # stale — the dashboard actually serves on 8000 (API) / 5163 (Vite dev)
   refresh_interval_sec: 5    # how often the dashboard polls for new data
 ```
 
@@ -331,8 +340,6 @@ strategies:
 ```yaml
 strategies:
   enabled:
-    - iron_condor
-    - theta_decay
-    - expiry_day
     - vix_strategy
+    # iron_condor, theta_decay and expiry_day are not wired into the engine yet
 ```

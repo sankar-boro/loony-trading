@@ -1,14 +1,17 @@
 # Testing Guide
 
-342 unit tests + 60 live Upstox API tests.
+467 offline tests + 60 live Upstox API tests.
+
+As of 2026-10-09, 459 offline tests pass and 8 in `test_upstox_executor.py` fail on
+Python 3.12+ (they call `asyncio.get_event_loop()`); see [status.md](status.md#4-bugs-found-in-the-code).
 
 ---
 
 ## Running All Tests
 
 ```bash
-# Run everything (offline, ~30 seconds)
-pytest tests/ -v
+# Run everything offline (~30 seconds)
+pytest tests/ -v --ignore=tests/test_live_upstox.py
 
 # Run with short output
 pytest tests/ -q
@@ -43,6 +46,15 @@ open htmlcov/index.html
 | `test_upstox_feed.py` | ~8 | WebSocket feed parsing |
 | `test_upstox_instruments.py` | ~8 | Instrument key resolution |
 | `test_p6_p14.py` | 106 | HMM, Kalman, TFT, online learning, CVaR, beta-neutral, stress test, factor model, advanced features |
+| `test_live_bars.py`, `test_bot_live_refresh.py` | — | Live bar aggregator, live tick loop data refresh |
+| `test_session_vwap.py`, `test_range_breakout.py` | — | Session-anchored VWAP, opening range breakout |
+| `test_backtester_mis_squareoff.py`, `test_backtest_lookahead.py` | — | MIS squareoff in backtests, look-ahead bias |
+| `test_execution_nonblocking.py` | — | Order I/O runs off the event loop |
+| `test_signal_timeframe.py`, `test_intraday_scheduler.py`, `test_intraday_ui_endpoints.py` | — | Intraday signals, scheduler track, endpoints |
+| `test_composite_signal_engine.py`, `test_why_endpoint.py` | — | Composite scoring, "why is it moving" |
+| `test_news_pipeline.py`, `test_ai_client.py`, `test_copilot.py` | — | News ingestion/classification, AI client, Copilot |
+| `test_watchlists_and_alerts.py`, `test_portfolio_risk.py` | — | Watchlists, alerts, portfolio risk |
+| `test_scheduler.py`, `test_db_models.py`, `test_backtest_router.py`, `test_demo_ohlcv.py` | — | Scheduler, DB models, backtest API, demo data |
 | `test_live_upstox.py` | 60 | **Live Upstox API** (requires token) |
 
 ---

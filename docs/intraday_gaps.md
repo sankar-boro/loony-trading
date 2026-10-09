@@ -246,14 +246,13 @@ data this section describes.
 
 ## 6. What actually already works
 
-Worth stating plainly, since some of this contradicts `docs/known_issues.md` (dated
-2026-05-27, written before this session's work and evidently not updated since):
+Worth stating plainly, since some of this contradicted the old `known_issues.md`
+(since merged into [status.md](status.md)):
 
 **a. WebSocket auto-reconnect with exponential backoff exists and looks correct.**
-`known_issues.md` claims *"Auto-reconnect on WebSocket drop: Not implemented."* That's
+The old `known_issues.md` claimed *"Auto-reconnect on WebSocket drop: Not implemented."* That was
 stale — `data_engine/upstox/upstox_feed.py:109-133` has `_reconnect_delay`, doubling
-backoff up to `_RECONNECT_MAX`, reset on successful reconnect. This should be removed
-from that doc's limitations list.
+backoff up to `_RECONNECT_MAX`, reset on successful reconnect. [status.md](status.md) now lists it as done.
 
 **b. MIS auto-squareoff is real, not just a config value.** `main.py:209-213` checks
 `should_squareoff_mis()` (`utils/timeutils.py:30-36`, fires once the clock passes
