@@ -97,6 +97,11 @@ export const api = {
     post(`/alerts/evaluate${timeframe ? `?timeframe=${timeframe}` : ''}`, {}),
   portfolioRisk: (): Promise<PortfolioRisk> => get('/portfolio/risk'),
   schedulerStatus: (): Promise<SchedulerStatus> => get('/scheduler/status'),
+  docFile: async (path: string): Promise<string> => {
+    const res = await fetch(`${BASE}/doc-files/${path}`)
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+    return res.text()
+  },
 }
 
 // SWR fetcher

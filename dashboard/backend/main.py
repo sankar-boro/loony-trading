@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -11,7 +11,7 @@ from .routers import (
     universe_router, signals_router, telegram_router, chart_router,
     ltp_router, stream_router, backtest_router, news_router,
     composite_signals_router, copilot_router, watchlists_router, alerts_router,
-    portfolio_risk_router, scheduler_router,
+    portfolio_risk_router, scheduler_router, doc_files_router,
 )
 
 
@@ -60,6 +60,7 @@ app.include_router(watchlists_router, prefix="/api", tags=["watchlists"])
 app.include_router(alerts_router, prefix="/api", tags=["alerts"])
 app.include_router(portfolio_risk_router, prefix="/api", tags=["portfolio"])
 app.include_router(scheduler_router, prefix="/api", tags=["scheduler"])
+app.include_router(doc_files_router, prefix="/api", tags=["docs"])
 
 # Static files for React (production)
 if _DIST_DIR.exists():

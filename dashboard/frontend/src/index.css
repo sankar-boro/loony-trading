@@ -29,3 +29,27 @@ html, body, #root {
 ::-webkit-scrollbar-thumb:hover {
   background: #3b4560;
 }
+
+/* ── Rendered markdown (Docs page) ───────────────────────────────────── */
+.markdown { @apply text-base leading-relaxed text-primary; }
+.markdown h1 { @apply text-3xl font-semibold mt-2 mb-5 pb-2 border-b border-border; }
+.markdown h2 { @apply text-2xl font-semibold mt-10 mb-4 pb-1.5 border-b border-border; }
+.markdown h3 { @apply text-xl font-semibold mt-8 mb-3; }
+.markdown h4 { @apply text-lg font-semibold mt-6 mb-2; }
+.markdown :is(h1, h2, h3, h4) { scroll-margin-top: 1rem; }
+.markdown p { @apply my-3; }
+.markdown a { @apply text-blue hover:underline; }
+.markdown strong { @apply font-semibold text-white; }
+.markdown ul { @apply list-disc pl-6 my-3 space-y-1; }
+.markdown ol { @apply list-decimal pl-6 my-3 space-y-1; }
+.markdown li > :is(ul, ol) { @apply my-1; }
+.markdown li > input[type="checkbox"] { @apply mr-2 align-middle; }
+.markdown blockquote { @apply border-l-4 border-blue/40 bg-blue/5 pl-4 pr-3 py-1 my-4 text-dim; }
+.markdown hr { @apply border-border my-8; }
+.markdown code { @apply font-mono text-[0.88em] bg-surface border border-border rounded px-1.5 py-0.5 text-amber; }
+.markdown pre { @apply bg-surface border border-border rounded-lg p-4 my-4 overflow-x-auto text-sm leading-normal; }
+.markdown pre code { @apply bg-transparent border-0 p-0 text-primary; }
+.markdown table { @apply block w-max max-w-full overflow-x-auto my-4 border-collapse text-sm; }
+.markdown th { @apply bg-surface text-left font-semibold px-3 py-2 border border-border; }
+.markdown td { @apply px-3 py-2 border border-border align-top; }
+.markdown tr:nth-child(even) td { @apply bg-white/[0.02]; }

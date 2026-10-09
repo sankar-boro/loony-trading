@@ -442,3 +442,8 @@ export interface NewsItem {
   summary: string
   affected_stocks: string[]
 }
+
+export interface DocFile {
+  path: string
+  title: string
+}
