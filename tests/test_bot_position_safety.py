@@ -7,13 +7,16 @@ against a lightweight stand-in instead of constructing a full bot (which
 needs Upstox credentials and the whole strategy/ML stack)."""
 from __future__ import annotations
 import asyncio
-from datetime import datetime
+import tempfile
+from datetime import datetime, time as dtime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
 import pytest
 
 import utils.timeutils as timeutils
+from data_engine.live_bars import LiveBarAggregator
 from main import UpstoxTradingBot
 from risk_manager.risk_manager import RiskManager
 from strategies.base import Signal, SignalType
@@ -54,6 +57,14 @@ class _FakeBot:
     _on_tick = UpstoxTradingBot._on_tick
     _process_tick = UpstoxTradingBot._process_tick
     _is_sane_tick = UpstoxTradingBot._is_sane_tick
+    _init_intraday = UpstoxTradingBot._init_intraday
+    _after_close = UpstoxTradingBot._after_close
+    _event = UpstoxTradingBot._event
+    _day_pnl = UpstoxTradingBot._day_pnl
+    _flatten_all = UpstoxTradingBot._flatten_all
+    _apply_control = UpstoxTradingBot._apply_control
+    _check_day_limits = UpstoxTradingBot._check_day_limits
+    _log_intraday_pnl = UpstoxTradingBot._log_intraday_pnl
 
     def _save_state(self, force=False):
         pass
@@ -77,7 +88,12 @@ class _FakeBot:
         self._mis_squareoff_date = None
         self._session_date = None
         self._suspect_ticks = {}
+        self._live_bars = LiveBarAggregator()
         self.cfg = {}
+        self._init_intraday({"intraday": {"record_bars": False}}, mode,
+                            data_dir=Path(tempfile.mkdtemp()))
+        # These tests exercise position safety, not the entry window
+        self.guard.entry_start, self.guard.entry_end = dtime(0, 0), dtime(23, 59)
 
 
 def _signal(symbol: str, side: SignalType, price: float = 100.0) -> Signal:

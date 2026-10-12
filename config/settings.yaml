@@ -92,6 +92,19 @@ execution:
   reconcile_interval_sec: 300    # live: compare bot positions with Upstox every 5 min
   max_tick_jump_pct: 0.20        # drop ticks moving >20% from the last price (corrupt data)
 
+intraday:                        # live bot session rules (risk_manager/intraday_guard.py)
+  entry_start: "09:30"           # no new MIS entries before this (skip the opening auction noise)
+  entry_end: "14:45"             # ... or after this; MIS squareoff runs at 15:14
+  max_trades_per_day: 20         # entries per day across all symbols (0 = no cap)
+  max_trades_per_symbol: 3       # entries per symbol per day (0 = no cap)
+  cooldown_minutes_after_stop: 30  # no re-entry into a symbol this long after a stop-out
+  profit_lock_pct: 0.0           # halt new entries once day P&L ≥ this × capital (0 = off)
+  kill_switch:
+    flatten_on_daily_loss: true  # at −risk.max_daily_drawdown (realised + unrealised): close all, halt
+  heartbeat_minutes: 5           # alert if no tick for this long during market hours
+  record_bars: true              # save live 1-minute bars to data/live_bars/
+  exchange_stops: false          # live: protect each position with an SL-M order at the broker
+
 data:
   lookback_days: 365
   cache_dir: ./data/cache

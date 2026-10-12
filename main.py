@@ -17,6 +17,7 @@ import asyncio
 import argparse
 import sys
 import time
+from collections import deque
 from pathlib import Path
 
 from config import settings
@@ -120,6 +121,30 @@ class UpstoxTradingBot:
         self._recon_task = None
         self._suspect_ticks: dict[str, list[float]] = {}   # symbol → rejected prices in a row
 
+        self._init_intraday(cfg, mode)
+
+    def _init_intraday(self, cfg: dict, mode: str, data_dir: Path = ROOT / "data") -> None:
+        """Intraday session rules, operator controls and monitoring state.
+        Everything written to disk lives under data_dir."""
+        from data_engine.live_bars import BarRecorder
+        from risk_manager.intraday_guard import IntradayGuard
+        from utils.bot_control import ControlReader
+
+        ic = cfg.get("intraday", {}) or {}
+        self.guard = IntradayGuard.from_config(cfg)
+        self._exchange_stops = bool(ic.get("exchange_stops", False)) and mode == "live"
+        self._recorder = BarRecorder(data_dir / "live_bars") if ic.get("record_bars", True) else None
+        self._control = ControlReader(data_dir / "bot_control.json")
+        self._handled_control: dict = {}
+        self._events: deque = deque(maxlen=100)
+        self._last_blocked: dict[str, str] = {}
+        self._heartbeat_minutes = float(ic.get("heartbeat_minutes", 5))
+        self._last_tick_at = 0.0
+        self._heartbeat_alerted = False
+        self._heartbeat_task = None
+        self._pnl_log_minute = None
+        self._pnl_log_file = data_dir / "intraday_pnl.jsonl"
+
     # ── Startup ────────────────────────────────────────────────────────────────
 
     async def start(self) -> None:
@@ -152,6 +177,12 @@ class UpstoxTradingBot:
                 )
 
         self._restore_state()
+        # Requests already in the control file before this start are treated
+        # as handled — a flatten clicked last week must not fire now.
+        ctl = self._control.poll()
+        for key in ("flatten_id", "resume_id"):
+            self._handled_control.setdefault(key, ctl.get(key))
+        self.guard.paused = bool(ctl.get("paused", False))
         self._check_ml_models()
         await self._load_historical_data()
         await self._train_or_load_models()
@@ -166,8 +197,11 @@ class UpstoxTradingBot:
 
         if self.mode == "live":
             await self._reconcile(at_startup=True)
+            await self._ensure_exchange_stops()
             self._recon_task = asyncio.create_task(self._reconcile_loop())
 
+        self._last_tick_at = time.time()
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         logger.info("Starting real-time WebSocket feed...")
         await self.feed.start(self.all_symbols, mode="full")
 
@@ -245,17 +279,145 @@ class UpstoxTradingBot:
 
     async def _close_tracked(self, pos, price: float, reason: str, send_order: bool = True) -> None:
         """Close a position the bot is tracking. With send_order=False the
-        position is only removed from the books (the broker already closed it)."""
+        position is only removed from the books (the broker already closed it).
+
+        With exchange-held stops, the stop order is dealt with first: if it has
+        already filled, the broker closed the position and no second order is
+        sent; otherwise it is cancelled before the closing order goes out, so
+        the two can never both fill."""
+        if self._exchange_stops and pos.stop_order_id:
+            status = await self.executor.exchange_stop_status(pos)
+            if status.get("status") in ("complete", "filled"):
+                fill = status.get("avg_price") or price
+                pnl = self.risk_manager.close_position(pos, fill, "stop_loss")
+                pos.stop_order_id = ""
+                self._after_close(pos, fill, pnl, "stop_loss (exchange)")
+                await self.notifier.send(f"🔴 Closed {pos.symbol} | exchange stop | PnL: ₹{pnl:+.2f}")
+                return
+            if not await self.executor.cancel_exchange_stop(pos):
+                self._event("error", f"{pos.symbol}: could not cancel exchange stop "
+                                     f"{pos.stop_order_id}; not sending a close order", notify=True)
+                return
         if send_order:
             order = await self.executor.close_position(pos, price, reason)
             if not order:
                 return
             pnl = pos.pnl   # set by RiskManager.close_position at the fill price
+            price = order.avg_price or price
         else:
             pnl = self.risk_manager.close_position(pos, price, reason)
+        self._after_close(pos, price, pnl, reason)
+        await self.notifier.send(f"🔴 Closed {pos.symbol} | {reason} | PnL: ₹{pnl:+.2f}")
+
+    def _after_close(self, pos, price: float, pnl: float, reason: str) -> None:
+        from utils.timeutils import now_ist
         self.trade_logger.log_position_close(pos, price, pnl, reason)
         self.portfolio.record_trade(pos.symbol, pnl, pos.strategy)
-        await self.notifier.send(f"🔴 Closed {pos.symbol} | {reason} | PnL: ₹{pnl:+.2f}")
+        self.guard.record_exit(pos.symbol, reason.split(" ")[0], now_ist())
+        self._event("exit", f"{pos.symbol} closed ({reason}) P&L ₹{pnl:+,.2f}")
+
+    # ── Intraday session helpers ───────────────────────────────────────────────
+
+    def _event(self, kind: str, message: str, notify: bool = False) -> None:
+        """Record a bot event for the dashboard's Intraday Desk (and the log).
+        notify=True also queues a notification."""
+        from utils.timeutils import now_ist
+        self._events.append({"ts": now_ist().isoformat(timespec="seconds"),
+                             "kind": kind, "message": message})
+        (logger.warning if kind in ("block", "halt", "error", "heartbeat") else logger.info)(message)
+        if notify:
+            try:
+                asyncio.get_running_loop().create_task(self.notifier.send(f"⚠️ {message}"))
+            except RuntimeError:
+                pass
+
+    def _day_pnl(self) -> tuple[float, float]:
+        """(realised today, unrealised now)."""
+        unreal = 0.0
+        for pos_list in self.risk_manager.positions.values():
+            for pos in pos_list:
+                unreal += pos.mark(self._last_price.get(pos.symbol, pos.entry_price))
+        return self.risk_manager.daily_pnl, unreal
+
+    async def _flatten_all(self, reason: str) -> int:
+        """Close every open position now (market orders live, fills in paper)."""
+        n = 0
+        for pos_list in list(self.risk_manager.positions.values()):
+            for pos in list(pos_list):
+                await self._close_tracked(pos, self._last_price.get(pos.symbol, pos.entry_price), reason)
+                n += 1
+        self._event("flatten", f"Flattened {n} position(s): {reason}", notify=n > 0)
+        return n
+
+    async def _apply_control(self) -> None:
+        """Act on operator commands from data/bot_control.json (dashboard)."""
+        ctl = self._control.poll()
+        paused = bool(ctl.get("paused", False))
+        if paused != self.guard.paused:
+            self.guard.paused = paused
+            self._event("control", "Entries paused by operator" if paused else "Entries resumed by operator")
+        for key in ("flatten_id", "resume_id"):
+            value = ctl.get(key)
+            if not value or value == self._handled_control.get(key):
+                continue
+            self._handled_control[key] = value
+            if key == "flatten_id":
+                await self._flatten_all("operator_flatten")
+            else:
+                self.guard.resume()
+                self._event("control", "Halt cleared by operator — entries allowed again")
+
+    async def _check_day_limits(self) -> None:
+        realised, unreal = self._day_pnl()
+        outcome = self.guard.check_day_pnl(realised + unreal, self.risk_manager.initial_capital)
+        if outcome == "kill":
+            self._event("halt", f"KILL SWITCH — {self.guard.halt_reason}", notify=True)
+            if self.guard.flatten_on_daily_loss:
+                await self._flatten_all("kill_switch")
+        elif outcome == "lock":
+            self._event("halt", f"Entries halted — {self.guard.halt_reason}", notify=True)
+
+    def _log_intraday_pnl(self, now) -> None:
+        """Append one point a minute to data/intraday_pnl.jsonl for the Desk's P&L curve."""
+        import json
+        minute = now.replace(second=0, microsecond=0)
+        if minute == self._pnl_log_minute:
+            return
+        self._pnl_log_minute = minute
+        realised, unreal = self._day_pnl()
+        row = {"ts": minute.isoformat(), "realised": round(realised, 2),
+               "unrealised": round(unreal, 2), "total": round(realised + unreal, 2),
+               "open_positions": self.risk_manager.open_count}
+        try:
+            self._pnl_log_file.parent.mkdir(parents=True, exist_ok=True)
+            with self._pnl_log_file.open("a") as f:
+                f.write(json.dumps(row) + "\n")
+        except OSError as exc:
+            logger.error(f"Could not write intraday P&L: {exc}")
+
+    async def _ensure_exchange_stops(self) -> None:
+        """Live: make sure every open position has an exchange-held stop."""
+        if not self._exchange_stops:
+            return
+        for pos_list in list(self.risk_manager.positions.values()):
+            for pos in pos_list:
+                if not pos.stop_order_id and not await self.executor.place_exchange_stop(pos):
+                    self._event("error", f"{pos.symbol}: no exchange stop could be placed", notify=True)
+            self.risk_manager.version += 1
+
+    async def _heartbeat_loop(self) -> None:
+        """Alert once if no tick arrives for intraday.heartbeat_minutes during
+        market hours (re-armed when ticks resume)."""
+        from data_engine.upstox.market_hours import is_market_open
+        while True:
+            await asyncio.sleep(30)
+            if self._heartbeat_minutes <= 0 or not is_market_open() or self._heartbeat_alerted:
+                continue
+            silent = time.time() - self._last_tick_at
+            if self._last_tick_at and silent > self._heartbeat_minutes * 60:
+                self._heartbeat_alerted = True
+                self._event("heartbeat", f"No market data for {silent / 60:.0f} min — "
+                                         "feed may be down", notify=True)
 
     async def _squareoff_mis(self) -> None:
         """Close every intraday (MIS) position once the 3:14 PM IST cut-off passes.
@@ -265,8 +427,14 @@ class UpstoxTradingBot:
         order (which would open a new position the other way). Paper: the
         executor has nothing to close at the broker, so each tracked position
         is closed through a simulated fill."""
-        logger.info("MIS squareoff triggered at 3:14 PM IST — closing all intraday positions")
+        self._event("squareoff", "MIS squareoff at 15:14 IST — closing all intraday positions")
         if self.mode == "live":
+            if self._exchange_stops:
+                # Pending SL-M orders would otherwise fill after the broker
+                # squareoff and open new positions the other way.
+                for pos_list in self.risk_manager.positions.values():
+                    for pos in pos_list:
+                        await self.executor.cancel_exchange_stop(pos)
             await self.executor.squareoff_all_mis()
         if not self._is_intraday_product():
             return
@@ -310,6 +478,11 @@ class UpstoxTradingBot:
             "daily_pnl": rm.daily_pnl,
             "daily_trade_count": rm.daily_trade_count,
             "positions": positions,
+            "intraday": self.guard.to_state(now_ist()),
+            "events": list(self._events)[-50:],
+            "last_tick_at": self._last_tick_at,
+            "exchange_stops": self._exchange_stops,
+            "handled_control": self._handled_control,
         }
         try:
             self._state_file.parent.mkdir(parents=True, exist_ok=True)
@@ -344,11 +517,17 @@ class UpstoxTradingBot:
             return 0
 
         same_session = state.get("session_date") == now_ist().date().isoformat()
+        self.guard.restore(state.get("intraday") or {}, now_ist().date())
+        self._handled_control = dict(state.get("handled_control") or {})
+        if same_session:
+            self._events.extend(state.get("events") or [])
         keep, dropped = [], []
         for row in state.get("positions", []):
             if row.get("product") == "MIS" and not same_session:
                 dropped.append(row["symbol"])
             else:
+                if not same_session:
+                    row = {**row, "stop_order_id": "", "stop_synced": 0.0}   # DAY orders expired
                 keep.append(row)
         if dropped:
             logger.warning(f"Not restoring intraday positions from {state.get('session_date')} "
@@ -372,6 +551,7 @@ class UpstoxTradingBot:
         while True:
             await asyncio.sleep(interval)
             await self._reconcile()
+            await self._ensure_exchange_stops()
 
     async def _reconcile(self, at_startup: bool = False) -> None:
         """Compare the bot's book with Upstox and fix positions the broker
@@ -491,6 +671,10 @@ class UpstoxTradingBot:
         if not self._is_sane_tick(symbol, price):
             return
         self._last_price[symbol] = price
+        self._last_tick_at = time.time()
+        if self._heartbeat_alerted:
+            self._heartbeat_alerted = False
+            self._event("heartbeat", "Market data resumed")
 
         # New trading day: daily P&L and trade count start from zero, so
         # risk.max_daily_drawdown really is a per-day limit.
@@ -499,6 +683,9 @@ class UpstoxTradingBot:
             if self._session_date is not None:
                 self.risk_manager.reset_daily()
             self._session_date = ist_now.date()
+        self.guard.new_day(ist_now.date())
+
+        await self._apply_control()
 
         # MIS squareoff at 3:14 PM IST — once per trading day
         past_cutoff = is_mis_squareoff_time(ist_now)
@@ -512,16 +699,34 @@ class UpstoxTradingBot:
         to_close = self.risk_manager.update_all({symbol: price})
         for pos, reason in to_close:
             await self._close_tracked(pos, price, reason)
+        if self._exchange_stops:
+            for pos in self.risk_manager.positions.get(symbol, []):
+                if await self.executor.sync_exchange_stop(pos):
+                    self.risk_manager.version += 1
+
+        # Day-level limits (kill switch / profit lock) and the P&L curve
+        await self._check_day_limits()
+        self._log_intraday_pnl(ist_now)
+
+        # Every tick feeds the live bar aggregator; each finalized 1-minute
+        # bar is recorded to disk (data/live_bars/) to build intraday history.
+        bar_closed = self._live_bars.update(event)
+        if bar_closed and self._recorder is not None:
+            bar = self._live_bars.last_bar(symbol)
+            if bar:
+                try:
+                    self._recorder.append(symbol, bar)
+                except OSError as exc:
+                    logger.error(f"Bar recording failed for {symbol}: {exc}")
 
         # Generate strategy signals on real candle close, not a tick-count
         # guess — docs/appendix/intraday-audit.md §1. For symbols with an intraday
-        # base (equity symbols seeded in _load_historical_data), feed the
-        # live bar aggregator and only re-score once a full intraday_tf
-        # bar has actually finalized, using freshly-merged live data.
+        # base (equity symbols seeded in _load_historical_data), only re-score
+        # once a full intraday_tf bar has actually finalized, using
+        # freshly-merged live data.
         intraday_key = f"{symbol}_{self.intraday_tf}"
         has_intraday_base = intraday_key in self._df_cache_base
         if has_intraday_base:
-            bar_closed = self._live_bars.update(event)
             if not bar_closed:
                 return
             self._tick_counter[symbol] = self._tick_counter.get(symbol, 0) + 1
@@ -556,12 +761,32 @@ class UpstoxTradingBot:
         if not await self._handle_existing_position(best, price):
             return
 
+        # Session rules: pause, halt, entry window, trade caps, cooldown
+        allowed, why = self.guard.can_enter(symbol, ist_now, self._is_intraday_product())
+        if not allowed:
+            if self._last_blocked.get(symbol) != why:
+                self._last_blocked[symbol] = why
+                self._event("block", f"{symbol} {best.signal_type.value.upper()} "
+                                     f"({best.strategy}) not taken — {why}")
+            return
+        self._last_blocked.pop(symbol, None)
+
         others = [s for s, lst in self.risk_manager.positions.items() if lst and s != symbol]
         if self.portfolio.is_correlated(symbol, others):
             return
 
         order = await self.executor.execute_signal(best)
         if order and order.status == "complete":
+            self.guard.record_entry(symbol)
+            self._event("entry", f"{best.signal_type.value.upper()} {order.filled_qty or order.quantity} "
+                                 f"{symbol} @ ₹{order.avg_price or best.price:,.2f} ({best.strategy}, "
+                                 f"conf {best.confidence:.0%})")
+            if self._exchange_stops:
+                for pos in self.risk_manager.positions.get(symbol, []):
+                    if not pos.stop_order_id and not await self.executor.place_exchange_stop(pos):
+                        self._event("error", f"{symbol}: entry filled but no exchange stop could "
+                                             "be placed", notify=True)
+                self.risk_manager.version += 1
             await self.notifier.send(
                 f"🟢 {best.signal_type.value} {symbol} @ ₹{best.price:.2f} "
                 f"| {best.strategy} | conf={best.confidence:.0%}"
@@ -616,8 +841,9 @@ class UpstoxTradingBot:
         logger.info(f"Paper simulation metrics: {metrics}")
 
     async def stop(self) -> None:
-        if self._recon_task:
-            self._recon_task.cancel()
+        for task in (self._recon_task, self._heartbeat_task):
+            if task:
+                task.cancel()
         await self.feed.stop()
         self._save_state(force=True)
         logger.info("Bot stopped")

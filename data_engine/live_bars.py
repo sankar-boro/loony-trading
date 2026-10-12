@@ -18,6 +18,7 @@ multiple of 5 and 15), so no session-anchor offset is needed.
 from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
+from pathlib import Path
 
 import pandas as pd
 
@@ -136,6 +137,15 @@ class LiveBarAggregator:
             "close": "last", "volume": "sum",
         }).dropna()
 
+    def last_bar(self, symbol: str) -> dict | None:
+        """The most recently finalized 1-minute bar for a symbol, as a dict."""
+        bars = self._bars.get(symbol)
+        if not bars:
+            return None
+        b = bars[-1]
+        return {"ts": b.ts, "open": b.open, "high": b.high, "low": b.low,
+                "close": b.close, "volume": b.volume}
+
     def clear(self, symbol: str | None = None) -> None:
         """Reset for a new session. Call at market open / bot startup —
         stale bars from a previous run must never bleed into a new one."""
@@ -159,3 +169,76 @@ def merge_live_onto_history(base: pd.DataFrame, live: pd.DataFrame) -> pd.DataFr
         return live
     cutoff = live.index.min()
     return pd.concat([base[base.index < cutoff], live])
+
+
+# ── Recording ────────────────────────────────────────────────────────────────
+
+_RECORD_DIR = Path(__file__).resolve().parent.parent / "data" / "live_bars"
+_RECORD_COLUMNS = ["ts", "open", "high", "low", "close", "volume"]
+_IST = "Asia/Kolkata"
+
+
+class BarRecorder:
+    """Persists every finalized live 1-minute bar to
+    data/live_bars/<YYYY-MM-DD>/<SYMBOL>.csv (date in IST), building an
+    intraday history the Upstox historical API cannot always provide
+    (5- and 15-minute candles return HTTP 400 on some accounts).
+
+    Appends are one line each and never rewrite a file, so a crash loses at
+    most the bar being written."""
+
+    def __init__(self, root: Path | str = _RECORD_DIR):
+        self.root = Path(root)
+
+    def _path(self, symbol: str, ts: "pd.Timestamp") -> Path:
+        day = pd.Timestamp(ts).tz_convert(_IST).date().isoformat() \
+            if pd.Timestamp(ts).tzinfo else pd.Timestamp(ts).date().isoformat()
+        return self.root / day / f"{symbol.replace('/', '_').replace('|', '_')}.csv"
+
+    def append(self, symbol: str, bar: dict) -> None:
+        path = self._path(symbol, bar["ts"])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        new = not path.exists()
+        with path.open("a", encoding="utf-8") as f:
+            if new:
+                f.write(",".join(_RECORD_COLUMNS) + "\n")
+            ts = pd.Timestamp(bar["ts"]).isoformat()
+            f.write(f"{ts},{bar['open']},{bar['high']},{bar['low']},{bar['close']},{bar['volume']}\n")
+
+    def days(self) -> list[str]:
+        if not self.root.is_dir():
+            return []
+        return sorted(p.name for p in self.root.iterdir() if p.is_dir())
+
+    def symbols(self, day: str | None = None) -> list[str]:
+        days = [day] if day else self.days()
+        out = set()
+        for d in days:
+            out |= {p.stem for p in (self.root / d).glob("*.csv")}
+        return sorted(out)
+
+    def load(self, symbol: str, timeframe: str = "1m", days: int | None = None) -> pd.DataFrame:
+        """Recorded bars for a symbol (the last `days` recorded sessions, or
+        all), resampled to `timeframe` per session — buckets never span two
+        days. Indexed by UTC timestamp with open/high/low/close/volume."""
+        sessions = self.days()[-days:] if days else self.days()
+        frames = []
+        for d in sessions:
+            path = self.root / d / f"{symbol}.csv"
+            if path.exists():
+                frames.append(pd.read_csv(path, parse_dates=["ts"]))
+        if not frames:
+            return pd.DataFrame(columns=_RECORD_COLUMNS[1:])
+        df = (pd.concat(frames).drop_duplicates("ts", keep="last")
+              .set_index("ts").sort_index())
+        if df.index.tz is None:
+            df.index = df.index.tz_localize("UTC")
+        else:
+            df.index = df.index.tz_convert("UTC")
+        rule = _RESAMPLE_RULE.get(timeframe, timeframe)
+        if rule == "1min":
+            return df
+        agg = {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
+        parts = [g.resample(rule).agg(agg).dropna()
+                 for _, g in df.groupby(df.index.tz_convert(_IST).date)]
+        return pd.concat(parts) if parts else df.iloc[0:0]

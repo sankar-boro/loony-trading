@@ -16,6 +16,7 @@ from strategies.base import Signal, SignalType
 class _FakeBot:
     _save_state = UpstoxTradingBot._save_state
     _restore_state = UpstoxTradingBot._restore_state
+    _init_intraday = UpstoxTradingBot._init_intraday
 
     def __init__(self, state_file, mode: str = "live", product: str = "CNC"):
         self.mode = mode
@@ -25,6 +26,7 @@ class _FakeBot:
         self._state_file = state_file
         self._state_saved_version = -1
         self._state_saved_at = 0.0
+        self._init_intraday({}, mode, data_dir=state_file.parent)
 
 
 def _buy(symbol: str, price: float = 100.0) -> Signal:

@@ -338,6 +338,82 @@ class UpstoxExecutor:
             logger.error(f"Modify order {order_id}: {e}")
             return False
 
+    # ── Exchange-held stops ───────────────────────────────────────────────────
+    # A stop that lives only inside the bot protects nothing if the bot or its
+    # network dies. These keep an SL-M order at the broker for each live
+    # position, moved with the trailing stop (intraday.exchange_stops).
+
+    async def place_exchange_stop(self, pos: Position) -> str:
+        """Live: place an SL-M order at pos.stop_loss for the whole position.
+        Records the id on the position; returns it, or "" on failure / paper."""
+        if self.mode != "live":
+            return ""
+        instrument_key = self._resolve_key(pos.symbol)
+        if not instrument_key:
+            return ""
+        trigger = self.registry.round_to_tick(pos.stop_loss, instrument_key)
+        payload = {
+            "quantity":         int(round(pos.size)),
+            "product":          self._default_product.value,
+            "validity":         UpstoxValidity.DAY.value,
+            "price":            0,
+            "tag":              "loony-stop",
+            "instrument_token": instrument_key,
+            "order_type":       UpstoxOrderType.SL_M.value,
+            "transaction_type": "SELL" if pos.direction == 1 else "BUY",
+            "disclosed_quantity": 0,
+            "trigger_price":    trigger,
+            "is_amo":           False,
+        }
+        try:
+            resp = await self._post_async("/order/place", payload)
+            pos.stop_order_id = resp.get("data", {}).get("order_id", "")
+            pos.stop_synced = trigger
+            logger.info(f"Exchange stop {pos.stop_order_id} for {pos.symbol} @ {trigger}")
+            return pos.stop_order_id
+        except Exception as e:
+            logger.error(f"Could not place exchange stop for {pos.symbol}: {e}")
+            return ""
+
+    async def sync_exchange_stop(self, pos: Position, min_move_pct: float = 0.001) -> bool:
+        """Move the exchange stop to pos.stop_loss once it has moved at least
+        min_move_pct (and a tick) from the last trigger sent."""
+        if not pos.stop_order_id:
+            return False
+        instrument_key = self._resolve_key(pos.symbol) or pos.symbol
+        trigger = self.registry.round_to_tick(pos.stop_loss, instrument_key)
+        tick = self.registry.get_tick_size(instrument_key) or 0.05
+        if abs(trigger - pos.stop_synced) < max(tick, pos.stop_synced * min_move_pct):
+            return False
+        if await self.modify_order(pos.stop_order_id, trigger_price=trigger,
+                                   order_type=UpstoxOrderType.SL_M):
+            pos.stop_synced = trigger
+            return True
+        return False
+
+    async def exchange_stop_status(self, pos: Position) -> dict:
+        """{"status", "avg_price", "filled_qty"} of the position's exchange stop;
+        {} if there is none or the lookup fails."""
+        if not pos.stop_order_id:
+            return {}
+        try:
+            data = await self._get_async("/order/details", params={"order_id": pos.stop_order_id})
+            o = data.get("data", {})
+            return {"status": str(o.get("status", "")).lower(),
+                    "avg_price": float(o.get("average_price", 0) or 0),
+                    "filled_qty": int(o.get("filled_quantity", 0) or 0)}
+        except Exception as e:
+            logger.warning(f"Exchange stop status {pos.stop_order_id}: {e}")
+            return {}
+
+    async def cancel_exchange_stop(self, pos: Position) -> bool:
+        if not pos.stop_order_id:
+            return True
+        ok = await self.cancel_order(pos.stop_order_id)
+        if ok:
+            pos.stop_order_id = ""
+        return ok
+
     async def cancel_order(self, order_id: str) -> bool:
         try:
             await self._delete_async("/order/cancel", {"order_id": order_id})
