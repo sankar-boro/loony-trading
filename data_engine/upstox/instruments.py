@@ -20,14 +20,19 @@ from utils.logger import get_logger
 
 logger = get_logger("upstox.instruments")
 
-# Upstox publishes fresh instrument files each morning before market open
+# Upstox publishes fresh instrument files each morning before market open.
+# One file per exchange holds every segment (equity, F&O, indices); records
+# are filtered by their "exchange" column. (The older market-assets/.../v2/
+# URLs return 403.)
+_MASTER_URL = "https://assets.upstox.com/market-quote/instruments/exchange/{file}.csv.gz"
 _INSTRUMENT_URLS = {
-    "NSE_EQ":  "https://assets.upstox.com/market-assets/instruments/v2/NSE.csv.gz",
-    "BSE_EQ":  "https://assets.upstox.com/market-assets/instruments/v2/BSE.csv.gz",
-    "NSE_FO":  "https://assets.upstox.com/market-assets/instruments/v2/NSE-Derivatives.csv.gz",
-    "BSE_FO":  "https://assets.upstox.com/market-assets/instruments/v2/BSE-Derivatives.csv.gz",
-    "MCX_FO":  "https://assets.upstox.com/market-assets/instruments/v2/MCX.csv.gz",
-    "NSE_INDEX": "https://assets.upstox.com/market-assets/instruments/v2/indices.csv.gz",
+    "NSE_EQ":    _MASTER_URL.format(file="NSE"),
+    "NSE_FO":    _MASTER_URL.format(file="NSE"),
+    "NSE_INDEX": _MASTER_URL.format(file="NSE"),
+    "BSE_EQ":    _MASTER_URL.format(file="BSE"),
+    "BSE_FO":    _MASTER_URL.format(file="BSE"),
+    "BSE_INDEX": _MASTER_URL.format(file="BSE"),
+    "MCX_FO":    _MASTER_URL.format(file="MCX"),
 }
 
 # Well-known instrument keys for popular Indian instruments (fallback when master unavailable)
@@ -93,7 +98,17 @@ class InstrumentRegistry:
         exchanges = exchanges or ["NSE_EQ", "NSE_FO", "BSE_EQ", "NSE_INDEX"]
         for exch in exchanges:
             self._load_exchange(exch, force_refresh)
-        # Seed with known instruments if master data unavailable
+        # Seed with the project's verified universe (config/instruments.py —
+        # checked against the master by tests/test_instrument_isins.py) and
+        # the known-instrument fallback, so the stocks we trade always
+        # resolve even when the master download fails.
+        # Universe symbols always win: the master can hold an unrelated
+        # instrument under the same ticker (e.g. "MIDCAP" is an ETF there,
+        # but the universe's Nifty Midcap 150 index here).
+        from config.instruments import INSTRUMENTS as _UNIVERSE_KEYS
+        for sym, key in _UNIVERSE_KEYS.items():
+            self._by_symbol[sym] = self._by_key.get(key) or {
+                "instrument_key": key, "tradingsymbol": sym, "exchange": key.split("|")[0]}
         for sym, key in KNOWN_INSTRUMENTS.items():
             if sym not in self._by_symbol:
                 self._by_symbol[sym] = {"instrument_key": key, "tradingsymbol": sym,
@@ -123,7 +138,7 @@ class InstrumentRegistry:
             resp.raise_for_status()
             content = gzip.decompress(resp.content).decode("utf-8")
             reader = csv.DictReader(io.StringIO(content))
-            records = list(reader)
+            records = [r for r in reader if r.get("exchange", exchange) == exchange]
             with open(cache_file, "w") as f:
                 json.dump(records, f)
             self._index_records(records)

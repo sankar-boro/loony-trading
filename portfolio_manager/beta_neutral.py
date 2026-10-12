@@ -30,7 +30,8 @@ from utils.logger import get_logger
 
 logger = get_logger("beta_neutral")
 
-NIFTY_LOT_SIZE  = 50      # Nifty 50 futures lot size
+from risk_manager.risk_manager import FO_LOT_SIZES
+NIFTY_LOT_SIZE  = FO_LOT_SIZES["NIFTY"]   # Nifty 50 futures lot size (kept in one place)
 NIFTY_MARGIN    = 0.12    # ~12% margin for Nifty futures
 
 

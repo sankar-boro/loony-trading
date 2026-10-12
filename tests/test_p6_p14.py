@@ -875,7 +875,8 @@ class TestBetaNeutral:
 
     def test_nifty_lot_size_constant(self):
         from portfolio_manager.beta_neutral import NIFTY_LOT_SIZE
-        assert NIFTY_LOT_SIZE == 50
+        from risk_manager.risk_manager import FO_LOT_SIZES
+        assert NIFTY_LOT_SIZE == FO_LOT_SIZES["NIFTY"]   # one source of truth (65 since the 2025 revision)
 
     def test_hedge_direction_sell_for_long_portfolio(self):
         from portfolio_manager.beta_neutral import BetaNeutralManager

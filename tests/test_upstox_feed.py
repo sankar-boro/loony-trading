@@ -121,3 +121,34 @@ def test_get_ltp_after_update():
 def test_feed_default_mode():
     feed = make_feed()
     assert feed.mode in ("ltpc", "full", "option")
+
+
+def test_ticks_are_labelled_with_the_subscribed_symbol():
+    """Ticks must carry the symbol the bot trades under ("RELIANCE",
+    "NIFTY50"), or stop checks and live bars never match its positions."""
+    import asyncio
+    from data_engine.upstox.upstox_feed import UpstoxFeed, MarketEvent
+
+    class Registry:
+        def get_key(self, sym):
+            return {"RELIANCE": "NSE_EQ|INE002A01018", "NIFTY50": "NSE_INDEX|Nifty 50"}.get(sym)
+
+        def get_metadata(self, key):
+            return None   # master unavailable
+
+    feed = UpstoxFeed(auth=None, registry=Registry())
+    feed._resolve_keys(["RELIANCE", "NIFTY50"])
+    received = []
+    feed.subscribe(lambda e: received.append(e["symbol"]))
+
+    def decode(_data):
+        out = []
+        for key, ltp in (("NSE_EQ|INE002A01018", 2950.0), ("NSE_INDEX|Nifty 50", 24800.0)):
+            e = MarketEvent(key)
+            e.ltp = ltp
+            out.append(e)
+        return out
+    feed._decode_protobuf = decode
+    asyncio.run(feed._handle_binary(b""))
+
+    assert received == ["RELIANCE", "NIFTY50"]

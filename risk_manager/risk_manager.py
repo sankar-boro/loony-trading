@@ -8,12 +8,16 @@ from utils.math_utils import safe_divide
 
 logger = get_logger("risk_manager")
 
-# NSE/BSE F&O lot sizes (as of 2025). Must keep in sync with exchange circulars.
+# Fallback F&O lot sizes. The executor prefers the per-contract lot_size from
+# the Upstox instrument master (refreshed daily), which tracks exchange
+# revisions; these are used only when the master is unavailable.
+# NSE values checked against the master on 2026-10-09; BSE (SENSEX, BANKEX)
+# not re-verified.
 FO_LOT_SIZES: dict[str, int] = {
-    "NIFTY":       75,
+    "NIFTY":       65,
     "BANKNIFTY":   30,
-    "FINNIFTY":    65,
-    "MIDCPNIFTY":  75,
+    "FINNIFTY":    60,
+    "MIDCPNIFTY":  120,
     "SENSEX":      10,
     "BANKEX":      15,
 }

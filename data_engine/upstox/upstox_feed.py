@@ -95,8 +95,6 @@ class UpstoxFeed:
         await feed.start(["RELIANCE", "TCS", "NIFTY50"], mode=MODE_FULL)
     """
 
-    _MAX_MOVE_PCT = 0.20   # reject ticks with >20% move from last known price
-
     def __init__(self, auth: UpstoxAuth, registry=None,
                  mode: str = MODE_LTPC):
         self.auth = auth
@@ -108,6 +106,10 @@ class UpstoxFeed:
         self._ws = None
         self._reconnect_delay = _RECONNECT_BASE
         self._last_prices: Dict[str, float] = {}
+        # instrument_key → the symbol the caller subscribed with, so ticks come
+        # back labelled the way the bot keys its positions ("RELIANCE",
+        # "NIFTY50"), not as raw keys or the master's own names ("NIFTY 50").
+        self._key_symbol: Dict[str, str] = {}
         _check_protobuf_decoder()
 
     def subscribe(self, callback: Callable) -> None:
@@ -204,24 +206,21 @@ class UpstoxFeed:
     # ── Message decoding ──────────────────────────────────────────────────────
 
     def _validate_tick(self, event: MarketEvent) -> bool:
-        """Return False and log if the tick looks corrupted."""
+        """Drop ticks with no usable price.
+
+        Large jumps are deliberately *not* filtered here: a jump filter that
+        never accepts a new level would freeze a symbol for the rest of the
+        session after a genuine gap (e.g. a split). The bot applies its own
+        recoverable check — UpstoxTradingBot._is_sane_tick in main.py."""
         if event.ltp <= 0:
             logger.debug("Dropping tick %s: LTP=%.2f", event.symbol, event.ltp)
             return False
-        prev = self._last_prices.get(event.symbol)
-        if prev and prev > 0:
-            move = abs(event.ltp - prev) / prev
-            if move > self._MAX_MOVE_PCT:
-                logger.warning(
-                    "Suspicious tick %s: LTP %.2f → %.2f (%.1f%% move) — dropped",
-                    event.symbol, prev, event.ltp, move * 100,
-                )
-                return False
         return True
 
     async def _handle_binary(self, data: bytes) -> None:
         events = self._decode_protobuf(data)
         for event in events:
+            event.symbol = self._symbol_for(event.instrument_key)
             if not self._validate_tick(event):
                 continue
             self._last_prices[event.symbol] = event.ltp
@@ -360,6 +359,12 @@ class UpstoxFeed:
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
+    def _symbol_for(self, instrument_key: str) -> str:
+        if instrument_key in self._key_symbol:
+            return self._key_symbol[instrument_key]
+        rec = self.registry.get_metadata(instrument_key) if self.registry else None
+        return (rec or {}).get("tradingsymbol") or instrument_key
+
     def _resolve_keys(self, symbols: List[str]) -> List[str]:
         keys = []
         for sym in symbols:
@@ -369,6 +374,7 @@ class UpstoxFeed:
                 key = self.registry.get_key(sym)
                 if key:
                     keys.append(key)
+                    self._key_symbol[key] = sym
                 else:
                     logger.warning(f"Unknown symbol: {sym}")
             else:
