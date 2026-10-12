@@ -1,0 +1,112 @@
+# The Database
+
+MarketPulse stores its data in PostgreSQL through SQLAlchemy 2.0. The models
+(`db/models.py`) use only portable column types (`String`, `JSON`,
+`DateTime`, a non-native `Enum`), so the same code runs on PostgreSQL in
+production and SQLite in tests.
+
+## Connecting
+
+`db/base.py` creates the engine from `DATABASE_URL`, defaulting to
+`postgresql+psycopg2://loony:loony@localhost:5432/loony_trading` — the
+docker-compose `db` service as seen from your machine. Inside Compose the
+services use host `db` instead.
+
+| Helper | Use |
+|---|---|
+| `get_db()` | FastAPI dependency: `db: Session = Depends(get_db)` |
+| `session_scope()` | Context manager for scripts and jobs; commits on success, rolls back on error |
+
+## Tables
+
+### Reference data
+
+**`stocks`** — the universe. One row per symbol, loaded from
+`config/instruments.py` by `scripts/backfill_stocks.py` (safe to re-run; it
+upserts).
+
+| Column | Notes |
+|---|---|
+| `symbol` | Unique, e.g. `RELIANCE` |
+| `exchange` | `NSE_EQ` |
+| `company_name`, `sector`, `industry`, `isin`, `market_cap` | From the universe file; `market_cap` is a tier (Large/Mid/Small Cap) |
+| `is_active` | Always true today |
+
+### Market data
+
+**`price_bars`** — OHLCV bars per stock, timestamp and timeframe (unique on
+all three), with optional VWAP. The table exists in the schema but current code
+fetches candles live from Upstox instead of storing them.
+
+### News
+
+| Table | One row per | Key columns |
+|---|---|---|
+| `news_articles` | Fetched article | `source`, `title`, `url`, `published_at`, `content`, `hash` (SHA-256 of source + title + URL; unique, the deduplication key) |
+| `news_events` | Classified article | `event_type` (30-value taxonomy), `impact_score` 0–1, `catalyst_score` 0–10, `sentiment_score` −1…1, `confidence` 0–1, `summary` |
+| `stock_events` | Link between an event and a stock | `relevance_score` (1.0 keyword match, 0.6 LLM-only), `direction` (bullish/bearish/neutral) |
+
+### Signals
+
+**`signals`** — one row per scoring of one stock.
+
+| Column | Notes |
+|---|---|
+| `timestamp`, `timeframe` | When scored, and the bar size (`1d`, `30m`, `1h`, …). Queries default to `1d` |
+| `direction` | `bullish`, `bearish`, `watch`, `no_signal` |
+| `score`, `confidence` | 0–100 composite score; confidence of the strategy that fired |
+| `catalyst_score` … `risk_score` | The seven components, 0–100 each |
+| `explanation` | JSON copy of the components |
+| `status` | `active` (other states reserved) |
+
+Rows are appended, never updated, so the table is a history. "Latest signal
+per stock" is computed in SQL (`signals/queries.py`): the maximum timestamp
+per stock for the timeframe, joined back to the rows.
+
+**`trade_setups`** — for bullish/bearish signals: `entry_low`, `entry_high`,
+`stop_loss`, `target_1`, `target_2`, `risk_reward`.
+
+### History
+
+**`historical_events`** — past news events with their realised outcome:
+`event_type`, `event_timestamp`, `direction`, `regime` (market regime at the
+time), `price_before`, and prices 15 minutes, 1 hour, 1 day and 5 days after
+(the intraday ones are usually empty — only daily bars are used).
+
+### User data
+
+| Table | Purpose |
+|---|---|
+| `watchlists`, `watchlist_items` | Named lists; a stock appears at most once per list |
+| `alerts` | `name`, optional `stock_id` (null = whole universe), `condition` (JSON), `is_active`, `triggered_at` |
+| `alert_triggers` | One row per alert × stock × evaluation that matched, with the `signal_id` and a snapshot of `matched_values` |
+
+## Migrations
+
+Schema changes are Alembic migrations in `alembic/versions/`:
+
+| Revision | Change |
+|---|---|
+| `ac63b0775ec4` | Initial schema |
+| `0d5ce5521cce` | `news_events.catalyst_score` |
+| `4f13cf9a05a0` | `alert_triggers` table |
+| `46fd98926afb` | `historical_events.direction` and related similarity fields |
+| `a89ec2781941` | `signals.timeframe` |
+
+```bash
+alembic upgrade head                           # apply everything
+alembic revision --autogenerate -m "describe"  # after changing db/models.py
+alembic downgrade -1                           # undo the last migration
+```
+
+`alembic/env.py` imports `db.models` so autogenerate sees every table, and
+takes the URL from `DATABASE_URL`.
+
+## Maintenance
+
+- `signals` and `alert_triggers` grow with every scheduled run (every 5
+  minutes in market hours across 91 stocks ≈ 6,800 signal rows a day). Prune
+  old rows periodically if disk matters, e.g.
+  `DELETE FROM signals WHERE timestamp < now() - interval '90 days'` (delete
+  their `trade_setups` and referencing `alert_triggers` first).
+- Back up with `pg_dump loony_trading`.

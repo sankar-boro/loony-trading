@@ -1,0 +1,91 @@
+# The Loony Trading Handbook — table of contents.
+#
+# Parts are listed in reading order; each chapter is one markdown file
+# (relative to docs/). A chapter's title is its first "# " heading and its
+# numbered sections are its "## " headings. The dashboard's Docs page and
+# GET /api/doc-files read this file; markdown files not listed here still
+# appear at the end under "Other documents".
+title: The Loony Trading Handbook
+subtitle: NSE trading bot + MarketPulse AI dashboard
+
+parts:
+  - title: Getting Started
+    chapters:
+      - getting-started/introduction.md
+      - getting-started/installation.md
+      - getting-started/upstox-access.md
+      - getting-started/first-session.md
+
+  - title: The Dashboard
+    chapters:
+      - dashboard/overview.md
+      - dashboard/home.md
+      - dashboard/chart.md
+      - dashboard/positions-trades-pnl.md
+      - dashboard/strategies.md
+      - dashboard/strategy-lab.md
+      - dashboard/news.md
+      - dashboard/signals.md
+      - dashboard/copilot.md
+      - dashboard/watchlists-alerts.md
+      - dashboard/portfolio-risk.md
+      - dashboard/intraday-lab.md
+      - dashboard/docs-reader.md
+
+  - title: The Trading Engine
+    chapters:
+      - engine/architecture.md
+      - engine/market-data.md
+      - engine/live-feed.md
+      - engine/market-calendar.md
+      - engine/market-intelligence.md
+      - engine/features.md
+      - engine/strategy-framework.md
+      - engine/strategies-trend-momentum.md
+      - engine/strategies-mean-reversion-breakout.md
+      - engine/strategies-microstructure.md
+      - engine/strategies-macro.md
+      - engine/strategies-stat-arb.md
+      - engine/strategies-options.md
+      - engine/strategies-corporate-ml.md
+      - engine/risk-management.md
+      - engine/execution.md
+      - engine/position-safety.md
+      - engine/portfolio-analytics.md
+      - engine/machine-learning.md
+      - engine/backtesting.md
+
+  - title: MarketPulse AI
+    chapters:
+      - marketpulse/overview.md
+      - marketpulse/database.md
+      - marketpulse/news-pipeline.md
+      - marketpulse/composite-signals.md
+      - marketpulse/historical-analogues.md
+      - marketpulse/why-and-copilot.md
+      - marketpulse/watchlists-alerts.md
+      - marketpulse/scheduler.md
+
+  - title: Operations
+    chapters:
+      - operations/cli.md
+      - operations/paper-trading.md
+      - operations/notifications.md
+      - operations/logs-and-data-files.md
+      - operations/deployment.md
+      - operations/trading-playbook.md
+      - operations/test-scenarios.md
+      - operations/troubleshooting.md
+
+  - title: Reference
+    chapters:
+      - reference/configuration.md
+      - reference/environment.md
+      - reference/rest-api.md
+      - reference/testing.md
+      - reference/glossary.md
+
+  - title: Appendices
+    chapters:
+      - appendix/status.md
+      - appendix/intraday-audit.md

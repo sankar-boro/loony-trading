@@ -1,10 +1,12 @@
-# What's Missing for Real Intraday Trading
+# Intraday Readiness Audit
 
-> **Status: all six gaps below are now fixed.** This doc originally shipped as a
+> **Historical record.** This audit predates the handbook; file and line
+> references point at the code as it was then. **Status: all six gaps below are
+> now fixed.** This doc originally shipped as a
 > pre-fix audit; it's kept as-is (findings intact, verified against the code at the
 > time) with a **✅ FIXED** note added to the top of each section pointing at what
 > changed and where. See §7 for the roadmap that was executed and
-> [`docs/trading_playbook.md`](trading_playbook.md) for how to actually use the
+> [The Trading Playbook](../operations/trading-playbook.md) for how to actually use the
 > intraday path day to day.
 
 An evidence-based audit, not a guess. Every claim below is backed by a specific

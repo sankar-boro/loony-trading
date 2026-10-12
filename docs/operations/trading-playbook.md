@@ -1,4 +1,4 @@
-# MarketPulse AI — Trading Playbook (A to Z)
+# The Trading Playbook
 
 A practical guide to using this project well: how the system thinks, how to run it day
 to day, and how to build a disciplined process around it. This is not a promise of
@@ -33,7 +33,7 @@ decision-support tool rather than just clicking around the dashboard.
 
 ## A. Setup
 
-Full detail is in [`docs/quickstart.md`](quickstart.md); this is the short version so
+Full detail is in [Installation](../getting-started/installation.md); this is the short version so
 this playbook stands alone.
 
 ```bash
@@ -98,9 +98,10 @@ because no Upstox token is configured, canned news items, seeded historical even
 carries an explicit marker (`DEMO DATA` banner, `[DEMO]` prefix in text, a `demo_mode`
 API flag) so you can never mistake it for a live market read.
 
-**5. This is paper trading.** "Positions" and "Trades" reflect a simulated portfolio.
-No order has ever touched a real brokerage account through this codebase's execution
-path in its current configuration.
+**5. Research is separate from trading.** MarketPulse (scores, alerts, Copilot) never
+places an order. Orders come only from the trading bot — simulated in paper mode,
+real when you run `python main.py --mode live`. Positions and Trades show whichever
+bot ran last; check which one before reading them.
 
 ---
 
@@ -111,13 +112,15 @@ defined in `config/settings.yaml → signal_engine.weights`:
 
 | Component | Weight | What it measures |
 |---|---|---|
-| Catalyst | 25% | News-driven — impact × recency of classified news events affecting this stock |
-| Technical | 20% | Indicator-based strategy signals (RSI, MACD, EMA crossovers, etc.) |
-| Momentum | 15% | Price momentum over the recent window |
-| Volume | 15% | Relative volume vs. the trailing average — unusual volume moves this up |
-| Historical | 10% | Win rate of similar past events for this event type (from `HistoricalEvent`) |
-| Regime | 10% | Alignment with the detected market regime (trending/ranging/volatile) |
-| Risk | 5% | Downside/volatility penalty |
+| Catalyst | 25% | The stock's most material news in the last 3 days: classifier catalyst score × relevance |
+| Technical | 20% | Confidence of the best firing strategy (the same strategies the bot trades) |
+| Momentum | 15% | How far RSI(14) is from 50, in either direction |
+| Volume | 15% | Latest volume vs. its 20-bar average — 50 is average, 100 is double |
+| Historical | 10% | 1-day win rate of past events of the same type and direction (≥ 5 samples, else 50) |
+| Regime | 10% | Whether the market regime suits the signal's direction |
+| Risk | 5% | Calmer stocks score higher (ATR as a % of price) |
+
+The exact formulas are in [Composite Signals](../marketpulse/composite-signals.md).
 
 **How direction is decided** (`signals/composite.py::_classify`):
 
@@ -240,9 +243,8 @@ Concretely:
 
 ## G. Risk Management, Concretely
 
-The Portfolio Risk page (`/risk`) exists to make risk visible before it's a problem,
-using the same thresholds `risk_manager` already enforces at execution time
-(`config/settings.yaml → risk`):
+The Portfolio Risk page (`/risk`) exists to make risk visible before it's a problem.
+Its thresholds:
 
 | Metric | Default threshold | What crossing it means |
 |---|---|---|
@@ -251,9 +253,19 @@ using the same thresholds `risk_manager` already enforces at execution time
 | Total exposure | 20% of capital (`max_portfolio_risk`) | You're more leveraged into the market than your own risk budget allows |
 | Daily loss | 5% of capital (`max_daily_drawdown`) | The point at which the system would block new trades in live/paper execution |
 
-None of these are arbitrary — they're the same numbers `risk_manager.py` uses to size
-positions and reject signals in the first place. If the dashboard is warning you,
-the execution layer would already be constraining you the same way.
+The page only **warns**. What the trading bots actually enforce is narrower — know
+the difference:
+
+- The **daily loss** limit is enforced: the risk manager stops opening trades once
+  the day's realised loss passes `max_daily_drawdown`.
+- `max_portfolio_risk` is enforced **per position** (no single position may exceed
+  20 % of capital), not as a total-exposure cap — the page's "total exposure"
+  warning is stricter than the bot.
+- **Correlation** is enforced only by the live bot (`main.py`, at
+  `portfolio.correlation_limit`), not by the paper trader.
+- **Sector concentration** is not enforced by either bot.
+
+See [Risk Management](../engine/risk-management.md) for exactly what each component does.
 
 **Max loss**, shown on the same page, is the sum of `(entry − stop) × size` across
 every open position — literally "what happens if every stop I've set gets hit today."
@@ -366,16 +378,17 @@ risk:
   max_daily_drawdown: 0.05     # 5% daily loss limit
   max_portfolio_risk: 0.20     # 20% total exposure cap
 ```
-These same numbers drive the Portfolio Risk page's warnings (§G) — change them once,
-both the dashboard and the execution-time risk manager pick it up.
+These same numbers drive the Portfolio Risk page's warnings (§G) and the risk
+manager — though, as §G explains, the two apply them differently.
 
 **Add a stock to the tracked universe** — edit `config/instruments.py`'s
 `STOCK_UNIVERSE` dict with its ISIN, sector, and market cap tier, then
 `python3 scripts/backfill_stocks.py`.
 
 **Retune strategy ensemble weights** from real backtest results:
-`python3 scripts/tune_weights.py`, then copy the output into
-`strategies.weights` in `settings.yaml`.
+`python3 scripts/tune_weights.py --dry-run` to preview, then without `--dry-run` to
+write `strategies.enabled` and `strategies.weights` into `settings.yaml` (strategies it
+cannot backtest keep their current settings).
 
 ---
 
@@ -394,8 +407,9 @@ scheduler:
   historical_backfill_hour: 18      # IST, once daily after close
 ```
 
-Check `GET /api/scheduler/status` for next-run times and the last outcome of each
-job. It's intentionally off by default — turning it on means the app starts hitting
+It also retrains the ML model every Sunday (kept only if it beats the baselines). Check
+`GET /api/scheduler/status` — or the Intraday Lab page — for next-run times and the last
+outcome of each job. See [The Scheduler](../marketpulse/scheduler.md). It's intentionally off by default — turning it on means the app starts hitting
 your configured broker/news APIs on a real cadence, so do it deliberately, not as a
 side effect of starting the dashboard.
 
@@ -428,7 +442,7 @@ side effect of starting the dashboard.
 | Term | Meaning |
 |---|---|
 | **Composite score** | 0–100 blended score across catalyst/technical/momentum/volume/historical/regime/risk |
-| **Confidence** | 0–100, how strongly the dominant contributing strategy backs the score |
+| **Confidence** | 0–100 — the confidence of the strategy that fired, × 100 |
 | **Direction** | `bullish` / `bearish` / `watch` / `no_signal` |
 | **Catalyst** | A classified news event with impact and sentiment scores |
 | **Historical analogue** | Aggregated outcome stats for past similar events (win rate, median return) |

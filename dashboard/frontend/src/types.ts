@@ -443,7 +443,34 @@ export interface NewsItem {
   affected_stocks: string[]
 }
 
-export interface DocFile {
+export interface DocSection {
+  id: string
+  title: string
+}
+
+export interface DocChapter {
   path: string
   title: string
+  number: number
+  sections: DocSection[]
+}
+
+export interface DocPart {
+  title: string
+  chapters: DocChapter[]
+}
+
+export interface DocBook {
+  title: string
+  subtitle: string
+  parts: DocPart[]
+}
+
+export interface DocSearchHit {
+  path: string
+  chapter: string
+  number: number
+  section_id: string
+  section: string
+  snippet: string
 }

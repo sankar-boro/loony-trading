@@ -5,6 +5,7 @@ import type {
   UniverseResponse, NewsItem, CompositeSignal, WhyResponse, CopilotResponse,
   WatchlistDTO, AlertDTO, AlertTriggerDTO, PortfolioRisk,
   IntradayScanRequest, IntradayScanResponse, AlertEvaluateResponse, SchedulerStatus,
+  DocSearchHit,
 } from './types'
 
 const BASE = '/api'
@@ -102,6 +103,8 @@ export const api = {
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
     return res.text()
   },
+  docSearch: (q: string): Promise<DocSearchHit[]> =>
+    get(`/doc-files/search?q=${encodeURIComponent(q)}`),
 }
 
 // SWR fetcher
