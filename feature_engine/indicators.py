@@ -30,7 +30,7 @@ class TechnicalIndicators:
         """Cumulative sum that resets at each session boundary (calendar
         day) when `index` carries real timestamps, so VWAP-style running
         sums don't silently blend across trading days — see
-        docs/intraday_gaps.md §3. NSE's session (09:15-15:30 IST) never
+        docs/appendix/intraday-audit.md §3. NSE's session (09:15-15:30 IST) never
         crosses a UTC calendar-day boundary, so normalizing by date works
         whether the index is UTC or IST. Falls back to a plain cumsum for
         an index with no date info (e.g. a bare RangeIndex), preserving
@@ -42,6 +42,18 @@ class TechnicalIndicators:
         if isinstance(index, pd.DatetimeIndex):
             return series.groupby(index.normalize()).cumsum()
         return series.cumsum()
+
+    @staticmethod
+    def has_intraday_session(df: pd.DataFrame, min_bars: int = 2) -> bool:
+        """True when session-anchored indicators (VWAP, VWAP bands) mean
+        something for the latest bar: the frame has no timestamps (legacy
+        cumulative behaviour), or today's session has at least `min_bars`
+        bars. On daily bars every session is a single bar, so a session
+        VWAP equals that bar's typical price and its bands have zero width."""
+        if not isinstance(df.index, pd.DatetimeIndex) or df.empty:
+            return True
+        last_day = df.index[-1].normalize()
+        return int((df.index.normalize() == last_day).sum()) >= min_bars
 
     @staticmethod
     def vwap(df: pd.DataFrame) -> pd.Series:

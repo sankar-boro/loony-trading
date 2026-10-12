@@ -199,37 +199,24 @@ def _update_yaml_weights(weights: dict[str, float],
 # ── Strategy registry ─────────────────────────────────────────────────────────
 
 def _get_strategy_classes() -> dict[str, type]:
-    from strategies.trend import (
-        EmaCrossoverStrategy, MultiTimeframeTrendStrategy,
-        SupertrendStrategy, DonchianBreakoutStrategy,
-    )
-    from strategies.mean_reversion import (
-        RsiReversionStrategy, BollingerReversionStrategy,
-        ZscoreReversionStrategy, VwapReversionStrategy,
-    )
-    from strategies.breakout import (
-        SupportResistanceBreakoutStrategy, AtrBreakoutStrategy, RangeBreakoutStrategy,
-    )
-    from strategies.momentum import MacdMomentumStrategy, RsiMomentumStrategy, VolumeMomentumStrategy
-    from strategies.candlestick import CandlestickPatternStrategy
+    """Every strategy that can be backtested on a single symbol's bars, keyed
+    by the name used in strategies.enabled — taken from the engine itself so
+    the names can never drift. (VIX, GIFT Nifty and FII/DII read live
+    market-wide data and the ML model needs training, so they are not tuned
+    here; see _merge_untuned.)"""
+    from strategies.meta_engine import _CORE_STRATEGIES
+    return {cls.name: cls for cls in _CORE_STRATEGIES}
 
-    return {
-        "ema_crossover":        EmaCrossoverStrategy,
-        "multi_tf_trend":       MultiTimeframeTrendStrategy,
-        "supertrend":           SupertrendStrategy,
-        "donchian_breakout":    DonchianBreakoutStrategy,
-        "rsi_mean_reversion":   RsiReversionStrategy,
-        "bollinger_reversion":  BollingerReversionStrategy,
-        "zscore_reversion":     ZscoreReversionStrategy,
-        "vwap_reversion":       VwapReversionStrategy,
-        "sr_breakout":          SupportResistanceBreakoutStrategy,
-        "breakout_atr":         AtrBreakoutStrategy,
-        "range_breakout":       RangeBreakoutStrategy,
-        "macd_momentum":        MacdMomentumStrategy,
-        "rsi_momentum":         RsiMomentumStrategy,
-        "volume_momentum":      VolumeMomentumStrategy,
-        "candlestick_pattern":  CandlestickPatternStrategy,
-    }
+
+def _merge_untuned(weights: dict[str, float], enabled: list[str],
+                   current: dict) -> tuple[dict[str, float], list[str]]:
+    """Keep strategies that were not backtested (enabled in settings but not
+    in `weights`) exactly as configured, instead of silently dropping them."""
+    cur_enabled = current.get("enabled") or []
+    cur_weights = current.get("weights") or {}
+    kept = [n for n in cur_enabled if n not in weights]
+    merged_weights = {**weights, **{n: cur_weights.get(n, 1.0) for n in kept}}
+    return merged_weights, enabled + kept
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -328,9 +315,11 @@ def main():
             yellow("weak") if sharpe >= args.min_sharpe else red("drop"))
         print(f"  {name:<26}  {sharpe:>+12.3f}  {status}  {dim(f'{elapsed:.1f}s')}")
 
-    # Normalise weights
+    # Normalise weights; keep enabled strategies that were not backtested
     weights = _normalise_weights(sharpe_map, args.min_sharpe)
     enabled = [n for n, w in weights.items() if w > 0]
+    from config.loader import Settings
+    weights, enabled = _merge_untuned(weights, enabled, Settings().get("strategies") or {})
 
     print(f"\n  {bold('Proposed weights:')}")
     print(f"  {'Strategy':<26}  {'Sharpe':>10}  {'Weight':>8}")

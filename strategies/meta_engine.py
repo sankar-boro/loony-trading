@@ -52,6 +52,27 @@ def _try_import_extra_strategies(cfg: dict) -> list:
 
 logger = get_logger("meta_engine")
 
+# Strategies every engine registers (filtered by strategies.enabled).
+_CORE_STRATEGIES = [
+    EmaCrossoverStrategy, MultiTimeframeTrendStrategy, SupertrendStrategy,
+    DonchianBreakoutStrategy, RsiReversionStrategy, BollingerReversionStrategy,
+    ZscoreReversionStrategy, VwapReversionStrategy, SupportResistanceBreakoutStrategy,
+    AtrBreakoutStrategy, RangeBreakoutStrategy, MacdMomentumStrategy,
+    RsiMomentumStrategy, VolumeMomentumStrategy, OrderBookImbalanceStrategy,
+    AnchoredVWAPStrategy, CumulativeDeltaStrategy, VolumeProfileStrategy,
+    CandlestickPatternStrategy,
+]
+# Loaded by _try_import_extra_strategies (skipped if their data source fails).
+_EXTRA_STRATEGY_NAMES = ["vix_strategy", "gift_nifty_gap", "fii_dii"]
+
+
+def registered_strategy_names() -> list[str]:
+    """Every name that can go in strategies.enabled, without building an
+    engine (which would load models and data-dependent strategies).
+    pair_trading always runs as a side-car outside the enabled filter."""
+    return ([cls.name for cls in _CORE_STRATEGIES] + _EXTRA_STRATEGY_NAMES
+            + [MLClassifierStrategy.name, PairTradingStrategy.name])
+
 _ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -90,27 +111,7 @@ class MetaStrategyEngine:
         self.regime_detector = RegimeDetector(cfg)
         self.enabled_names = set(cfg.get("strategies", {}).get("enabled", []))
 
-        all_strategies: List[BaseStrategy] = [
-            EmaCrossoverStrategy(cfg),
-            MultiTimeframeTrendStrategy(cfg),
-            SupertrendStrategy(cfg),
-            DonchianBreakoutStrategy(cfg),
-            RsiReversionStrategy(cfg),
-            BollingerReversionStrategy(cfg),
-            ZscoreReversionStrategy(cfg),
-            VwapReversionStrategy(cfg),
-            SupportResistanceBreakoutStrategy(cfg),
-            AtrBreakoutStrategy(cfg),
-            RangeBreakoutStrategy(cfg),
-            MacdMomentumStrategy(cfg),
-            RsiMomentumStrategy(cfg),
-            VolumeMomentumStrategy(cfg),
-            OrderBookImbalanceStrategy(cfg),
-            AnchoredVWAPStrategy(cfg),
-            CumulativeDeltaStrategy(cfg),
-            VolumeProfileStrategy(cfg),
-            CandlestickPatternStrategy(cfg),
-        ]
+        all_strategies: List[BaseStrategy] = [cls(cfg) for cls in _CORE_STRATEGIES]
 
         # Data-dependent strategies (VIX, GIFT Nifty gap, FII/DII flow)
         all_strategies.extend(_try_import_extra_strategies(cfg))

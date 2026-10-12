@@ -19,6 +19,10 @@ class VwapReversionStrategy(BaseStrategy):
     def generate_signal(self, df: pd.DataFrame, symbol: str) -> Optional[Signal]:
         if not self.validate_df(df, 30):
             return None
+        # Session VWAP needs several bars in the session — on daily bars the
+        # bands have zero width and every bar would "cross" one.
+        if not TI.has_intraday_session(df):
+            return None
 
         upper, vwap, lower = TI.vwap_bands(df, self.std_mult)
         price = df["close"].iloc[-1]

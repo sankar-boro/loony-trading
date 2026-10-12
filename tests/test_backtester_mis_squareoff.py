@@ -1,5 +1,5 @@
 """Tests for MIS auto-squareoff simulation in the backtester
-(docs/intraday_gaps.md §3/§7 item 3): an intraday-product (MIS) backtest
+(docs/appendix/intraday-audit.md §3/§7 item 3): an intraday-product (MIS) backtest
 must force-close any open position at 3:14 PM IST, matching what the
 live bot's should_squareoff_mis() actually does — and must not open a
 fresh position that late either. A CNC (delivery) backtest must not be

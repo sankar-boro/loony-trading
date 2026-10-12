@@ -103,3 +103,11 @@ def test_walk_forward_splits_get_warmup_from_preceding_bars():
     bt = Backtester(cfg, initial_capital=10_000)
     results = bt.run_walk_forward(make_df(500), "TEST", strategy=EmaCrossoverStrategy(cfg))
     assert len(results) == 3   # splits starting at bars 200, 300, 400
+
+
+def test_round_trip_cost_is_charged_once_not_per_side():
+    """commission_delivery is a round-trip figure (≈0.21%): half on entry,
+    half on exit — not the full figure on each leg."""
+    bt = Backtester({"execution": {"commission_delivery": 0.002, "slippage_pct": 0.0}},
+                    initial_capital=10_000, product="CNC")
+    assert bt.cost_per_side == 0.001

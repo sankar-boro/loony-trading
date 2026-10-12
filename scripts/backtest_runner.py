@@ -12,7 +12,7 @@ Usage:
     python scripts/backtest_runner.py --symbol RELIANCE
     python scripts/backtest_runner.py --symbols RELIANCE,TCS,HDFCBANK
     python scripts/backtest_runner.py --days 180 --capital 500000
-    python scripts/backtest_runner.py --strategies ema_crossover,rsi_reversion
+    python scripts/backtest_runner.py --strategies ema_crossover,rsi_mean_reversion
     python scripts/backtest_runner.py --timeframe 1d
     python scripts/backtest_runner.py --monte-carlo        # bootstrap tail risk
     python scripts/backtest_runner.py --walk-forward       # walk-forward splits

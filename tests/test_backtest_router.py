@@ -37,7 +37,7 @@ def test_monte_carlo_metrics_are_percent_scaled_not_raw_fractions():
     assert 0 <= result["max_dd_p95"] < 100
 
 
-# ── trade reasons in the serialized response (docs/intraday_gaps.md §3, UI wiring) ──
+# ── trade reasons in the serialized response (docs/appendix/intraday-audit.md §3, UI wiring) ──
 
 def test_serialize_result_includes_per_trade_reason():
     trades = [
@@ -64,3 +64,25 @@ def test_serialize_result_includes_per_trade_reason():
     assert summary["trades"][1]["pnl"] == -20.0
     # trades_pnl (used by the existing P&L histogram) stays unchanged
     assert summary["trades_pnl"] == [50.0, -20.0]
+
+
+# ── every enabled strategy can be backtested on its own (Strategy Lab) ──────
+
+def test_single_strategy_without_class_mapping_runs_through_engine(monkeypatch):
+    import pandas as pd
+    from dashboard.backend.routers import backtest as bt_router
+
+    rng = np.random.default_rng(7)
+    close = 1000 * np.exp(np.cumsum(rng.normal(0, 0.01, 700)))
+    df = pd.DataFrame({"open": close, "high": close * 1.01, "low": close * 0.99,
+                       "close": close, "volume": rng.integers(1e5, 9e5, 700).astype(float)},
+                      index=pd.date_range("2023-01-02", periods=700, freq="B"))
+    monkeypatch.setattr(bt_router, "_fetch_ohlcv", lambda *a, **k: df)
+    monkeypatch.setattr(bt_router, "get_backtest_jobs", lambda: jobs)
+    jobs = {"j1": {"status": "pending"}}
+
+    req = bt_router.BacktestRequest(symbol="RELIANCE", strategy="cumulative_delta", token="t")
+    bt_router._run_backtest_sync("j1", req)
+
+    assert jobs["j1"]["status"] == "done", jobs["j1"].get("error")
+    assert "Unknown single strategy" not in str(jobs["j1"]["result"].get("errors", ""))

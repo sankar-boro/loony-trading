@@ -101,7 +101,7 @@ def _serialize_result(result, bench_df=None, include_curve=True, include_trades=
         summary["trades_pnl"] = [t.pnl for t in result.trades]
         # Per-trade detail incl. exit reason — lets the UI show e.g.
         # "mis_squareoff" exits from the intraday-gap Phase 3 fix
-        # (docs/intraday_gaps.md §3), not just aggregate P&L.
+        # (docs/appendix/intraday-audit.md §3), not just aggregate P&L.
         summary["trades"] = [
             {
                 "direction": t.direction, "entry_price": round(t.entry_price, 2),
@@ -259,10 +259,18 @@ def _run_backtest_sync(job_id: str, req: BacktestRequest) -> None:
                         "candlestick_pattern": ("strategies.candlestick", "CandlestickPatternStrategy"),  # old name
                     }
                     strat_name = strategies_to_run[0]
+                    from strategies.meta_engine import registered_strategy_names
                     if strat_name in _STRAT_MAP:
                         import importlib
                         mod_name, cls_name = _STRAT_MAP[strat_name]
                         strat_obj = getattr(importlib.import_module(mod_name), cls_name)(cfg)
+                    elif strat_name in registered_strategy_names():
+                        # Strategies without a direct class mapping (microstructure,
+                        # VIX, GIFT Nifty, FII/DII, ML, …) run through a one-strategy
+                        # engine — the same code path the bot uses.
+                        cfg.setdefault("strategies", {})["enabled"] = [strat_name]
+                        from strategies.meta_engine import MetaStrategyEngine
+                        engine = MetaStrategyEngine(cfg)
                     else:
                         raise ValueError(f"Unknown single strategy: {strat_name}")
                 else:

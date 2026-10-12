@@ -62,6 +62,9 @@ class Backtester:
         else:
             self.commission_pct = ex.get("commission_delivery",
                                          ex.get("commission", 0.0021))
+        # commission_* settings are ROUND-TRIP costs; half is charged on
+        # entry and half on exit.
+        self.cost_per_side = self.commission_pct / 2
         self.slippage_pct = ex.get("slippage_pct", 0.0005)
         self.risk_per_trade = cfg.get("risk", {}).get("max_risk_per_trade", 0.01)
         self.warmup_bars = cfg.get("data", {}).get("warmup_bars", 200)
@@ -87,7 +90,7 @@ class Backtester:
             # bot's should_squareoff_mis()) — an intraday-product backtest
             # must not let a position ride across that boundary, or its
             # results wouldn't reflect what live execution would actually
-            # allow. See docs/intraday_gaps.md §3/§7 item 3.
+            # allow. See docs/appendix/intraday-audit.md §3/§7 item 3.
             bar_ts = df.index[i] if isinstance(df.index, pd.DatetimeIndex) else None
             mis_squareoff_now = (
                 self.product == "MIS" and bar_ts is not None
@@ -114,7 +117,7 @@ class Backtester:
                         reason = "mis_squareoff"
                     exit_price = self._apply_slippage(price, -position["direction"])
                     pnl = (exit_price - position["entry"]) * position["direction"] * position["size"]
-                    pnl -= self.commission_pct * exit_price * position["size"]
+                    pnl -= self.cost_per_side * exit_price * position["size"]
                     capital += pnl
                     trades.append(Trade(
                         symbol=symbol,
@@ -145,7 +148,7 @@ class Backtester:
             if engine is not None:
                 signals = engine.generate_signals(symbol, window)
                 if signals:
-                    signal = max(signals, key=lambda s: s.confidence)
+                    signal = engine.best_signal(signals)   # confidence × strategy weight, as the bots rank
             elif strategy is not None:
                 signal = strategy.generate_signal(window, symbol)
 
@@ -162,7 +165,7 @@ class Backtester:
             size = min(size, max_size)
 
             entry_price = self._apply_slippage(price, signal.direction)
-            entry_cost = entry_price * size * self.commission_pct
+            entry_cost = entry_price * size * self.cost_per_side
             capital -= entry_cost
 
             position = {

@@ -43,7 +43,7 @@ def compute_anchored_vwap(df: pd.DataFrame) -> Tuple[pd.Series, pd.Series, pd.Se
     # .cumsum() across the whole df regardless of how many sessions it
     # spanned, silently contradicting this function's own "reset at the
     # start of each trading session" docstring above. See
-    # docs/intraday_gaps.md §3.
+    # docs/appendix/intraday-audit.md §3.
     cum_vol  = TI.session_cumsum(volume, df.index)
     cum_tpv  = TI.session_cumsum(tp * volume, df.index)
     vwap     = cum_tpv / cum_vol.replace(0, np.nan)
@@ -85,6 +85,9 @@ class AnchoredVWAPStrategy(BaseStrategy):
 
     def generate_signal(self, df: pd.DataFrame, symbol: str) -> Optional[Signal]:
         if not self.validate_df(df, self.min_bars + 2):
+            return None
+        # Needs real intraday bars: on daily data each session is one bar.
+        if not TI.has_intraday_session(df, min_bars=3):
             return None
 
         vwap, upper2, upper1, lower1, lower2 = compute_anchored_vwap(df)

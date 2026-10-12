@@ -1,4 +1,4 @@
-"""Tests for the session-boundary VWAP fix (docs/intraday_gaps.md §3):
+"""Tests for the session-boundary VWAP fix (docs/appendix/intraday-audit.md §3):
 TechnicalIndicators.vwap()/vwap_bands() and
 strategies.microstructure.anchored_vwap.compute_anchored_vwap() must
 reset at each trading day, not run cumulatively across multiple days of
@@ -114,3 +114,36 @@ def test_compute_anchored_vwap_with_real_volatility_still_resets():
     # dragged toward day 1's ~100 level by leftover cumulative volume.
     day2_vwap = vwap.iloc[20:]
     assert day2_vwap.min() > 500  # nowhere close to day 1's price level
+
+
+# ── VWAP strategies stand aside on daily bars (docs/appendix/status.md §4) ──
+
+def _daily_frame(n: int = 120):
+    import numpy as np
+    rng = np.random.default_rng(3)
+    c = 1000 * np.exp(np.cumsum(rng.normal(0, 0.01, n)))
+    return pd.DataFrame(
+        {"open": c, "high": c * 1.01, "low": c * 0.99,
+         "close": c * (1 + rng.normal(0, 0.003, n)),
+         "volume": rng.integers(100_000, 900_000, n).astype(float)},
+        index=pd.date_range("2025-01-01", periods=n, freq="B", tz="UTC"),
+    )
+
+
+def test_vwap_strategies_never_fire_on_daily_bars():
+    from strategies.mean_reversion.vwap_reversion import VwapReversionStrategy
+    from strategies.microstructure.anchored_vwap import AnchoredVWAPStrategy
+    df = _daily_frame()
+    for strategy in (VwapReversionStrategy({}), AnchoredVWAPStrategy({})):
+        fired = [i for i in range(40, len(df)) if strategy.generate_signal(df.iloc[:i], "X")]
+        assert fired == [], strategy.name
+
+
+def test_has_intraday_session():
+    from feature_engine.indicators import TechnicalIndicators as TI
+    daily = _daily_frame(10)
+    assert TI.has_intraday_session(daily) is False
+    intraday = pd.DataFrame({"close": [1.0, 2.0, 3.0]},
+                            index=pd.date_range("2026-10-09 03:45", periods=3, freq="15min", tz="UTC"))
+    assert TI.has_intraday_session(intraday) is True
+    assert TI.has_intraday_session(pd.DataFrame({"close": [1.0, 2.0]})) is True   # no timestamps

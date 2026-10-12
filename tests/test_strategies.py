@@ -73,3 +73,23 @@ def test_strategy_requires_min_bars():
     strategy = EmaCrossoverStrategy(CFG)
     result = strategy.generate_signal(df, "BTC/USDT")
     assert result is None
+
+
+def test_registered_strategy_names_match_the_engine():
+    from strategies.meta_engine import MetaStrategyEngine, registered_strategy_names
+    engine = MetaStrategyEngine({"strategies": {"enabled": []}})
+    built = {s.name for s in engine.strategies}
+    names = set(registered_strategy_names())
+    assert built <= names                      # nothing the engine runs is missing
+    assert names - built <= {"vix_strategy", "gift_nifty_gap", "fii_dii", "pair_trading"}
+
+
+def test_best_signal_applies_strategy_weights():
+    from strategies.base import Signal, SignalType
+    from strategies.meta_engine import MetaStrategyEngine
+    engine = MetaStrategyEngine({"strategies": {"enabled": ["vwap_reversion"],
+                                                "weights": {"a": 1.5, "b": 1.0}}})
+    mk = lambda name, conf: Signal(strategy=name, symbol="X", signal_type=SignalType.BUY,
+                                   price=100, stop_loss=98, take_profit=104, confidence=conf)
+    # a: 0.6 × 1.5 = 0.9 beats b: 0.8 × 1.0
+    assert engine.best_signal([mk("b", 0.8), mk("a", 0.6)]).strategy == "a"

@@ -6,18 +6,13 @@ router = APIRouter()
 def get_config() -> dict:
     try:
         from config.loader import Settings
+        from strategies.meta_engine import registered_strategy_names
         s = Settings()
         return {
             "weights":       s.get("strategies.weights") or {},
             "enabled":       s.get("strategies.enabled") or [],
             "capital":       s.get("portfolio.initial_capital") or 500_000,
-            "all_strategies": [
-                "ema_crossover", "rsi_mean_reversion", "bollinger_reversion",
-                "macd_momentum", "breakout_atr", "supertrend", "donchian_breakout",
-                "zscore_reversion", "vwap_reversion", "sr_breakout", "range_breakout",
-                "rsi_momentum", "volume_momentum", "candlestick_pattern",
-                "order_book_imbalance", "pair_trading", "ml_classifier",
-            ],
+            "all_strategies": registered_strategy_names(),
         }
     except Exception as e:
         raise HTTPException(500, str(e))
