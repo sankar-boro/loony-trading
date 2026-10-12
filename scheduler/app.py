@@ -89,7 +89,7 @@ def start_scheduler(cfg: dict) -> Optional[BackgroundScheduler]:
         )
 
     # Intraday signal/alert jobs — separate opt-in track, coexisting with
-    # the daily jobs above rather than replacing them (docs/intraday_gaps.md
+    # the daily jobs above rather than replacing them (docs/appendix/intraday-audit.md
     # §6/§7 item 6). Always market-hours-gated regardless of
     # market_hours_only: an intraday bar is meaningless once the session
     # is closed, unlike news.

@@ -1,4 +1,4 @@
-"""Tests for the intraday timeframe threading fix (docs/intraday_gaps.md
+"""Tests for the intraday timeframe threading fix (docs/appendix/intraday-audit.md
 §5/§7 item 5): CompositeSignalEngine, latest_signal_per_stock, and
 evaluate_alerts must all be able to distinguish daily from intraday
 signals for the same stock — and must default to "1d" everywhere, so

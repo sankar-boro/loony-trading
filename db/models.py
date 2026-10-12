@@ -136,7 +136,7 @@ class Signal(Base):
     stock_id: Mapped[int] = mapped_column(ForeignKey("stocks.id"), nullable=False)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
     # Bar size this signal was scored from ("1d", "15m", "5m", ...) —
-    # intraday-gap fix Phase 5 (docs/intraday_gaps.md §2/§7 item 5). Every
+    # intraday-gap fix Phase 5 (docs/appendix/intraday-audit.md §2/§7 item 5). Every
     # signal before this column existed was daily, hence the "1d" default;
     # queries that don't explicitly filter by timeframe should keep
     # defaulting to "1d" too, so adding intraday scoring never silently

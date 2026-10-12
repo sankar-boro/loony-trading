@@ -1,6 +1,6 @@
 """
 Live intraday bar aggregator — intraday-gap fix Phase 1
-(see docs/intraday_gaps.md §1/§7).
+(see docs/appendix/intraday-audit.md §1/§7).
 
 UpstoxFeed already decodes a live-updating 1-minute candle (marketOHLC
 "I1" interval) on every tick — see upstox_feed.py:_decode_with_sdk — but

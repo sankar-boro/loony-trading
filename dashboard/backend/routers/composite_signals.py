@@ -92,7 +92,7 @@ class IntradayScanRequest(BaseModel):
 @router.post("/signals/intraday-scan")
 def run_intraday_scan(req: IntradayScanRequest) -> dict:
     """UI-triggered version of `scripts/run_signal_engine.py --timeframe
-    30m` (docs/intraday_gaps.md §5/§7 item 5) — same function, same
+    30m` (docs/appendix/intraday-audit.md §5/§7 item 5) — same function, same
     Signal rows tagged with this timeframe, just reachable from a button
     instead of a terminal. Runs synchronously in FastAPI's threadpool
     (this is a plain `def` route, not `async def`), which is fine for the

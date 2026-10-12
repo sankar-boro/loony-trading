@@ -1,5 +1,5 @@
 """Tests for the NSE-session-aware Opening Range Breakout fix
-(docs/intraday_gaps.md §3): the opening range must anchor to today's
+(docs/appendix/intraday-audit.md §3): the opening range must anchor to today's
 09:15 IST session open on real intraday data, and fall back to the
 original bar-count window for data with no NSE-session clustering
 (daily bars, continuous/crypto data)."""

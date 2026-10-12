@@ -89,7 +89,7 @@ def evaluate_alerts(db: Session, notifier=None, timeframe: str = "1d") -> Evalua
     utils.telegram_alerts.TelegramAlerter; a no-op if not configured).
 
     `timeframe` selects which bar-size signals to evaluate against
-    (docs/intraday_gaps.md §5) — defaults to "1d" so existing daily-
+    (docs/appendix/intraday-audit.md §5) — defaults to "1d" so existing daily-
     cadence alert rules keep behaving exactly as before; an intraday
     scheduler job would pass e.g. "15m" explicitly."""
     alerts = db.query(Alert).filter(Alert.is_active == True).all()  # noqa: E712

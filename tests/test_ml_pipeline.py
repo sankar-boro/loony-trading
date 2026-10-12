@@ -1,4 +1,4 @@
-"""ML training/inference consistency (docs/status.md §3, ML strategy).
+"""ML training/inference consistency (docs/appendix/status.md §3, ML strategy).
 
 Before this, training used advanced_build() features while the strategy
 predicted on build() features with no column alignment, so every

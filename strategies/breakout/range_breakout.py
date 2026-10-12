@@ -23,7 +23,7 @@ class RangeBreakoutStrategy(BaseStrategy):
     with whenever the strategy happens to run), and its own docstring
     called it an "Asian session... works on hourly crypto data" window,
     which was never NSE's actual opening-range convention. See
-    docs/intraday_gaps.md §3.
+    docs/appendix/intraday-audit.md §3.
 
     Falls back to the original bar-count window for data with no
     NSE-session-like clustering — daily bars (one row per day) or

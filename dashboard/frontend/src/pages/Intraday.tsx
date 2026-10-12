@@ -5,7 +5,7 @@ import type { IntradayScanResponse, AlertEvaluateResponse, SchedulerStatus } fro
 import clsx from 'clsx'
 
 // "30m" not "15m" — Upstox returns HTTP 400 for 5m/15m on this account
-// (docs/intraday_gaps.md §5); 30m/1h are the verified-working options.
+// (docs/appendix/intraday-audit.md §5); 30m/1h are the verified-working options.
 const TIMEFRAMES = ['30m', '1h'] as const
 
 const DIR_CLASS: Record<string, string> = {

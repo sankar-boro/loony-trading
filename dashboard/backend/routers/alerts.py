@@ -100,7 +100,7 @@ def run_evaluation(
 ) -> dict:
     """Manual evaluation trigger — a scheduler replaces this call site in
     Phase 11, same as /api/news/ingest and the signal-engine runner.
-    `timeframe` selects daily vs. intraday signals (docs/intraday_gaps.md
+    `timeframe` selects daily vs. intraday signals (docs/appendix/intraday-audit.md
     §5) — an alert only fires against the latest signal of the timeframe
     you ask for."""
     from utils.telegram_alerts import TelegramAlerter

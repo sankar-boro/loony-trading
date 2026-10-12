@@ -37,7 +37,7 @@ def run_signal_engine(limit: int | None = None, lookback_days: int = 200,
     call this.
 
     `timeframe` lets this run against intraday bars (e.g. "15m") instead
-    of daily — docs/intraday_gaps.md §5. Pick `lookback_days` to match:
+    of daily — docs/appendix/intraday-audit.md §5. Pick `lookback_days` to match:
     a small value goes a long way on intraday bars (e.g. 5 days of 15m
     bars is ~125 bars, already past the 50-bar minimum below), and
     Upstox's intraday historical API caps lookback much tighter than

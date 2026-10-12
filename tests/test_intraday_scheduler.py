@@ -1,4 +1,4 @@
-"""Tests for the intraday scheduler track (docs/intraday_gaps.md §6/§7
+"""Tests for the intraday scheduler track (docs/appendix/intraday-audit.md §6/§7
 item 6): opt-in, coexists with the daily jobs, always market-hours-gated,
 and calls run_signal_engine/evaluate_alerts with an intraday timeframe
 rather than the daily default."""

@@ -1,4 +1,4 @@
-"""Tests for the intraday live bar aggregator (docs/intraday_gaps.md §1/§7
+"""Tests for the intraday live bar aggregator (docs/appendix/intraday-audit.md §1/§7
 fix, Phase 1). Uses synthetic MarketEvent-shaped payloads — no live
 Upstox connection needed, since this module's job is pure aggregation
 logic independent of the feed itself."""

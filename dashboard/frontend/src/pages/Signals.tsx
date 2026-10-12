@@ -8,7 +8,7 @@ const DIRECTIONS = ['all', 'bullish', 'bearish', 'watch', 'no_signal'] as const
 type Dir = typeof DIRECTIONS[number]
 
 // "30m" not "15m" as the intraday option — Upstox returns HTTP 400 for
-// 5m/15m on this account (see docs/intraday_gaps.md §5); 30m/1h work.
+// 5m/15m on this account (see docs/appendix/intraday-audit.md §5); 30m/1h work.
 const TIMEFRAMES = ['1d', '30m', '1h'] as const
 type Timeframe = typeof TIMEFRAMES[number]
 const TF_LABEL: Record<string, string> = { '1d': 'Daily', '30m': '30 min', '1h': '1 hour' }

@@ -22,7 +22,7 @@ const inr    = (n: number) => `₹${Math.abs(n).toLocaleString('en-IN', { maximu
 const pnlFmt = (n: number) => `${n >= 0 ? '+' : '-'}${inr(n)}`
 const ttStyle = { background: '#161b27', border: '1px solid #252d3d', borderRadius: 8, fontSize: 13 }
 
-// mis_squareoff is the intraday-gap Phase 3 fix (docs/intraday_gaps.md
+// mis_squareoff is the intraday-gap Phase 3 fix (docs/appendix/intraday-audit.md
 // §3) — an MIS-product backtest force-closing a position at 3:14 PM IST
 // instead of letting it ride across a session boundary. Called out with
 // its own color so it reads as a deliberate exit, not a stop/target hit.
@@ -360,7 +360,7 @@ export default function Backtest() {
             )}
           </div>
 
-          {/* Trade log — exit reasons incl. mis_squareoff (docs/intraday_gaps.md §3) */}
+          {/* Trade log — exit reasons incl. mis_squareoff (docs/appendix/intraday-audit.md §3) */}
           {result.trades && result.trades.length > 0 && (
             <div className="bg-surface border border-border rounded-xl p-3 shrink-0 max-h-56 overflow-auto">
               <div className="text-[11px] text-dim uppercase tracking-wide mb-2 sticky top-0 bg-surface">

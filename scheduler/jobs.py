@@ -81,7 +81,7 @@ def alert_evaluation_job() -> JobRun:
 def intraday_signal_engine_job(limit: int | None = None, lookback_days: int = 5,
                                 timeframe: str = "30m") -> JobRun:
     """Same pipeline as signal_engine_job, scored on intraday bars instead
-    of daily — docs/intraday_gaps.md §6/§7 item 6. Persists to Signal rows
+    of daily — docs/appendix/intraday-audit.md §6/§7 item 6. Persists to Signal rows
     tagged with this timeframe (Phase 5's fix), so it never touches what
     the daily job's rows show. Defaults to "30m", not the "15m" used
     elsewhere in this config's timeframes.intraday: live verification

@@ -25,7 +25,7 @@ def latest_signal_per_stock(db: Session, timeframe: str = "1d") -> Query:
 
     Defaults to "1d" so the existing Signals/Alerts/Portfolio Risk pages
     keep showing exactly the daily-cadence data they always have —
-    running an intraday scoring pass (docs/intraday_gaps.md §5) must not
+    running an intraday scoring pass (docs/appendix/intraday-audit.md §5) must not
     silently change what those already-shipped pages display. Pass an
     explicit timeframe (e.g. "15m") to query intraday signals instead."""
     latest_ts = (
