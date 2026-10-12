@@ -39,7 +39,7 @@ def should_squareoff_mis() -> bool:
 def is_mis_squareoff_time(ts: datetime) -> bool:
     """Same 3:14 PM IST threshold as should_squareoff_mis(), but for an
     arbitrary timestamp instead of "now" — lets the backtester simulate
-    MIS auto-squareoff on historical bars (docs/intraday_gaps.md §3/§7
+    MIS auto-squareoff on historical bars (docs/appendix/intraday-audit.md §3/§7
     item 3), instead of letting an intraday-product backtest hold a
     position across what would be a forced live close. Naive timestamps
     are treated as already being in IST, matching this project's
@@ -57,22 +57,29 @@ def minutes_to_squareoff() -> int:
     return max(0, int(delta / 60))
 
 
+def _is_holiday(d) -> bool:
+    from data_engine.upstox.market_hours import is_holiday   # lazy: avoids an import cycle
+    return is_holiday(d)
+
+
 def is_market_session() -> bool:
-    """True between 9:15 AM and 3:30 PM IST on weekdays (ignores holidays)."""
+    """True between 9:15 AM and 3:30 PM IST on trading days (weekdays that
+    are not NSE holidays)."""
     ist = now_ist()
-    if ist.weekday() >= 5:
+    if ist.weekday() >= 5 or _is_holiday(ist.date()):
         return False
     t = ist.time()
     return dt_time(9, 15) <= t <= _MARKET_CLOSE_TIME
 
 
 def next_market_open() -> datetime:
-    """Returns the next 9:15 AM IST open as an IST-aware datetime (skips weekends)."""
+    """Returns the next 9:15 AM IST open as an IST-aware datetime (skips
+    weekends and NSE holidays)."""
     ist = now_ist()
     candidate = ist.replace(hour=9, minute=15, second=0, microsecond=0)
     if ist >= candidate:
         candidate += timedelta(days=1)
-    while candidate.weekday() >= 5:
+    while candidate.weekday() >= 5 or _is_holiday(candidate.date()):
         candidate += timedelta(days=1)
     return candidate
 

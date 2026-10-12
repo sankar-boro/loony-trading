@@ -26,7 +26,7 @@ VENV_PATH="${BOT_DIR}/.venv"              # virtualenv directory (or "system" to
 SERVICE_NAME=""                           # systemd service to restart after login, e.g. "loony-trading"
 TOKEN_FILE="${BOT_DIR}/data/upstox_token.json"
 LOG_FILE="${BOT_DIR}/logs/auto_login.log"
-MAX_AGE_HOURS=22                          # warn if token is older than this
+WARN_HOURS_LEFT=3                         # warn when the token expires within this many hours
 # ─────────────────────────────────────────────────────────────────────────────
 
 mkdir -p "${BOT_DIR}/logs"
@@ -80,20 +80,23 @@ else:
 
     echo "  token: age = ${AGE_H}h"
 
-    # Return non-zero if expired
-    python3 -c "
+    # Upstox tokens die at 03:30 IST the morning after issue, not N hours
+    # after it — use the same rule as the Python code (data_engine/upstox/auth.py).
+    # Return non-zero if expired.
+    (cd "${BOT_DIR}" && python3 -c "
 import sys
-age = float('${AGE_H}')
-if age >= 23:
-    print('  token: EXPIRED')
+from data_engine.upstox.auth import token_hours_left
+left = token_hours_left(float('${OBTAINED_AT}'))
+if left <= 0:
+    print('  token: EXPIRED (03:30 IST)')
     sys.exit(1)
-elif age >= ${MAX_AGE_HOURS}:
-    print(f'  token: WARNING — expires in {23 - age:.1f}h')
+elif left <= ${WARN_HOURS_LEFT}:
+    print(f'  token: WARNING — expires in {left:.1f}h')
     sys.exit(0)
 else:
-    print(f'  token: OK — {23 - age:.1f}h remaining')
+    print(f'  token: OK — {left:.1f}h remaining')
     sys.exit(0)
-"
+")
 }
 
 # ── Parse arguments ───────────────────────────────────────────────────────────
@@ -111,23 +114,10 @@ if [[ "${MODE}" == "check" ]]; then
     exit $?
 fi
 
-# Run token age check; only renew if expired or --force
-if check_token_age && [[ "${MODE}" != "force" ]]; then
-    EXPIRED=0
-    python3 -c "
-import json, time, sys
-try:
-    d = json.load(open('${TOKEN_FILE}'))
-    age = (time.time() - d.get('obtained_at', 0)) / 3600
-    sys.exit(1 if age >= 23 else 0)
-except:
-    sys.exit(1)
-" || EXPIRED=1
-
-    if [[ "${EXPIRED}" -eq 0 ]]; then
-        echo "  Token still valid — skipping renewal."
-        exit 0
-    fi
+# Only renew if the token has expired (check_token_age fails) or --force
+if [[ "${MODE}" != "force" ]] && check_token_age; then
+    echo "  Token still valid — skipping renewal."
+    exit 0
 fi
 
 # ── Run login ─────────────────────────────────────────────────────────────────

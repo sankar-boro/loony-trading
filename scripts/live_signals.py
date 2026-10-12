@@ -89,7 +89,7 @@ def _get_token(explicit: str = None) -> tuple[str, float]:
     """
     Returns (token, age_hours).
     age_hours = -1 means unknown (env var with no token file).
-    Raises SystemExit if token is expired (>23h) or missing.
+    Raises SystemExit if token is expired (past 03:30 IST) or missing.
     """
     tf = ROOT / "data" / "upstox_token.json"
 
@@ -115,15 +115,19 @@ def _get_token(explicit: str = None) -> tuple[str, float]:
     # Age check — only knowable from the token file
     age = file_age if file_token and token == file_token else -1.0
 
-    if age >= 23:
-        print(f"\n{R}Token expired{E} (age {age:.1f}h — Upstox tokens last 23h).")
+    # Upstox tokens die at 03:30 IST the morning after issue (age only
+    # knowable from the token file; -1 means env-var token, unknown age).
+    from data_engine.upstox.auth import token_hours_left
+    left = token_hours_left(time.time() - age * 3600) if age >= 0 else None
+    if left is not None and left <= 0:
+        print(f"\n{R}Token expired{E} at 03:30 IST (obtained {age:.1f}h ago).")
         print("Run: python scripts/upstox_login.py --force")
         print("Or set up auto-renewal: bash scripts/auto_login.sh")
         sys.exit(1)
 
-    if 0 <= age >= 20:
-        print(f"{Y}Token is {age:.1f}h old — expires in {23 - age:.1f}h.{E}")
-        print(f"  Consider running: bash scripts/auto_login.sh")
+    if left is not None and left <= 3:
+        print(f"{Y}Token expires in {left:.1f}h (03:30 IST).{E}")
+        print("  Consider running: bash scripts/auto_login.sh")
 
     return token, age
 

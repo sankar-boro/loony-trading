@@ -106,11 +106,23 @@ def _load_holidays() -> set[date]:
             except Exception as exc:
                 logger.debug("Could not write holiday cache: %s", exc)
         else:
-            # API unreachable — fall back to static list
-            cached_dates = _NSE_HOLIDAYS_FALLBACK
+            # API unreachable — fall back to the static list plus any dates in
+            # config/settings.yaml india_market.holidays (keep that list
+            # current each year; it is the only offline source after 2025).
+            cached_dates = _NSE_HOLIDAYS_FALLBACK + _configured_holidays()
 
     _holiday_set = set(cached_dates)
     return _holiday_set
+
+
+def _configured_holidays() -> list[date]:
+    try:
+        from config.loader import Settings
+        raw = Settings().get("india_market.holidays") or []
+        return [date.fromisoformat(str(d)) for d in raw]
+    except Exception as exc:
+        logger.debug("Could not read india_market.holidays: %s", exc)
+        return []
 
 
 def is_holiday(d: date | None = None) -> bool:

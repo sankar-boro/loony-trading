@@ -88,8 +88,8 @@ def load_existing_token(token_file: Path) -> tuple[str | None, dict]:
     try:
         with open(token_file) as f:
             data = json.load(f)
-        age_hours = (time.time() - data.get("obtained_at", 0)) / 3600
-        if age_hours < 23:
+        from data_engine.upstox.auth import token_hours_left
+        if token_hours_left(data.get("obtained_at", 0)) > 0:
             return data.get("access_token"), data
     except Exception:
         pass

@@ -4,7 +4,7 @@ import time
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 import httpx
-from ..utils import get_token
+from ..utils import get_token, token_expired
 from ..config import _WATCHLIST_SYMS
 from ..services.state import get_price_cache
 from config.instruments import INSTRUMENTS as _IKEYS
@@ -61,7 +61,7 @@ async def stream_prices(request: Request):
     async def generator():
         snap = await _fetch_sse_snapshot(token)
         yield f"data: {json.dumps(snap)}\n\n"
-        interval = 2 if (token and age_h <= 23) else 10
+        interval = 2 if (token and not token_expired(age_h)) else 10
         while True:
             if await request.is_disconnected():
                 break
