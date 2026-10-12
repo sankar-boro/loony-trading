@@ -474,3 +474,86 @@ export interface DocSearchHit {
   section: string
   snippet: string
 }
+
+// ── Intraday Desk (/api/intraday/desk) ───────────────────────────────────────
+
+export type SessionPhase =
+  | 'pre_open' | 'opening' | 'entry_window' | 'manage_only'
+  | 'squareoff' | 'closed' | 'weekend' | 'holiday'
+
+export interface DeskSession {
+  now: string
+  phase: SessionPhase
+  trading_day: boolean
+  market_open: string
+  squareoff: string
+  market_close: string
+  entry_start: string
+  entry_end: string
+  mins_to_entry_end: number
+  mins_to_squareoff: number
+  mins_to_close: number
+}
+
+export interface DeskGuard {
+  session_date: string | null
+  entry_start: string
+  entry_end: string
+  in_entry_window: boolean | null
+  max_trades_per_day: number
+  max_trades_per_symbol: number
+  trades_today: number
+  trades_by_symbol: Record<string, number>
+  cooldowns: Record<string, string>
+  max_daily_loss_pct: number
+  profit_lock_pct: number
+  halted: boolean
+  halt_reason: string
+  paused: boolean
+}
+
+export interface DeskPosition extends Position {
+  product?: string
+  stop_order_id?: string
+}
+
+export interface DeskEvent {
+  ts: string
+  kind: 'entry' | 'exit' | 'block' | 'halt' | 'flatten' | 'control' | 'error' | 'heartbeat' | 'squareoff' | string
+  message: string
+}
+
+export interface DeskTrade extends Trade {
+  type: 'close'
+}
+
+export interface DeskResponse {
+  session: DeskSession
+  bot: {
+    running: boolean
+    mode: 'paper' | 'live' | null
+    saved_at: number
+    last_tick_at: number
+    feed_age_sec: number | null
+    feed_stale: boolean
+    exchange_stops: boolean
+  }
+  guard: DeskGuard
+  control: { paused?: boolean; flatten_id?: string; resume_id?: string; updated_at?: number }
+  pnl: {
+    realised: number
+    unrealised: number
+    day: number
+    capital: number
+    loss_limit: number
+    loss_used_pct: number
+    profit_lock: number
+  }
+  positions: DeskPosition[]
+  trades: DeskTrade[]
+  by_strategy: { strategy: string; trades: number; wins: number; pnl: number }[]
+  curve: { ts: string; realised: number; unrealised: number; total: number; open_positions: number }[]
+  events: DeskEvent[]
+}
+
+export type DeskAction = 'pause' | 'resume' | 'flatten'

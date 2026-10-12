@@ -21,6 +21,7 @@ from .alerts import router as alerts_router
 from .portfolio_risk import router as portfolio_risk_router
 from .scheduler import router as scheduler_router
 from .doc_files import router as doc_files_router
+from .intraday_desk import router as intraday_desk_router
 
 __all__ = [
     "status_router", "positions_router", "equity_router", "trades_router",
@@ -29,5 +30,5 @@ __all__ = [
     "ltp_router", "stream_router", "backtest_router", "news_router",
     "composite_signals_router", "copilot_router", "watchlists_router",
     "alerts_router", "portfolio_risk_router", "scheduler_router",
-    "doc_files_router",
+    "doc_files_router", "intraday_desk_router",
 ]

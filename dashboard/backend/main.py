@@ -11,7 +11,7 @@ from .routers import (
     universe_router, signals_router, telegram_router, chart_router,
     ltp_router, stream_router, backtest_router, news_router,
     composite_signals_router, copilot_router, watchlists_router, alerts_router,
-    portfolio_risk_router, scheduler_router, doc_files_router,
+    portfolio_risk_router, scheduler_router, doc_files_router, intraday_desk_router,
 )
 
 
@@ -61,6 +61,7 @@ app.include_router(alerts_router, prefix="/api", tags=["alerts"])
 app.include_router(portfolio_risk_router, prefix="/api", tags=["portfolio"])
 app.include_router(scheduler_router, prefix="/api", tags=["scheduler"])
 app.include_router(doc_files_router, prefix="/api", tags=["docs"])
+app.include_router(intraday_desk_router, prefix="/api", tags=["intraday"])
 
 # Static files for React (production)
 if _DIST_DIR.exists():

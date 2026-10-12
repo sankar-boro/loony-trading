@@ -5,7 +5,7 @@ import type {
   UniverseResponse, NewsItem, CompositeSignal, WhyResponse, CopilotResponse,
   WatchlistDTO, AlertDTO, AlertTriggerDTO, PortfolioRisk,
   IntradayScanRequest, IntradayScanResponse, AlertEvaluateResponse, SchedulerStatus,
-  DocSearchHit,
+  DocSearchHit, DeskResponse, DeskAction,
 } from './types'
 
 const BASE = '/api'
@@ -105,6 +105,9 @@ export const api = {
   },
   docSearch: (q: string): Promise<DocSearchHit[]> =>
     get(`/doc-files/search?q=${encodeURIComponent(q)}`),
+  intradayDesk: (): Promise<DeskResponse> => get('/intraday/desk'),
+  intradayControl: (action: DeskAction): Promise<{ ok: boolean; action: DeskAction }> =>
+    post('/intraday/control', { action }),
 }
 
 // SWR fetcher

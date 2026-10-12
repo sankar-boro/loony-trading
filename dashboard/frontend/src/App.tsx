@@ -14,6 +14,7 @@ import Watchlists from './pages/Watchlists'
 import Alerts     from './pages/Alerts'
 import PortfolioRisk from './pages/PortfolioRisk'
 import Intraday   from './pages/Intraday'
+import IntradayDesk from './pages/IntradayDesk'
 import Docs       from './pages/Docs'
 
 export default function App() {
@@ -34,6 +35,7 @@ export default function App() {
           <Route path="watchlists"   element={<Watchlists />} />
           <Route path="alerts"       element={<Alerts />} />
           <Route path="risk"         element={<PortfolioRisk />} />
+          <Route path="desk"         element={<IntradayDesk />} />
           <Route path="intraday"     element={<Intraday />} />
           <Route path="docs/*"       element={<Docs />} />
         </Route>

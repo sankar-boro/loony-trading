@@ -6,6 +6,7 @@ import clsx from 'clsx'
 
 const NAV = [
   { to: '/',           label: 'Dashboard',  icon: '◈' },
+  { to: '/desk',       label: 'Intraday Desk', icon: '◷' },
   { to: '/chart',      label: 'Chart',      icon: '◌' },
   { to: '/positions',  label: 'Positions',  icon: '◎' },
   { to: '/trades',     label: 'Trades',     icon: '≡' },
