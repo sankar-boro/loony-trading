@@ -63,7 +63,8 @@ assets:
 
 timeframes:
   primary: 1d               # daily for equities
-  intraday: 15m             # 15-min for intraday strategies
+  intraday: 30m             # live bot's intraday bars. Not 15m: Upstox's historical API
+                            # returns HTTP 400 for 5m/15m on this account (see scheduler note)
   secondary:
     - 15m
     - 1h
@@ -85,7 +86,7 @@ execution:
   slippage_pct: 0.0005           # 0.05% market impact (NSE liquid stocks)
   commission_intraday: 0.00055   # MIS round-trip ~0.055% total charges
   commission_delivery: 0.0021    # CNC round-trip ~0.21% total charges
-  retry_attempts: 3
+  retry_attempts: 3              # ccxt (crypto) executor only — Upstox orders are never retried
   retry_delay_ms: 500
   latency_budget_ms: 100
   reconcile_interval_sec: 300    # live: compare bot positions with Upstox every 5 min
@@ -205,7 +206,7 @@ scheduler:
   ml_retrain_hour: 6                   # baselines, and never enables ml_classifier
   ml_retrain_days: 730
 
-  # ── Intraday track (docs/intraday_gaps.md §6) ───────────────────────────────
+  # ── Intraday track (docs/appendix/intraday-audit.md §6) ───────────────────────────────
   # Separate opt-in from the daily jobs above — both can run at once,
   # writing to Signal rows tagged with their own timeframe (Phase 5's
   # fix), so enabling this never changes what the daily-cadence pages show.

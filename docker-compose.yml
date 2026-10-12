@@ -52,11 +52,13 @@ services:
     build: .
     container_name: loony-dashboard
     restart: unless-stopped
+    # One worker: each uvicorn worker starts its own background scheduler
+    # (scheduler.enabled), so more workers would run every job several times.
     command: >
       uvicorn dashboard.backend.main:app
         --host 0.0.0.0
         --port 8000
-        --workers 2
+        --workers 1
     ports:
       - "8000:8000"
     env_file:
