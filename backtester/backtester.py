@@ -45,8 +45,16 @@ class BacktestResult:
 
 class Backtester:
     """
-    Event-driven backtester with realistic slippage, commission, and latency simulation.
+    Event-driven backtester with slippage and commission.
     Runs MetaStrategyEngine bar-by-bar on historical OHLCV data.
+
+    Exits are checked against each bar's full range, not just its close:
+      • a bar that opens beyond the stop / target fills at the open (gap)
+      • otherwise a low/high touching the stop / target fills at that level
+      • if one bar touches both, the stop is assumed to have come first
+      • the stop then trails the bar's high (long) / low (short) by
+        risk.trailing_stop_pct, as the live RiskManager trails each tick
+    Every exit — including end_of_data — pays slippage and the exit-side cost.
     """
 
     def __init__(self, cfg: dict, initial_capital: float = 10_000,
@@ -67,6 +75,7 @@ class Backtester:
         self.cost_per_side = self.commission_pct / 2
         self.slippage_pct = ex.get("slippage_pct", 0.0005)
         self.risk_per_trade = cfg.get("risk", {}).get("max_risk_per_trade", 0.01)
+        self.trailing_stop_pct = float(cfg.get("risk", {}).get("trailing_stop_pct", 0.02) or 0.0)
         self.warmup_bars = cfg.get("data", {}).get("warmup_bars", 200)
 
     def run(self, df: pd.DataFrame, symbol: str,
@@ -80,10 +89,25 @@ class Backtester:
         equity_curve = [capital]
         trades: List[Trade] = []
         position: Optional[dict] = None
+        close = df["close"].to_numpy(dtype=float)
+        opens = df["open"].to_numpy(dtype=float) if "open" in df else close
+        highs = df["high"].to_numpy(dtype=float) if "high" in df else close
+        lows = df["low"].to_numpy(dtype=float) if "low" in df else close
+
+        def book_exit(pos: dict, fill: float, bar: int, reason: str) -> float:
+            exit_price = self._apply_slippage(fill, -pos["direction"])
+            pnl = (exit_price - pos["entry"]) * pos["direction"] * pos["size"]
+            pnl -= self.cost_per_side * exit_price * pos["size"]
+            trades.append(Trade(
+                symbol=symbol, direction=pos["direction"], entry_price=pos["entry"],
+                exit_price=exit_price, size=pos["size"], entry_bar=pos["bar"],
+                exit_bar=bar, pnl=pnl, strategy=pos["strategy"], reason=reason,
+            ))
+            return pnl
 
         for i in range(self.warmup_bars, len(df)):
             window = df.iloc[:i]
-            price = float(df["close"].iloc[i])
+            price = float(close[i])
 
             # MIS positions get force-closed by the broker at 3:20 PM IST
             # (we simulate the controlled 3:14 PM close, same as the live
@@ -99,39 +123,14 @@ class Backtester:
 
             # Check open position for exit
             if position is not None:
-                sl_hit = (
-                    (position["direction"] == 1 and price <= position["sl"]) or
-                    (position["direction"] == -1 and price >= position["sl"])
-                )
-                tp_hit = (
-                    (position["direction"] == 1 and price >= position["tp"]) or
-                    (position["direction"] == -1 and price <= position["tp"])
-                )
-                exit_hit = sl_hit or tp_hit or mis_squareoff_now
-                if exit_hit:
-                    if sl_hit:
-                        reason = "stop_loss"
-                    elif tp_hit:
-                        reason = "take_profit"
-                    else:
-                        reason = "mis_squareoff"
-                    exit_price = self._apply_slippage(price, -position["direction"])
-                    pnl = (exit_price - position["entry"]) * position["direction"] * position["size"]
-                    pnl -= self.cost_per_side * exit_price * position["size"]
-                    capital += pnl
-                    trades.append(Trade(
-                        symbol=symbol,
-                        direction=position["direction"],
-                        entry_price=position["entry"],
-                        exit_price=exit_price,
-                        size=position["size"],
-                        entry_bar=position["bar"],
-                        exit_bar=i,
-                        pnl=pnl,
-                        strategy=position["strategy"],
-                        reason=reason,
-                    ))
+                exit_fill = self._intrabar_exit(position, opens[i], highs[i], lows[i])
+                if exit_fill is None and mis_squareoff_now:
+                    exit_fill = (price, "mis_squareoff")
+                if exit_fill is not None:
+                    capital += book_exit(position, exit_fill[0], i, exit_fill[1])
                     position = None
+                else:
+                    self._trail(position, highs[i], lows[i])
 
             equity_curve.append(capital)
 
@@ -178,18 +177,11 @@ class Backtester:
                 "strategy": signal.strategy,
             }
 
-        # Close any open position at end
+        # Close any open position at end, paying the same exit costs as any
+        # other exit
         if position is not None:
-            final_price = float(df["close"].iloc[-1])
-            pnl = (final_price - position["entry"]) * position["direction"] * position["size"]
-            capital += pnl
-            trades.append(Trade(
-                symbol=symbol, direction=position["direction"],
-                entry_price=position["entry"], exit_price=final_price,
-                size=position["size"], entry_bar=position["bar"],
-                exit_bar=len(df) - 1, pnl=pnl,
-                strategy=position["strategy"], reason="end_of_data",
-            ))
+            capital += book_exit(position, float(close[-1]), len(df) - 1, "end_of_data")
+            equity_curve[-1] = capital
 
         equity_arr = np.array(equity_curve)
         metrics = self._compute_metrics(trades, equity_arr)
@@ -197,6 +189,41 @@ class Backtester:
                                  metrics=metrics, symbol=symbol)
         logger.info(result.summary())
         return result
+
+    @staticmethod
+    def _intrabar_exit(pos: dict, o: float, h: float, lo: float) -> Optional[tuple]:
+        """(fill price, reason) if this bar's range reaches the stop or the
+        target, else None. Gaps fill at the open; stop wins a tie."""
+        sl, tp = pos["sl"], pos["tp"]
+        if pos["direction"] == 1:
+            if o <= sl:
+                return o, "stop_loss"
+            if tp and o >= tp:
+                return o, "take_profit"
+            if lo <= sl:
+                return sl, "stop_loss"
+            if tp and h >= tp:
+                return tp, "take_profit"
+        else:
+            if o >= sl:
+                return o, "stop_loss"
+            if tp and o <= tp:
+                return o, "take_profit"
+            if h >= sl:
+                return sl, "stop_loss"
+            if tp and lo <= tp:
+                return tp, "take_profit"
+        return None
+
+    def _trail(self, pos: dict, h: float, lo: float) -> None:
+        """Ratchet the stop behind the bar's extreme, like Position.update_trailing_stop."""
+        pct = self.trailing_stop_pct
+        if pct <= 0:
+            return
+        if pos["direction"] == 1:
+            pos["sl"] = max(pos["sl"], h * (1 - pct))
+        else:
+            pos["sl"] = min(pos["sl"], lo * (1 + pct))
 
     def _apply_slippage(self, price: float, direction: int) -> float:
         return price * (1 + direction * self.slippage_pct)

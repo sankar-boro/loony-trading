@@ -66,6 +66,8 @@ _TF_CONFIG = {
     "30m": ("30minute", 60),
     "15m": ("15minute", 45),
 }
+# Recorded live bars (data/live_bars/) can be resampled to any of these
+_RECORDED_TFS = ["1m", "5m", "10m", "15m", "30m", "1h"]
 
 
 # ── Token loading ─────────────────────────────────────────────────────────────
@@ -380,11 +382,17 @@ def main():
     parser.add_argument("--symbols",     default="",
                         help="Comma-separated symbols (default: top 5 Nifty50)")
     parser.add_argument("--days",        type=int, default=365,
-                        help="Lookback days (default: 365)")
+                        help="Lookback days (default: 365); with --source recorded, "
+                             "the last N recorded sessions")
     parser.add_argument("--capital",     type=float, default=500_000,
                         help="Initial capital in ₹ (default: 5,00,000)")
     parser.add_argument("--timeframe",   default="1d",
-                        choices=list(_TF_CONFIG.keys()))
+                        choices=sorted(set(_TF_CONFIG) | set(_RECORDED_TFS)))
+    parser.add_argument("--source",      default="upstox", choices=["upstox", "recorded"],
+                        help="upstox: historical API (needs a token); recorded: 1-minute bars "
+                             "the live bot saved to data/live_bars/")
+    parser.add_argument("--product",     default="CNC", choices=["CNC", "MIS"],
+                        help="MIS applies intraday costs and the 15:14 squareoff (default: CNC)")
     parser.add_argument("--strategies",  default="",
                         help="Comma-separated strategy names to enable (default: all)")
     parser.add_argument("--monte-carlo", action="store_true",
@@ -398,11 +406,28 @@ def main():
     parser.add_argument("--token",       help="Explicit access token")
     args = parser.parse_args()
 
+    recorded = args.source == "recorded"
+    if recorded and args.timeframe not in _RECORDED_TFS:
+        print(f"{R}--source recorded supports {', '.join(_RECORDED_TFS)}.{E}")
+        sys.exit(1)
+    if not recorded and args.timeframe not in _TF_CONFIG:
+        print(f"{R}The Upstox source supports {', '.join(_TF_CONFIG)}; "
+              f"use --source recorded for {args.timeframe}.{E}")
+        sys.exit(1)
+
     _load_env()
-    token = _get_token(args.token)
-    if not token:
+    token = None if recorded else _get_token(args.token)
+    if not recorded and not token:
         print(f"\n{R}No token found.{E}  Run: python scripts/upstox_login.py")
         sys.exit(1)
+    recorder = None
+    if recorded:
+        from data_engine.live_bars import BarRecorder
+        recorder = BarRecorder()
+        if not recorder.days():
+            print(f"{R}No recorded bars in data/live_bars/ yet.{E}  "
+                  "The live/paper bot records them while it runs (intraday.record_bars).")
+            sys.exit(1)
 
     # Resolve symbols
     if args.symbol:
@@ -414,7 +439,7 @@ def main():
 
     resolved: list[tuple[str, str]] = []
     for sym in raw:
-        key = INSTRUMENTS.get(sym)
+        key = INSTRUMENTS.get(sym) or (sym if recorded and sym in recorder.symbols() else None)
         if key:
             resolved.append((sym, key))
         else:
@@ -424,7 +449,7 @@ def main():
         print(f"{R}No valid symbols.{E}")
         sys.exit(1)
 
-    interval, _ = _TF_CONFIG[args.timeframe]
+    interval = None if recorded else _TF_CONFIG[args.timeframe][0]
     days = args.days
     strategies = [s.strip() for s in args.strategies.split(",") if s.strip()]
 
@@ -438,7 +463,7 @@ def main():
         from backtester.backtester import Backtester
         engine = MetaStrategyEngine(cfg)
         fb = FeatureBuilder()
-        bt = Backtester(cfg, initial_capital=args.capital)
+        bt = Backtester(cfg, initial_capital=args.capital, product=args.product)
         print(f"\r{DIM}Engine ready — {len(engine.strategies)} strategies{E}            ")
     except Exception as e:
         print(f"\n{R}Failed to load engine: {e}{E}")
@@ -446,6 +471,9 @@ def main():
 
     to_date = date.today().isoformat()
     from_date = (date.today() - timedelta(days=days)).isoformat()
+    if recorded:
+        sessions = recorder.days()[-days:]
+        from_date, to_date = sessions[0], sessions[-1]
 
     print(bold(f"\n  Backtest Runner  •  {from_date} → {to_date}  •  "
                f"Capital: ₹{args.capital:,.0f}  •  TF:{args.timeframe}"))
@@ -455,7 +483,9 @@ def main():
 
     # Fetch Nifty 50 benchmark once for the same period
     print(f"  {dim('Fetching Nifty 50 benchmark...')} ", end="", flush=True)
-    benchmark_df = _fetch_ohlcv(token, "NSE_INDEX|Nifty 50", interval, days)
+    import pandas as pd
+    benchmark_df = (pd.DataFrame() if recorded
+                    else _fetch_ohlcv(token, "NSE_INDEX|Nifty 50", interval, days))
     if not benchmark_df.empty:
         print(f"{dim(f'{len(benchmark_df)} bars')}")
     else:
@@ -466,7 +496,8 @@ def main():
         print(f"\n  {dim(f'Fetching {sym}...')} ", end="", flush=True)
         t0 = time.perf_counter()
 
-        df_raw = _fetch_ohlcv(token, ikey, interval, days)
+        df_raw = (recorder.load(sym, args.timeframe, days=days) if recorded
+                  else _fetch_ohlcv(token, ikey, interval, days))
         if df_raw.empty or len(df_raw) < 80:
             print(f"{Y}Skipped — only {len(df_raw)} bars (need 80+){E}")
             continue
