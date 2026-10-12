@@ -1,4 +1,4 @@
-"""Tests for the non-blocking execution I/O fix (docs/intraday_gaps.md
+"""Tests for the non-blocking execution I/O fix (docs/appendix/intraday-audit.md
 §4/§7 item 4): UpstoxExecutor's async methods must not block the shared
 asyncio event loop with synchronous `requests` calls — main.py's live
 tick stream runs on that same loop, so a blocked order-placement call

@@ -1,4 +1,4 @@
-"""Broker reconciliation (docs/status.md §3): the bot's book is checked
+"""Broker reconciliation (docs/appendix/status.md §3): the bot's book is checked
 against Upstox positions + holdings in live mode."""
 from __future__ import annotations
 import asyncio

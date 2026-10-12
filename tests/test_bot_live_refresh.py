@@ -1,5 +1,5 @@
 """Integration-level test for UpstoxTradingBot._refresh_live_df (the
-docs/intraday_gaps.md §1 fix's wiring into main.py). Exercises the real,
+docs/appendix/intraday-audit.md §1 fix's wiring into main.py). Exercises the real,
 unbound method against a lightweight stand-in exposing only the
 attributes it touches — constructing a full UpstoxTradingBot needs live
 Upstox credentials and heavy strategy/ML imports, which this test

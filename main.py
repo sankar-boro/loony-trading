@@ -107,9 +107,10 @@ class UpstoxTradingBot:
         self.meta_engine = MetaStrategyEngine(cfg, ml_model=None)
         self._df_cache: dict = {}   # symbol → DataFrame — read by strategies, kept fresh intraday (see _refresh_live_df)
         self._df_cache_base: dict = {}   # immutable historical fetch, before today's live bars are spliced on
-        self._live_bars = LiveBarAggregator()   # docs/intraday_gaps.md §1 fix — turns live ticks into fresh bars
+        self._live_bars = LiveBarAggregator()   # docs/appendix/intraday-audit.md §1 fix — turns live ticks into fresh bars
         self._tick_counter: dict = {}
         self._mis_squareoff_date = None   # IST date the MIS squareoff last ran
+        self._session_date = None         # IST date of the trading day being tracked
         self._last_price: dict[str, float] = {}
         self._state_file = STATE_FILE
         self._state_saved_version = -1
@@ -231,7 +232,7 @@ class UpstoxTradingBot:
     def _refresh_live_df(self, symbol: str) -> None:
         """Splice today's freshly-aggregated intraday bars onto the
         pre-session historical base and update _df_cache — the fix for
-        docs/intraday_gaps.md §1 (the live loop previously never updated
+        docs/appendix/intraday-audit.md §1 (the live loop previously never updated
         the dataframe strategies actually score against)."""
         from data_engine.live_bars import merge_live_onto_history
         key = f"{symbol}_{self.intraday_tf}"
@@ -491,8 +492,15 @@ class UpstoxTradingBot:
             return
         self._last_price[symbol] = price
 
-        # MIS squareoff at 3:14 PM IST — once per trading day
+        # New trading day: daily P&L and trade count start from zero, so
+        # risk.max_daily_drawdown really is a per-day limit.
         ist_now = now_ist()
+        if self._session_date != ist_now.date():
+            if self._session_date is not None:
+                self.risk_manager.reset_daily()
+            self._session_date = ist_now.date()
+
+        # MIS squareoff at 3:14 PM IST — once per trading day
         past_cutoff = is_mis_squareoff_time(ist_now)
         if past_cutoff and self._mis_squareoff_date != ist_now.date():
             self._mis_squareoff_date = ist_now.date()
@@ -506,7 +514,7 @@ class UpstoxTradingBot:
             await self._close_tracked(pos, price, reason)
 
         # Generate strategy signals on real candle close, not a tick-count
-        # guess — docs/intraday_gaps.md §1. For symbols with an intraday
+        # guess — docs/appendix/intraday-audit.md §1. For symbols with an intraday
         # base (equity symbols seeded in _load_historical_data), feed the
         # live bar aggregator and only re-score once a full intraday_tf
         # bar has actually finalized, using freshly-merged live data.
@@ -540,7 +548,7 @@ class UpstoxTradingBot:
         if not signals:
             return
 
-        best = max(signals, key=lambda s: s.confidence)
+        best = self.meta_engine.best_signal(signals)
         from strategies.base import SignalType
         if best.signal_type not in (SignalType.BUY, SignalType.SELL):
             return
@@ -599,7 +607,7 @@ class UpstoxTradingBot:
                 continue
             signals = self.meta_engine.generate_signals(symbol, df)
             if signals:
-                best = max(signals, key=lambda s: s.confidence)
+                best = self.meta_engine.best_signal(signals)
                 if (best.signal_type in (SignalType.BUY, SignalType.SELL)
                         and await self._handle_existing_position(best, best.price)):
                     await self.executor.execute_signal(best)
@@ -665,7 +673,7 @@ class CryptoBotAddon:
         signals = self._meta_engine.generate_signals(symbol, df)
         if not signals:
             return
-        best = max(signals, key=lambda s: s.confidence)
+        best = self._meta_engine.best_signal(signals)
         if best.signal_type in (SignalType.BUY, SignalType.SELL):
             await self._executor.execute_signal(best)
 

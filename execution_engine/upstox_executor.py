@@ -177,7 +177,7 @@ class UpstoxExecutor:
     # delaying stop-loss checks and price updates for every OTHER open
     # position, not just the one placing an order. These run the same
     # synchronous call in a thread instead, off the event loop. See
-    # docs/intraday_gaps.md §4/§7 item 4.
+    # docs/appendix/intraday-audit.md §4/§7 item 4.
 
     async def _post_async(self, endpoint: str, payload: dict) -> dict:
         loop = asyncio.get_running_loop()
@@ -211,7 +211,7 @@ class UpstoxExecutor:
         tick_size = self.registry.get_tick_size(instrument_key)
         size_float = self.risk_manager.size_position(signal)
         qty = max(lot_size, int(round(size_float / lot_size) * lot_size))
-        qty = self._validate_quantity(instrument_key, qty)
+        qty = self._validate_quantity(instrument_key, qty, self.registry.get_lot_size(instrument_key))
         if qty <= 0:
             logger.warning(f"Zero qty for {signal.symbol}")
             return None
@@ -239,9 +239,24 @@ class UpstoxExecutor:
             await self._paper_fill(order, signal.price)
         else:
             await self._live_place(order)
+            if not order.is_filled and not order.is_rejected and order.order_id:
+                # Still working after the status poll (e.g. an unfilled limit
+                # order): cancel the rest so nothing can fill later untracked,
+                # and track only what actually filled.
+                await self.cancel_order(order.order_id)
+                if order.filled_qty > 0:
+                    logger.warning(f"Partial fill {order.filled_qty}/{qty} {signal.symbol} — "
+                                   "remainder cancelled")
+                    qty = order.filled_qty
+                    order.status = "complete"
+                else:
+                    logger.info(f"Order {order.order_id} for {signal.symbol} not filled — cancelled")
+                    order.status = "cancelled"
 
         if order.is_filled or self.mode == "paper":
-            self.risk_manager.open_position(signal, qty)
+            pos = self.risk_manager.open_position(signal, qty)
+            if order.avg_price > 0:
+                pos.entry_price = order.avg_price   # the actual fill, not the signal price
             self.order_history.append(order)
             for cb in self._callbacks:
                 await cb(order) if asyncio.iscoroutinefunction(cb) else cb(order)
@@ -266,21 +281,22 @@ class UpstoxExecutor:
             "trigger_price":    order.trigger_price,
             "is_amo":           order.is_amo,
         }
-        for attempt in range(self._retry_attempts):
-            try:
-                t0 = time.monotonic()
-                resp = await self._post_async("/order/place", payload)
-                latency_ms = (time.monotonic() - t0) * 1000
-                order.order_id = resp.get("data", {}).get("order_id", "")
-                order.status = "open"
-                logger.info(f"Order placed: {order.order_id} latency={latency_ms:.1f}ms")
-                await self._poll_order_status(order)
-                return
-            except Exception as e:
-                logger.error(f"Place order attempt {attempt + 1}: {e}")
-                if attempt < self._retry_attempts - 1:
-                    await asyncio.sleep(0.5 * (attempt + 1))
-        order.status = "rejected"
+        # One attempt only: placing an order is not idempotent. A request that
+        # times out may still have reached the exchange, and a retry would
+        # place a second, duplicate order. If that happens, the position shows
+        # up at the broker and broker reconciliation (main.py) alerts on it.
+        try:
+            t0 = time.monotonic()
+            resp = await self._post_async("/order/place", payload)
+            latency_ms = (time.monotonic() - t0) * 1000
+            order.order_id = resp.get("data", {}).get("order_id", "")
+            order.status = "open"
+            logger.info(f"Order placed: {order.order_id} latency={latency_ms:.1f}ms")
+            await self._poll_order_status(order)
+        except Exception as e:
+            logger.error(f"Order placement failed (not retried — check the Upstox order book "
+                         f"if this was a timeout): {e}")
+            order.status = "rejected"
 
     async def _poll_order_status(self, order: UpstoxOrder,
                                   timeout_sec: float = 30) -> None:
@@ -590,7 +606,8 @@ class UpstoxExecutor:
         order_ids: list[str] = []
         for leg in legs:
             instrument_key = leg["instrument_key"]
-            qty   = self._validate_quantity(instrument_key, int(leg.get("qty", 1)))
+            qty   = self._validate_quantity(instrument_key, int(leg.get("qty", 1)),
+                                            self.registry.get_lot_size(instrument_key))
             price = float(leg.get("price", 0.0))
             side  = leg.get("action", "BUY").upper()
             leg_tag = leg.get("tag", tag)
@@ -710,17 +727,27 @@ class UpstoxExecutor:
         return self.registry.get_key(symbol)
 
     @staticmethod
-    def _validate_quantity(instrument_key: str, qty: int) -> int:
+    def _validate_quantity(instrument_key: str, qty: int, master_lot: int = 1) -> int:
         """
-        Snap F&O quantities to the nearest valid lot size.
+        Snap F&O quantities down to a whole number of lots (at least one).
         Equity lot size is 1, so this is a no-op for equities.
+
+        `master_lot` is the contract's lot_size from the instrument master —
+        authoritative, since real F&O keys are numeric tokens
+        ("NSE_FO|48906") that carry no underlying name. Without it, the
+        underlying is parsed from a symbolic key and looked up in FO_LOT_SIZES.
         """
         from risk_manager.risk_manager import FO_LOT_SIZES
         if not (instrument_key.startswith("NSE_FO") or
                 instrument_key.startswith("BSE_FO")):
             return qty
-        # Extract underlying name from key, e.g. "NSE_FO|NIFTY25JUN24500CE" → "NIFTY"
         raw = instrument_key.split("|")[-1]
+        if master_lot > 1:
+            snapped = max(master_lot, (qty // master_lot) * master_lot)
+            if snapped != qty:
+                logger.info(f"Qty snapped {qty}→{snapped} for {raw} (lot={master_lot})")
+            return snapped
+        # Symbolic key, e.g. "NSE_FO|NIFTY25JUN24500CE" → "NIFTY"
         underlying = raw.rstrip("0123456789").rstrip("CEPE")
         for name, lot in FO_LOT_SIZES.items():
             if underlying.startswith(name):

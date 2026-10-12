@@ -217,3 +217,47 @@ def test_default_product_read_from_exchange_config():
     cfg = {**CFG, "execution": execution, "exchanges": {"upstox": {"default_product": "MIS"}}}
     ex = UpstoxExecutor(make_auth(), make_registry(), RiskManager(cfg, 500_000), cfg, mode="paper")
     assert ex._default_product.value == "MIS"
+
+
+# ── unfilled live orders are cancelled, partial fills tracked ─────────────────
+
+def _live_executor():
+    ex = UpstoxExecutor(make_auth(), make_registry(), RiskManager(CFG, 500_000), CFG, mode="live")
+    ex.cancelled = []
+
+    async def cancel(order_id):
+        ex.cancelled.append(order_id)
+        return True
+    ex.cancel_order = cancel
+    return ex
+
+
+def _sig():
+    return Signal(strategy="test", symbol="RELIANCE", signal_type=SignalType.BUY, price=2800.0,
+                  stop_loss=2750.0, take_profit=2900.0, confidence=0.9)
+
+
+def test_unfilled_live_order_is_cancelled_and_not_tracked():
+    ex = _live_executor()
+
+    async def place(order):
+        order.order_id, order.status, order.filled_qty = "OID1", "open", 0
+    ex._live_place = place
+
+    order = asyncio.run(ex.execute_signal(_sig()))
+    assert ex.cancelled == ["OID1"]
+    assert order.status == "cancelled"
+    assert ex.risk_manager.open_count == 0
+
+
+def test_partial_live_fill_tracks_only_filled_quantity():
+    ex = _live_executor()
+
+    async def place(order):
+        order.order_id, order.status, order.filled_qty, order.avg_price = "OID2", "open", 3, 2801.5
+    ex._live_place = place
+
+    asyncio.run(ex.execute_signal(_sig()))
+    [pos] = ex.risk_manager.positions["RELIANCE"]
+    assert ex.cancelled == ["OID2"]
+    assert pos.size == 3 and pos.entry_price == 2801.5

@@ -1,5 +1,5 @@
 """Regression tests for the live loop's position-safety fixes in main.py
-(docs/status.md §4): MIS squareoff in paper and live mode, no new intraday
+(docs/appendix/status.md §4): MIS squareoff in paper and live mode, no new intraday
 entries after the cut-off, and one position per symbol.
 
 Like test_bot_live_refresh.py, this runs the real UpstoxTradingBot methods
@@ -75,6 +75,7 @@ class _FakeBot:
         self._df_cache_base = {}
         self._last_price = {}
         self._mis_squareoff_date = None
+        self._session_date = None
         self._suspect_ticks = {}
         self.cfg = {}
 
@@ -145,7 +146,8 @@ def test_no_new_intraday_entries_after_cutoff(monkeypatch):
     df = pd.DataFrame({"close": range(100)})
     bot._df_cache["RELIANCE"] = df
     bot.meta_engine = SimpleNamespace(
-        generate_signals=lambda symbol, d: [_signal("RELIANCE", SignalType.BUY)])
+        generate_signals=lambda symbol, d: [_signal("RELIANCE", SignalType.BUY)],
+        best_signal=lambda sigs: max(sigs, key=lambda s: s.confidence))
     tick = {"symbol": "RELIANCE", "close": 100.0}
 
     _at(monkeypatch, 15, 20)
@@ -232,3 +234,19 @@ def test_inconsistent_bad_ticks_keep_being_dropped():
     bot._last_price["RELIANCE"] = 100.0
     for p in (50.0, 300.0, 10.0, 500.0):
         assert bot._is_sane_tick("RELIANCE", p) is False
+
+
+def test_daily_pnl_resets_on_a_new_trading_day(monkeypatch):
+    bot = _FakeBot()
+    tick = {"symbol": "RELIANCE", "close": 100.0}
+    _at(monkeypatch, 11, 0)
+    asyncio.run(bot._on_tick(tick))
+    bot.risk_manager.daily_pnl = -20_000.0          # a bad day
+
+    asyncio.run(bot._on_tick(tick))                 # same day: kept
+    assert bot.risk_manager.daily_pnl == -20_000.0
+
+    monkeypatch.setattr(timeutils, "now_ist",
+                        lambda: datetime(2026, 10, 12, 9, 20, tzinfo=timeutils.IST))
+    asyncio.run(bot._on_tick(tick))                 # next trading day: reset
+    assert bot.risk_manager.daily_pnl == 0.0

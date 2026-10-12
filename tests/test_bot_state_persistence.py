@@ -1,5 +1,5 @@
 """main.py's bot saves open positions to data/live_positions.json and
-restores them after a crash (docs/status.md §3). Runs the real
+restores them after a crash (docs/appendix/status.md §3). Runs the real
 UpstoxTradingBot methods against a lightweight stand-in, like
 test_bot_position_safety.py."""
 from __future__ import annotations

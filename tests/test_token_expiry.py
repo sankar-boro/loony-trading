@@ -1,5 +1,5 @@
 """Upstox daily tokens expire at 03:30 IST, not a fixed number of hours
-after issue (docs/status.md §4)."""
+after issue (docs/appendix/status.md §4)."""
 from __future__ import annotations
 from datetime import datetime
 
