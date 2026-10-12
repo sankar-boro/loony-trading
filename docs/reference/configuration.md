@@ -77,15 +77,33 @@ Timeframe strings: `1m`, `3m`, `5m`, `10m`, `15m`, `30m`, `1h`, `60m`, `2h`,
 | Key | Default | Meaning |
 |---|---|---|
 | `max_risk_per_trade` | `0.01` | Fraction of capital risked per trade (sizing) |
-| `max_daily_drawdown` | `0.05` | Stop opening trades after this daily loss |
+| `max_daily_drawdown` | `0.05` | Stop opening trades after this daily loss; also the intraday kill-switch level (realised + unrealised) |
 | `max_concurrent_trades` | `10` | Open positions limit |
 | `max_portfolio_risk` | `0.20` | Largest single position as a fraction of capital (the Portfolio Risk page also uses it as a total-exposure warning) |
 | `stop_loss_atr_multiplier`, `take_profit_atr_multiplier` | `2.0`, `3.0` | Informational — stops come from each strategy |
-| `trailing_stop_pct` | `0.02` | Trailing stop distance |
+| `trailing_stop_pct` | `0.02` | Trailing stop distance (live, and in backtests from each bar's high/low) |
 | `use_kelly_criterion` | `false` | Size with fractional Kelly instead |
 | `kelly_fraction` | `0.25` | Fraction of full Kelly |
 
 Details: [Risk Management](../engine/risk-management.md).
+
+## intraday
+
+Session rules, operator controls and monitoring for the live bot
+(`main.py`). Details: [Intraday Session Controls](../engine/intraday-controls.md).
+
+| Key | Default | Meaning |
+|---|---|---|
+| `entry_start` | `"09:30"` | No new MIS entries before this time (IST, `"HH:MM"`) |
+| `entry_end` | `"14:45"` | No new MIS entries after this time |
+| `max_trades_per_day` | `20` | Filled entries per day across all symbols (`0` = no cap) |
+| `max_trades_per_symbol` | `3` | Filled entries per symbol per day (`0` = no cap) |
+| `cooldown_minutes_after_stop` | `30` | No re-entry into a symbol this long after a stop-loss exit |
+| `profit_lock_pct` | `0.0` | Halt new entries once day P&L reaches this fraction of capital (`0` = off) |
+| `kill_switch.flatten_on_daily_loss` | `true` | When day P&L (realised + unrealised) reaches −`risk.max_daily_drawdown` × capital, close every position as well as halting entries |
+| `heartbeat_minutes` | `5` | Alert once if no tick arrives for this long during market hours |
+| `record_bars` | `true` | Save every finished 1-minute bar to `data/live_bars/` |
+| `exchange_stops` | `false` | Live only: protect each position with an SL-M order at the broker, trailed with the stop |
 
 ## execution
 
@@ -243,7 +261,14 @@ strategies:
 exchanges:
   upstox: {default_product: MIS}
 timeframes: {intraday: 30m}
-risk: {max_risk_per_trade: 0.005, trailing_stop_pct: 0.015}
+risk: {max_risk_per_trade: 0.005, max_daily_drawdown: 0.02, trailing_stop_pct: 0.015}
+intraday:
+  entry_start: "09:30"
+  entry_end: "14:30"
+  max_trades_per_day: 10
+  max_trades_per_symbol: 2
+  profit_lock_pct: 0.015
+  exchange_stops: true       # live only
 strategies:
   enabled: [vwap_reversion, anchored_vwap, cumulative_delta, range_breakout, volume_profile]
 ```

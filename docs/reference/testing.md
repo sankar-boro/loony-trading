@@ -20,17 +20,18 @@ need the downloaded instrument master skip themselves when it is missing.
 
 ## The offline suite
 
-About 550 tests in 48 files. By area:
+About 720 tests in 54 files. By area:
 
 | Area | Files |
 |---|---|
 | Trading bot safety | `test_bot_position_safety.py` (MIS squareoff, one position per symbol, tick sanity, daily reset), `test_bot_state_persistence.py` (crash recovery), `test_reconcile.py` (broker reconciliation), `test_bot_live_refresh.py` |
+| Intraday controls | `test_intraday_guard.py` (entry window, caps, cooldown, kill switch, profit lock), `test_bot_control.py` (control file), `test_bot_intraday.py` (pause/flatten/resume, kill switch, exchange stops in the bot), `test_bar_recorder.py`, `test_intraday_desk_api.py` |
 | Tokens and config | `test_token_expiry.py` (03:30 IST rule), `test_upstox_auth.py`, `test_config_loader.py` (`.env` loading) |
 | Market data | `test_upstox_data.py`, `test_upstox_feed.py` (incl. tick symbol labelling), `test_upstox_instruments.py`, `test_instrument_registry.py`, `test_instrument_isins.py`, `test_live_bars.py`, `test_market_hours.py`, `test_demo_ohlcv.py` |
 | Indicators and features | `test_indicators.py`, `test_session_vwap.py`, `test_greeks.py`, `test_iv_surface.py` |
 | Strategies | `test_strategies.py`, `test_range_breakout.py`, `test_microstructure.py`, `test_vix_strategy.py`, `test_options_strategies.py` |
 | Risk and execution | `test_risk_manager.py`, `test_upstox_executor.py` (fills, cancellation of unfilled orders, product setting), `test_execution_nonblocking.py` |
-| Backtesting | `test_backtester.py`, `test_backtester_mis_squareoff.py`, `test_backtest_lookahead.py`, `test_backtest_router.py`, `test_tune_weights.py` |
+| Backtesting | `test_backtester.py`, `test_backtester_intrabar.py` (high/low fills, gaps, trailing stop, exit costs), `test_backtester_mis_squareoff.py`, `test_backtest_lookahead.py`, `test_backtest_router.py`, `test_tune_weights.py` |
 | ML | `test_ml_pipeline.py` (dataset, gate, retrain, settings edit) |
 | Research library | `test_p6_p14.py` (HMM, Kalman, TFT, online learning, CVaR, beta-neutral, stress test, factor model, advanced features) |
 | MarketPulse | `test_db_models.py`, `test_news_pipeline.py`, `test_composite_signal_engine.py`, `test_signal_timeframe.py`, `test_why_endpoint.py`, `test_copilot.py`, `test_ai_client.py`, `test_watchlists_and_alerts.py`, `test_portfolio_risk.py` |

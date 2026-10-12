@@ -21,11 +21,27 @@ python scripts/backtest_runner.py --strategies donchian_breakout,zscore_reversio
 python scripts/backtest_runner.py --symbol INFY --walk-forward --equity-curve
 ```
 
-`backtest_runner.py` options: `--symbol` / `--symbols`, `--days` (365),
-`--capital` (5,00,000), `--timeframe` (`1d`), `--strategies` (names to enable;
-default your `strategies.enabled`), `--monte-carlo`, `--walk-forward`,
-`--trades`, `--equity-curve`, `--token`. It also compares each result with
-Nifty 50 (alpha, beta, information ratio).
+`backtest_runner.py` options:
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--symbol` / `--symbols` | top 5 Nifty 50 | One symbol, or a comma-separated list |
+| `--days` | 365 | Lookback in days; with `--source recorded`, the last N recorded sessions |
+| `--capital` | 5,00,000 | Starting capital |
+| `--timeframe` | `1d` | `1d`, `1h`, `30m`, `15m` from Upstox; `1m`–`1h` from recorded bars |
+| `--source` | `upstox` | `upstox` (historical API, needs a token) or `recorded` (bars the live bot saved to `data/live_bars/`; no token) |
+| `--product` | `CNC` | `MIS` applies intraday costs and the 15:14 squareoff |
+| `--strategies` | your `strategies.enabled` | Names to enable |
+| `--monte-carlo`, `--walk-forward`, `--trades`, `--equity-curve` | off | Extra analysis and output |
+| `--token` | — | Explicit access token |
+
+With the Upstox source it also compares each result with Nifty 50 (alpha,
+beta, information ratio).
+
+```bash
+# Intraday backtest on 5-minute bars the bot recorded
+python scripts/backtest_runner.py --source recorded --timeframe 5m --product MIS --symbols TCS,INFY
+```
 
 ## How the simulation works
 
@@ -38,34 +54,51 @@ print(result.summary())
 
 For each bar *i* after the first `data.warmup_bars` (200):
 
-1. **Exit check** (if a position is open), at bar *i*'s close: stop hit →
-   `stop_loss`; target hit → `take_profit`; for MIS, a bar at or after 15:14
-   IST → `mis_squareoff`. Exits fill at the close with slippage against you.
-2. **Entry** (if flat): strategies see bars `0 … i−1` only — never the bar
+1. **Exit check** (if a position is open), against bar *i*'s whole range:
+   - bar **opens** beyond the stop or target (a gap) → fills at the open;
+   - otherwise the **low** (long) / **high** (short) reaching the stop →
+     `stop_loss` at the stop price, and the high / low reaching the target →
+     `take_profit` at the target;
+   - if one bar touches both, the **stop is assumed to come first**, since
+     bar data cannot show which came first;
+   - for MIS, a bar at or after 15:14 IST → `mis_squareoff` at the close.
+
+   Every exit pays slippage against you and the exit-side cost.
+2. **Trailing stop**: if the position is still open, its stop is raised to
+   `high × (1 − risk.trailing_stop_pct)` for a long (lowered to
+   `low × (1 + pct)` for a short), never loosened. This mirrors the live
+   `RiskManager`, which trails on every tick. Set `trailing_stop_pct: 0` to
+   turn it off.
+3. **Entry** (if flat): strategies see bars `0 … i−1` only — never the bar
    being traded — and the best signal (confidence × weight) is entered at bar
    *i*'s close plus slippage. MIS backtests open nothing at or after 15:14.
-3. **Sizing**: risk `risk.max_risk_per_trade` of current capital over the
+4. **Sizing**: risk `risk.max_risk_per_trade` of current capital over the
    distance to the stop, capped at 25 % of capital per position.
-4. **Costs**: `execution.commission_delivery` (CNC, 0.21 %) or
+5. **Costs**: `execution.commission_delivery` (CNC, 0.21 %) or
    `commission_intraday` (MIS, 0.055 %) is a **round-trip** figure — half is
    charged on entry and half on exit — plus `execution.slippage_pct` (0.05 %)
    on each fill.
 
 A position still open at the end closes at the last close with reason
-`end_of_data`.
+`end_of_data`, paying the same slippage and exit cost as any other exit; the
+final equity point includes it.
 
 ### Differences from live trading
 
 | Aspect | Backtester | Live bot |
 |---|---|---|
-| Stop/target check | Bar closes only | Every tick |
-| Trailing stop | Not simulated | Yes |
+| Stop/target check | Bar high/low, stop first on a tie | Every tick |
+| Trailing stop | Once per bar, from the bar's extreme | Every tick |
+| Session rules | MIS squareoff only | Entry window, trade caps, cooldown, kill switch ([Intraday Session Controls](intraday-controls.md)) |
 | Positions | One at a time per run | One per symbol, many symbols |
 | Fill price | Next bar's close ± slippage | Market/limit fill |
 | Exposure cap | 25 % of capital | `risk.max_portfolio_risk` (20 %) |
 
-Because stops are checked on closes, a bar that spikes through the stop and
-recovers does not stop you out in the backtest; live, it would.
+A bar that spikes through the stop and recovers stops you out, as it would
+live. The trailing stop is updated only after the bar's exit check, so it
+cannot stop you out on the same bar that moved it. The backtest also does not
+apply the live session rules (entry window, caps, cooldown), so on intraday
+bars it may take trades the live bot would refuse.
 
 ### Things that do not backtest meaningfully
 

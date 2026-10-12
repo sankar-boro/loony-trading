@@ -70,7 +70,15 @@ The dashboard's Trades page and the trade journal count only lines with a
 |---|---|---|
 | `live_positions.json` | `paper_trade.py` or `main.py` (whichever ran last) | Open positions and portfolio state; `saved_at` drives the **Bot** status light. Formats in [Paper Trading](paper-trading.md#files-it-writes) and [Position Safety](../engine/position-safety.md#crash-recovery) |
 | `equity_curve.jsonl` | `paper_trade.py`, every tick | `{"ts", "equity", "cash", "realised", "unrealised", "open_pos"}` |
+| `intraday_pnl.jsonl` | `main.py`, once a minute | `{"ts", "realised", "unrealised", "total", "open_positions"}` — the Intraday Desk's P&L curve |
+| `live_bars/<YYYY-MM-DD>/<SYMBOL>.csv` | `main.py`, every finished 1-minute bar (`intraday.record_bars`) | `ts,open,high,low,close,volume`; read by `BarRecorder` and `backtest_runner.py --source recorded`. See [Recording live bars](../engine/intraday-controls.md#recording-live-bars) |
 | `daily_pnl.jsonl` | `paper_trade.py`, end of day | `{"date", "realised", "unrealised", "trades", "wins", "losses", "win_rate", "max_drawdown_pct", "top_symbol"}` |
+
+### Written by the dashboard
+
+| File | Writer | Content |
+|---|---|---|
+| `bot_control.json` | Intraday Desk buttons (`POST /api/intraday/control`) | `{"paused", "flatten_id", "resume_id", "updated_at"}`, read by `main.py` on each tick. See [Operator controls](../engine/intraday-controls.md#operator-controls) |
 
 ### Tokens
 

@@ -154,9 +154,13 @@ See [Paper Trading](paper-trading.md).
 
 ```bash
 python scripts/backtest_runner.py [--symbol S | --symbols A,B] [--days 365]
-       [--capital 500000] [--timeframe 1d] [--strategies a,b]
+       [--capital 500000] [--timeframe 1d] [--source upstox|recorded]
+       [--product CNC|MIS] [--strategies a,b]
        [--monte-carlo] [--walk-forward] [--trades] [--equity-curve] [--token T]
 ```
+
+`--source recorded` backtests on the 1-minute bars the live bot saved to
+`data/live_bars/` (timeframes `1m` to `1h`, no token needed).
 
 See [Backtesting](../engine/backtesting.md).
 

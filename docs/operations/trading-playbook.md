@@ -173,7 +173,12 @@ This is the routine worth building as a habit. Each step names the page to use.
 
 ### Mid-day
 
-8. **Positions** — monitor open paper trades; the stop/target progress bar tells you
+8. **Intraday Desk** — if the bot is trading, keep this page open. Check the
+   loss-budget meter, the entry count against its cap, and the event log for
+   signals the session rules blocked. Use **Pause entries** when you want the
+   bot to stop adding risk, and **Flatten all** if something is wrong. See
+   [Intraday Desk](../dashboard/intraday-desk.md).
+   **Positions** — monitor open paper trades; the stop/target progress bar tells you
    at a glance how close price is to either exit.
 9. Groom your **Watchlists** as ideas develop — separate "watching" from "committed."
 

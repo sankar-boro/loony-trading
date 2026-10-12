@@ -29,6 +29,7 @@ parts:
       - dashboard/copilot.md
       - dashboard/watchlists-alerts.md
       - dashboard/portfolio-risk.md
+      - dashboard/intraday-desk.md
       - dashboard/intraday-lab.md
       - dashboard/docs-reader.md
 
@@ -51,6 +52,7 @@ parts:
       - engine/risk-management.md
       - engine/execution.md
       - engine/position-safety.md
+      - engine/intraday-controls.md
       - engine/portfolio-analytics.md
       - engine/machine-learning.md
       - engine/backtesting.md

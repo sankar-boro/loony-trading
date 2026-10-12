@@ -3,7 +3,7 @@
 One checklist for what is built, what is still to do, and every bug found in
 the code. `[x]` = done and verified in code · `[ ]` = open.
 
-**Last verified against the code:** 2026-10-09. Offline test suite: all passing
+**Last verified against the code:** 2026-10-12. Offline test suite: all passing
 (run `pytest tests/ -q --ignore=tests/test_live_upstox.py`).
 
 ## Contents
@@ -67,7 +67,7 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 - [x] Microstructure strategies (anchored VWAP, cumulative delta, volume profile) in the engine
 - [x] WebSocket auto-reconnect with exponential back-off
 - [x] PostgreSQL via SQLAlchemy + Alembic; APScheduler jobs for news, signals, alerts, analogue backfill and ML retraining
-- [x] Dashboard: 15 pages including the Docs reader
+- [x] Dashboard: 16 pages including the Docs reader and the Intraday Desk
 - [x] Live-bot position persistence and crash recovery (`tests/test_bot_state_persistence.py`)
 - [x] Live reconciliation with Upstox positions + holdings (`execution_engine/reconcile.py`, `tests/test_reconcile.py`)
 - [x] Tick sanity check with recovery after a genuine gap
@@ -76,6 +76,20 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 - [x] Unfilled live orders cancelled after the status poll; partial fills tracked at their filled size
 - [x] The handbook: 60+ chapters, served by the dashboard with contents and search; `tests/test_docs.py` checks links, anchors and tables
 - [x] Deployment documented (Docker Compose, systemd units, security checklist)
+
+### Intraday trading ([Intraday Session Controls](../engine/intraday-controls.md))
+
+- [x] Entry window (09:30–14:45 by default) for new MIS entries
+- [x] Daily and per-symbol trade caps; counted on filled entries only
+- [x] Cooldown after a stop-out
+- [x] Kill switch on realised + unrealised day P&L, which flattens and halts; optional profit lock
+- [x] Operator pause / resume / flatten through `data/bot_control.json`, each executed exactly once (`tests/test_bot_intraday.py`)
+- [x] Exchange-held SL-M stops (opt-in, live), trailed with the stop; checked or cancelled before every close so the stop and the close can never both fill
+- [x] Feed heartbeat alert; bot event log; minute P&L log
+- [x] Session state survives a same-day restart
+- [x] Live 1-minute bars recorded to `data/live_bars/`; `backtest_runner.py --source recorded`
+- [x] Intraday Desk page (`/desk`) and `GET /api/intraday/desk`, `POST /api/intraday/control`
+- [x] Backtester: intrabar stop/target fills from high/low (stop first on a tie), gap fills at the open, trailing stop, exit costs at `end_of_data` (`tests/test_backtester_intrabar.py`)
 
 ## 3. Remaining work
 
@@ -88,7 +102,11 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 - [ ] `order_book_imbalance` never receives an order book and `mtf_trend` never receives multi-timeframe frames, so neither can fire
 - [ ] PEAD has no earnings-surprise source; not in the engine
 - [ ] Stock delivery % signal and FII/DII size multipliers exist but are never called
-- [ ] Libraries not wired into the bot: CVaR limits, live P&L kill switches, circuit-breaker checks, beta hedging, factor model, TWAP/VWAP execution
+- [ ] Libraries not wired into the bot: CVaR limits, circuit-breaker checks, beta hedging, factor model, TWAP/VWAP execution (the live P&L kill switch is now built into the bot)
+- [ ] Intraday session rules apply to `main.py` only; `scripts/paper_trade.py` has none of them
+- [ ] Backtests do not apply the live session rules (entry window, trade caps, cooldown, kill switch)
+- [ ] Exchange-held stops are untested against the real Upstox API (unit-tested with fakes); try with one share before relying on them
+- [ ] No per-position manual close button on the Intraday Desk (Flatten all only)
 - [ ] Positions opened by hand at the broker are alerted, not adopted
 - [ ] Paper trader charges a flat 0.1 % per side rather than itemised NSE charges, and closes every position at 15:14 (treats all trades as intraday)
 - [ ] Crypto executor (`execution_engine/executor.py`) still retries order placement
@@ -114,9 +132,7 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 
 ### Backtesting
 
-- [ ] Stops and targets are checked on bar closes only, with no trailing stop (differs from live)
 - [ ] Position cap is 25 % of capital vs `risk.max_portfolio_risk` (20 %) live
-- [ ] Positions closed at `end_of_data` pay no exit cost or slippage
 
 ### Dashboard and MarketPulse
 
@@ -173,6 +189,9 @@ regression tests.
 - [x] **Lot snapping never applied** to real numeric F&O keys — uses the master's per-contract lot size
 
 ### Strategies and backtesting
+
+- [x] **Backtest stops and targets were checked on bar closes only**, with no trailing stop, so wicks through a stop were missed (2026-10-12) — high/low fills, gaps at the open, trailing stop
+- [x] **`end_of_data` exits paid no cost or slippage**, and their P&L was missing from the equity curve (2026-10-12)
 
 - [x] **`vwap_reversion` fired on every daily bar** (zero-width session bands) and `anchored_vwap` on float noise — both require intraday sessions
 - [x] **Backtester charged round-trip costs on each leg** (double) — half per side

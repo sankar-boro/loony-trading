@@ -77,34 +77,46 @@ passed):
 
 1. **Sanity check** the price; drop it if corrupt
    ([The Live Feed](live-feed.md#tick-sanity-check)). Record it as the last
-   price.
-2. **New trading day?** Reset the risk manager's daily P&L and trade count.
-3. **15:14 IST?** Run the once-a-day MIS squareoff
+   price and the time of the last tick (for the feed heartbeat).
+2. **New trading day?** Reset the risk manager's daily P&L and trade count,
+   and the intraday guard's caps, cooldowns and halt.
+3. **Operator commands** from `data/bot_control.json`: pause, resume,
+   flatten ([Intraday Session Controls](intraday-controls.md#operator-controls)).
+4. **15:14 IST?** Run the once-a-day MIS squareoff
    ([Position Safety](position-safety.md#intraday-mis-squareoff)).
-4. Record the price in the portfolio manager.
-5. **Stops and targets** — `RiskManager.update_all()` moves trailing stops and
+5. Record the price in the portfolio manager.
+6. **Stops and targets** — `RiskManager.update_all()` moves trailing stops and
    returns positions to close; each is closed through the executor, logged,
-   recorded and announced.
-6. **Has a bar closed?** For symbols with an intraday base, feed the
-   aggregator; continue only when a full `timeframes.intraday` bar has
-   completed, then rebuild the frame (history + live bars). Symbols without an
-   intraday base use the daily frame.
-7. Need at least 60 bars.
-8. **No new intraday entries after 15:14** when trading MIS.
-9. **Score** — `meta_engine.generate_signals()` → `best_signal()` (confidence
-   × weight); continue only for BUY/SELL.
-10. **Existing position?** Same direction → ignore. Opposite
+   recorded and announced. With exchange-held stops, the broker's stop order
+   is moved to the new trailing level.
+7. **Day limits** — kill switch and profit lock on realised + unrealised day
+   P&L; append the minute P&L point.
+8. **Live bars** — feed the 1-minute aggregator and record each finished bar
+   to `data/live_bars/`.
+9. **Has a bar closed?** For symbols with an intraday base, continue only when
+   a full `timeframes.intraday` bar has completed, then rebuild the frame
+   (history + live bars). Symbols without an intraday base use the daily frame.
+10. Need at least 60 bars.
+11. **No new intraday entries after 15:14** when trading MIS.
+12. **Score** — `meta_engine.generate_signals()` → `best_signal()` (confidence
+    × weight); continue only for BUY/SELL.
+13. **Existing position?** Same direction → ignore. Opposite
     direction → close it (`signal_reversal`) and stay flat.
-11. **Correlation guard** — skip if the symbol's recent returns correlate above
+14. **Session rules** — pause, halt, entry window, trade caps, cooldown
+    ([Intraday Session Controls](intraday-controls.md#session-rules)); a
+    blocked signal is logged as a `block` event.
+15. **Correlation guard** — skip if the symbol's recent returns correlate above
     0.7 with an open position.
-12. **Execute** — `executor.execute_signal()` (validation, sizing, order, fill
-    handling). On a completed fill, send a notification.
+16. **Execute** — `executor.execute_signal()` (validation, sizing, order, fill
+    handling). On a completed fill, count the entry, place the exchange stop
+    if enabled, and send a notification.
 
 ## Background tasks
 
 | Task | When |
 |---|---|
-| Reconciliation with Upstox | Live mode: startup and every `execution.reconcile_interval_sec` (300 s) |
+| Reconciliation with Upstox | Live mode: startup and every `execution.reconcile_interval_sec` (300 s); then places any missing exchange-held stops |
+| Feed heartbeat | Every 30 s in market hours; alerts after `intraday.heartbeat_minutes` without a tick |
 | Feed reconnection | On any WebSocket error: 2 s, doubling to 60 s |
 
 ## Shutdown

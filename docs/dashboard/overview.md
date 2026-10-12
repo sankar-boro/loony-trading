@@ -41,6 +41,7 @@ When the token is missing or expired, `demo_mode` is true and the amber
 | Page | Route | Chapter |
 |---|---|---|
 | Dashboard | `/` | [Home](home.md) |
+| Intraday Desk | `/desk` | [Intraday Desk](intraday-desk.md) |
 | Chart | `/chart` | [Chart](chart.md) |
 | Positions, Trades, Daily P&L | `/positions`, `/trades`, `/daily` | [Positions, Trades and Daily P&L](positions-trades-pnl.md) |
 | Strategies | `/strategies` | [Strategies](strategies.md) |
@@ -60,7 +61,7 @@ most "why is this empty?" questions:
 
 | Source | Written by | Read by | Needs |
 |---|---|---|---|
-| **Files** in `data/` and `logs/` | `paper_trade.py`, `main.py`, `seed_dashboard_data.py` | Home, Positions, Trades, Daily P&L, Strategies, Portfolio Risk | A bot run (or the seed script) |
+| **Files** in `data/` and `logs/` | `paper_trade.py`, `main.py`, `seed_dashboard_data.py` | Home, Intraday Desk, Positions, Trades, Daily P&L, Strategies, Portfolio Risk | A bot run (or the seed script) |
 | **Upstox API** (live calls from the backend) | — | Home ticker and universe prices, Chart, Strategy Lab, the live signal feed | A valid token (otherwise demo data or empty) |
 | **PostgreSQL** | News pipeline, signal engine, scheduler, your watchlists/alerts | News, Signals, Copilot, Watchlists, Alerts, Intraday Lab, the Chart's "why" panel | `alembic upgrade head` and data (see [Installation](../getting-started/installation.md)) |
 

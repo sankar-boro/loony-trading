@@ -23,7 +23,10 @@ gives. The bot closes them itself at **15:14 IST**:
 - Only when `default_product` is `MIS`; delivery (CNC) positions are left
   alone.
 - **No new intraday entries after 15:14** — the broker would close them minutes
-  later.
+  later. In practice the entry window (`intraday.entry_end`, 14:45) stops MIS
+  entries earlier; see [Intraday Session Controls](intraday-controls.md).
+- With exchange-held stops enabled, the bot cancels its broker stop orders
+  before the squareoff.
 
 The paper trader (`scripts/paper_trade.py`) has its own equivalent and the
 backtester simulates the same cut-off on historical bars.
@@ -67,8 +70,11 @@ On startup it restores from that file, with these rules:
 | Earlier day, MIS position | Dropped — the broker squared it off at 15:20 |
 | Earlier day, CNC position | Restored; daily counters start at zero |
 
-The dashboard reads the same file, so the live bot's positions appear on the
-Positions page and the **Bot** status light.
+The file also carries the intraday session state (trade counts, cooldowns,
+halt, pause), recent bot events and the last tick time. The dashboard reads
+it for the Positions page, the **Bot** status light and the
+[Intraday Desk](../dashboard/intraday-desk.md). See
+[Persisted state](intraday-controls.md#persisted-state).
 
 ## Broker reconciliation
 
@@ -113,6 +119,15 @@ At startup the bot computes the token's real expiry (03:30 IST after issue):
 - Either mode warns when the token expires within three hours.
 
 See [Connecting to Upstox](../getting-started/upstox-access.md#when-the-daily-token-expires).
+
+## Exchange-held stops and the kill switch
+
+Two more protections are described in
+[Intraday Session Controls](intraday-controls.md):
+- **exchange-held SL-M stops**, so a position stays protected if the bot
+  dies;
+- a **kill switch** that flattens everything when the day's realised plus
+  unrealised loss reaches `risk.max_daily_drawdown`.
 
 ## What is still missing
 
