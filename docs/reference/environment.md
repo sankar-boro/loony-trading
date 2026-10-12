@@ -44,7 +44,9 @@ Without any valid token the dashboard runs in demo mode.
 
 | Variable | Default | Used for |
 |---|---|---|
-| `DATABASE_URL` | `postgresql+psycopg2://loony:loony@localhost:5432/loony_trading` | SQLAlchemy and Alembic |
+| `DATABASE_URL` | `postgresql+psycopg2://loony:loony@localhost:5432/loony_trading` | SQLAlchemy and Alembic; takes precedence over the `DB_*` parts |
+| `DB_NAME`, `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD` | —, `localhost`, `5432`, —, — | The connection as parts, used when `DATABASE_URL` is unset |
+| `DB_SCHEMA` | — (`public`) | Postgres schema for every table and Alembic's version table ([The Database](../marketpulse/database.md#connecting)) |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | `loony`, `loony`, `loony_trading` | Docker Compose's database service |
 | `REDIS_URL` | `redis://localhost:6379/0` | Reserved; not used by current code |
 | `NEWS_API_KEY` | — | NewsAPI.org; without it the demo news provider is used |

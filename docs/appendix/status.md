@@ -75,6 +75,7 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 - [x] One position per symbol; opposite signals close and stay flat
 - [x] Unfilled live orders cancelled after the status poll; partial fills tracked at their filled size
 - [x] The handbook: 60+ chapters, served by the dashboard with contents and search; `tests/test_docs.py` checks links, anchors and tables
+- [x] Handbook copied into Postgres (`doc_chapters`, `doc_sections`) by `scripts/migrate_docs.py`, which runs the table definitions in `db/sql/handbook.sql` and loads `docs/`; `DB_*` connection settings and `DB_SCHEMA` support (`tests/test_docs_sync.py`)
 - [x] Deployment documented (Docker Compose, systemd units, security checklist)
 
 ### Intraday trading ([Intraday Session Controls](../engine/intraday-controls.md))

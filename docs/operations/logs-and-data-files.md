@@ -102,6 +102,12 @@ These grant access to your account — keep `data/` private.
 | `nse_cache/` | FII/DII, delivery, F&O ban, VIX history (parquet) | daily |
 | `feature_cache/` | Cross-asset macro features | daily |
 
+## db/sql/
+
+| File | Content |
+|---|---|
+| `handbook.sql` | `CREATE TABLE` / `CREATE INDEX` for `doc_chapters` and `doc_sections` (no data), generated from `db/models.py` by `scripts/migrate_docs.py --write-sql` and run by `scripts/migrate_docs.py` |
+
 ## models/
 
 | File | Content |

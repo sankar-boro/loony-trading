@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     JSON, DateTime, Enum, Float, ForeignKey, Index, Integer, String,
-    UniqueConstraint, Boolean,
+    UniqueConstraint, Boolean, Text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -263,3 +263,42 @@ class AlertTrigger(Base):
 
     alert: Mapped["Alert"] = relationship()
     stock: Mapped["Stock"] = relationship()
+
+
+# ── The handbook (docs/) ────────────────────────────────────────────────────
+# A copy of the markdown handbook for SQL access. docs/*.md and
+# docs/book.yaml stay the source of truth; scripts/migrate_docs.py creates
+# the tables (db/sql/handbook.sql) and db/docs_sync.py refreshes them.
+
+class DocChapter(Base):
+    __tablename__ = "doc_chapters"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    path: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)  # relative to docs/
+    part: Mapped[str] = mapped_column(String(128))
+    part_number: Mapped[int] = mapped_column(Integer)
+    number: Mapped[int] = mapped_column(Integer, index=True)       # chapter number across the book
+    title: Mapped[str] = mapped_column(String(255))
+    content: Mapped[str] = mapped_column(Text)                      # full markdown
+    content_sha256: Mapped[str] = mapped_column(String(64))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    sections: Mapped[list["DocSection"]] = relationship(
+        back_populates="chapter", cascade="all, delete-orphan", order_by="DocSection.position")
+
+
+class DocSection(Base):
+    """One `## ` section of a chapter. Position 0 is the text before the
+    first `## ` heading (anchor "")."""
+    __tablename__ = "doc_sections"
+    __table_args__ = (UniqueConstraint("chapter_id", "position", name="uq_docsection_chapter_position"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chapter_id: Mapped[int] = mapped_column(ForeignKey("doc_chapters.id", ondelete="CASCADE"),
+                                            index=True, nullable=False)
+    position: Mapped[int] = mapped_column(Integer)
+    anchor: Mapped[str] = mapped_column(String(255))                # heading id used in links
+    title: Mapped[str] = mapped_column(String(255))
+    content: Mapped[str] = mapped_column(Text)
+
+    chapter: Mapped["DocChapter"] = relationship(back_populates="sections")

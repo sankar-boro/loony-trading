@@ -34,6 +34,7 @@ not passed its 03:30 IST expiry).
 | MarketPulse: score signals | `run_signal_engine.py` | — |
 | MarketPulse: historical analogues | `backfill_historical_events.py` | — |
 | Demo data (database) | `seed_demo_data.py` | — |
+| Load the handbook into Postgres | `migrate_docs.py` | — |
 | Sample dashboard files | `seed_dashboard_data.py` | — |
 
 ## Access and diagnostics
@@ -208,3 +209,4 @@ default.
 | `python scripts/backfill_historical_events.py --seed-demo TYPE [--seed-count 40] [--seed-symbol RELIANCE]` | Synthetic `[DEMO]` analogues |
 | `python scripts/seed_demo_data.py [--symbols A,B] [--days N]` | Full offline demo database |
 | `python scripts/seed_dashboard_data.py` | 180-day backtest of five stocks written as the dashboard's file data (positions, trades, equity, daily P&L) |
+| `python scripts/migrate_docs.py [--tables-only] [--write-sql]` | Create the `doc_chapters` / `doc_sections` tables from `db/sql/handbook.sql` in `DB_SCHEMA`, then load `docs/` into them; `--write-sql` regenerates the SQL from the models. See [The Database](../marketpulse/database.md#the-handbook) |

@@ -7,10 +7,23 @@ production and SQLite in tests.
 
 ## Connecting
 
-`db/base.py` creates the engine from `DATABASE_URL`, defaulting to
-`postgresql+psycopg2://loony:loony@localhost:5432/loony_trading` — the
-docker-compose `db` service as seen from your machine. Inside Compose the
-services use host `db` instead.
+`db/base.py` loads `.env` and creates the engine from the first of:
+
+1. `DATABASE_URL`, a full SQLAlchemy URL;
+2. `DB_NAME`, `DB_HOST`, `DB_PORT` (5432), `DB_USERNAME`, `DB_PASSWORD`;
+3. `postgresql+psycopg2://loony:loony@localhost:5432/loony_trading`, the
+   docker-compose `db` service as seen from your machine. Inside Compose the
+   services use host `db` instead.
+
+With `DB_SCHEMA` set (for example `basic`), every connection uses that schema
+as its `search_path`, so all tables live there instead of in `public`.
+`alembic upgrade head` creates the schema if it can and keeps its
+`alembic_version` table there too. A role that does not own the database
+cannot create schemas, so the owner or a superuser has to create it once:
+
+```bash
+sudo -u postgres psql -d loony_trading -c "CREATE SCHEMA basic AUTHORIZATION <user>;"
+```
 
 | Helper | Use |
 |---|---|
@@ -81,6 +94,42 @@ time), `price_before`, and prices 15 minutes, 1 hour, 1 day and 5 days after
 | `alerts` | `name`, optional `stock_id` (null = whole universe), `condition` (JSON), `is_active`, `triggered_at` |
 | `alert_triggers` | One row per alert × stock × evaluation that matched, with the `signal_id` and a snapshot of `matched_values` |
 
+### The handbook
+
+| Table | Purpose |
+|---|---|
+| `doc_chapters` | One row per chapter of `docs/book.yaml`: `path`, `part`, `part_number`, `number`, `title`, full markdown `content`, `content_sha256`, `updated_at` |
+| `doc_sections` | One row per `## ` section of a chapter (position 0 is the text before the first one): `chapter_id`, `position`, `anchor` (the heading id the Docs page links to), `title`, `content` |
+
+These are a copy of `docs/`; the markdown files stay the source of truth and
+the Docs page still reads the files.
+
+The table definitions are in `db/sql/handbook.sql`: `CREATE TABLE` and
+`CREATE INDEX` statements only (no data), all `IF NOT EXISTS`, and no schema
+name, so they land in the first schema of the `search_path`.
+`scripts/migrate_docs.py` runs that file with the search path set to
+`DB_SCHEMA`, then loads the docs:
+
+```bash
+python scripts/migrate_docs.py                # create the tables if missing, then load docs/
+python scripts/migrate_docs.py --tables-only  # tables only
+python scripts/migrate_docs.py --write-sql    # regenerate handbook.sql after changing db/models.py
+```
+
+Run it again after editing the docs: only chapters whose markdown changed are
+rewritten, and chapters removed from `book.yaml` are deleted. To apply the SQL
+by hand: `PGOPTIONS=-csearch_path=basic psql -d loony_trading -f db/sql/handbook.sql`.
+
+`alembic upgrade head` creates the same tables (migration `b3d1e7c2a9f4`) and
+skips them if the script already did; either route works.
+
+```sql
+-- Which chapters mention the kill switch, and in which section?
+SELECT c.number, c.title, s.title AS section
+FROM doc_sections s JOIN doc_chapters c ON c.id = s.chapter_id
+WHERE s.content ILIKE '%kill switch%' ORDER BY c.number, s.position;
+```
+
 ## Migrations
 
 Schema changes are Alembic migrations in `alembic/versions/`:
@@ -92,6 +141,7 @@ Schema changes are Alembic migrations in `alembic/versions/`:
 | `4f13cf9a05a0` | `alert_triggers` table |
 | `46fd98926afb` | `historical_events.direction` and related similarity fields |
 | `a89ec2781941` | `signals.timeframe` |
+| `b3d1e7c2a9f4` | `doc_chapters` and `doc_sections` (the handbook) |
 
 ```bash
 alembic upgrade head                           # apply everything
@@ -100,7 +150,8 @@ alembic downgrade -1                           # undo the last migration
 ```
 
 `alembic/env.py` imports `db.models` so autogenerate sees every table, and
-takes the URL from `DATABASE_URL`.
+uses the engine from `db/base.py`, so it follows the same connection settings
+and `DB_SCHEMA`.
 
 ## Maintenance
 
@@ -109,4 +160,4 @@ takes the URL from `DATABASE_URL`.
   old rows periodically if disk matters, e.g.
   `DELETE FROM signals WHERE timestamp < now() - interval '90 days'` (delete
   their `trade_setups` and referencing `alert_triggers` first).
-- Back up with `pg_dump loony_trading`.
+- Back up with `pg_dump loony_trading` (add `-n basic` when using `DB_SCHEMA=basic`).

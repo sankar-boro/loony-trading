@@ -71,8 +71,11 @@ typed into it. See the [Configuration Reference](../reference/configuration.md).
 ## Set up the database
 
 MarketPulse stores stocks, news, signals, watchlists and alerts in PostgreSQL.
-The connection string comes from `DATABASE_URL`, defaulting to
-`postgresql+psycopg2://loony:loony@localhost:5432/loony_trading`.
+The connection string comes from `DATABASE_URL` (or the separate `DB_NAME`,
+`DB_HOST`, `DB_USERNAME`, `DB_PASSWORD` settings, with an optional
+`DB_SCHEMA`), defaulting to
+`postgresql+psycopg2://loony:loony@localhost:5432/loony_trading`. See
+[The Database](../marketpulse/database.md#connecting).
 
 The quickest way to get a matching database is the Compose service:
 
@@ -80,7 +83,7 @@ The quickest way to get a matching database is the Compose service:
 docker compose up -d db          # Postgres 16 on localhost:5432
 ```
 
-Then create the schema with Alembic (it reads `DATABASE_URL` through
+Then create the schema with Alembic (it reads the connection settings through
 `db/base.py`):
 
 ```bash
@@ -89,7 +92,8 @@ alembic upgrade head
 
 The migrations in `alembic/versions/` are, in order: the initial schema,
 `NewsEvent.catalyst_score`, the alert-triggers table, historical-event
-direction fields, and the `Signal.timeframe` column. Run `alembic upgrade head`
+direction fields, the `Signal.timeframe` column and the handbook tables.
+Load the handbook into them with `python scripts/migrate_docs.py`. Run `alembic upgrade head`
 again after pulling new code. The tables are described in
 [The Database](../marketpulse/database.md).
 
