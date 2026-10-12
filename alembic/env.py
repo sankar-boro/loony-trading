@@ -2,14 +2,12 @@ import os
 import sys
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
 
 from alembic import context
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from db.base import Base, DATABASE_URL  # noqa: E402
+from db.base import Base, DATABASE_URL, DB_SCHEMA, engine  # noqa: E402
 from db import models  # noqa: E402,F401  (import registers all mapped classes)
 
 # this is the Alembic Config object, which provides
@@ -21,7 +19,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", DATABASE_URL)
+config.set_main_option("sqlalchemy.url", DATABASE_URL.replace("%", "%%"))
 
 target_metadata = Base.metadata
 
@@ -62,15 +60,17 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    # The app's engine carries DB_SCHEMA as the connection search_path, so
+    # unqualified CREATE TABLEs land in that schema.
+    connectable = engine
 
     with connectable.connect() as connection:
+        if DB_SCHEMA:
+            connection.exec_driver_sql(f'CREATE SCHEMA IF NOT EXISTS "{DB_SCHEMA}"')
+            connection.commit()
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection, target_metadata=target_metadata,
+            version_table_schema=DB_SCHEMA,
         )
 
         with context.begin_transaction():
