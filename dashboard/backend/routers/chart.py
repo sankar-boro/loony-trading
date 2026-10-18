@@ -57,4 +57,23 @@ async def get_chart(symbol: str, interval: str = Query("day"), days: int = Query
         candles = [{"time": int(idx.timestamp()), "open": round(row["open"],2), "high": round(row["high"],2),
                     "low": round(row["low"],2), "close": round(row["close"],2), "volume": round(row["volume"],0)}
                    for idx, row in df_r.iterrows()]
-    return {"symbol": symbol, "interval": interval, "candles": candles}
+    return {"symbol": symbol, "interval": interval, "candles": candles,
+            "regime": _regime(symbol.upper(), candles)}
+
+
+def _regime(symbol: str, candles: list[dict]) -> dict | None:
+    """The market regime on the last bar, and which method decided it
+    (strategies/regime_detector.py) — None if there are too few bars."""
+    if len(candles) < 30:
+        return None
+    try:
+        import pandas as pd
+        from config.loader import Settings
+        from strategies.regime_detector import RegimeDetector
+        df = pd.DataFrame(candles)
+        df.index = pd.to_datetime(df["time"], unit="s", utc=True)
+        det = RegimeDetector(Settings().as_dict())
+        regime = det.detect(df, symbol=symbol)
+        return {"value": regime.value, "source": det.last_source}
+    except Exception:
+        return None

@@ -120,6 +120,20 @@ def ml_retrain_job(days: int = 730) -> JobRun:
     return _run_tracked("ml_retrain", _do)
 
 
+def regime_refit_job(days: int = 1095) -> JobRun:
+    """Weekly HMM regime refit for the Nifty 50 stocks and main indices. Each
+    model is gated out of sample; failing ones are saved as unusable and the
+    ADX rules stay in charge for that symbol. A running bot picks new models
+    up on its next start."""
+    def _do() -> dict:
+        from config.instruments import get_nifty50_symbols
+        from scripts.fit_regimes import INDICES, fit_regimes
+        rows = fit_regimes(INDICES + get_nifty50_symbols(), days)
+        usable = [r["symbol"] for r in rows if r.get("passed")]
+        return {"fitted": len(rows), "usable": len(usable)}
+    return _run_tracked("regime_refit", _do)
+
+
 def historical_backfill_job(min_age_days: int = 7) -> JobRun:
     def _do() -> dict:
         from scripts.backfill_historical_events import run_organic_backfill

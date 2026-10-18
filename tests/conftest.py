@@ -20,3 +20,20 @@ os.environ["LLM_PROVIDER"] = "demo"
 # (UPSTOX_ACCESS_TOKEN=<token> pytest tests/test_live_upstox.py).
 for _key in ("UPSTOX_ACCESS_TOKEN", "UPSTOX_EXTENDED_TOKEN", "UPSTOX_API_KEY", "UPSTOX_API_SECRET"):
     os.environ.setdefault(_key, "")
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _isolated_hmm_models(tmp_path, monkeypatch):
+    """HMM regime models go to a temporary directory, never models/hmm/."""
+    import strategies.hmm_regime as hmm_regime
+    monkeypatch.setattr(hmm_regime, "_MODEL_DIR", tmp_path / "hmm")
+
+
+def pytest_configure(config):
+    # hmmlearn emits a NumPy deprecation warning (and divide warnings on
+    # degenerate fits) on every fit; they are not ours
+    config.addinivalue_line("filterwarnings", "ignore::DeprecationWarning:hmmlearn.*")
+    config.addinivalue_line("filterwarnings", "ignore::RuntimeWarning:hmmlearn.*")

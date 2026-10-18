@@ -232,6 +232,10 @@ class CompositeSignalEngine:
             return 35.0
         if regime == MarketRegime.LOW_VOLATILITY:
             return 55.0
+        if regime == MarketRegime.BREAKOUT:
+            return 70.0
+        if regime == MarketRegime.CRISIS:
+            return 10.0
         return 60.0  # RANGING — favorable for the mean-reversion strategies likely firing
 
     @staticmethod

@@ -26,30 +26,6 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 
-def load_closes(symbols: list[str], days: int) -> dict:
-    from config.loader import Settings
-    from data_engine.upstox import InstrumentRegistry, UpstoxAuth, UpstoxDataEngine
-
-    cfg = Settings().as_dict()
-    up = cfg.get("exchanges", {}).get("upstox", {})
-    auth = UpstoxAuth(api_key=up.get("api_key", ""), api_secret=up.get("api_secret", ""),
-                      redirect_uri=up.get("redirect_uri", "http://localhost:3561/callback"))
-    auth.load_token()
-    registry = InstrumentRegistry()
-    registry.load()
-    engine = UpstoxDataEngine(auth, registry)
-    out = {}
-    for sym in symbols:
-        try:
-            df = engine.fetch_ohlcv(sym, "1d", lookback_days=days)
-        except Exception as exc:                       # one bad symbol must not stop the scan
-            print(f"  {sym}: fetch failed ({exc})")
-            continue
-        if df is not None and not df.empty:
-            out[sym] = df
-    return out
-
-
 def scan(frames: dict, groups: dict[str, list[str]], cfg: dict, backtest: bool) -> list[dict]:
     import numpy as np
     from strategies.stat_arb.pair_trading import PairTradingStrategy
@@ -106,7 +82,8 @@ def main() -> int:
         return 1
 
     print(f"Fetching {len(symbols)} symbols, {args.days} days of daily bars...")
-    frames = load_closes(symbols, args.days)
+    from data_engine.history import fetch_daily
+    frames = fetch_daily(symbols, args.days)
     rows = scan(frames, groups, Settings().as_dict(), args.backtest)
     if not rows:
         print("Not enough data to test any pair.")

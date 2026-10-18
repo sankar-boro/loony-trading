@@ -88,6 +88,19 @@ def start_scheduler(cfg: dict) -> Optional[BackgroundScheduler]:
             id="ml_retrain", max_instances=1, coalesce=True,
         )
 
+    # Opt-in: fitted models change how the bot classifies regimes.
+    if sched_cfg.get("regime_refit_enabled", False):
+        sched.add_job(
+            lambda: jobs.regime_refit_job(sched_cfg.get("regime_refit_days", 1095)),
+            CronTrigger(
+                day_of_week=sched_cfg.get("regime_refit_day_of_week", "sun"),
+                hour=sched_cfg.get("regime_refit_hour", 7),
+                minute=0,
+                timezone=tz,
+            ),
+            id="regime_refit", max_instances=1, coalesce=True,
+        )
+
     # Intraday signal/alert jobs — separate opt-in track, coexisting with
     # the daily jobs above rather than replacing them (docs/appendix/intraday-audit.md
     # §6/§7 item 6). Always market-hours-gated regardless of

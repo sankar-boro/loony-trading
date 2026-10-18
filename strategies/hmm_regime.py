@@ -25,8 +25,8 @@ Features fed to HMM (all normalised):
 """
 from __future__ import annotations
 
-import os
 import pickle
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -39,8 +39,7 @@ from utils.logger import get_logger
 
 logger = get_logger("hmm_regime")
 
-_MODEL_DIR = Path("models/hmm")
-_MODEL_DIR.mkdir(parents=True, exist_ok=True)
+_MODEL_DIR = Path(__file__).resolve().parent.parent / "models" / "hmm"
 
 N_STATES = 6
 N_ITER   = 200
@@ -77,7 +76,7 @@ def _extract_features(df: pd.DataFrame) -> np.ndarray:
 
     # Volume ratio vs 20-bar avg
     vol_avg = pd.Series(volume).rolling(20, min_periods=1).mean().fillna(volume.mean()).values
-    vol_ratio = np.where(vol_avg > 0, volume / vol_avg, 1.0)
+    vol_ratio = np.divide(volume, vol_avg, out=np.ones_like(volume), where=vol_avg > 0)
 
     # ATR ratio
     hl = high - low
@@ -95,34 +94,55 @@ def _extract_features(df: pd.DataFrame) -> np.ndarray:
     return X.astype(np.float64)
 
 
-def _label_states(model: GaussianHMM) -> Dict[int, MarketRegime]:
+class _Scaler:
+    """Per-feature standardisation. Raw features differ hugely in scale
+    (return variance ~1e-4 against hmmlearn's 1e-3 variance floor), and a
+    constant feature — volume on an index — has zero variance; both break
+    the fit. Labels are read from de-standardised state means."""
+
+    def __init__(self, X: np.ndarray):
+        self.mu = X.mean(axis=0)
+        self.sd = np.where(X.std(axis=0) > 1e-9, X.std(axis=0), 1.0)
+
+    def __call__(self, X: np.ndarray) -> np.ndarray:
+        return (X - self.mu) / self.sd
+
+    def raw_means(self, model: GaussianHMM) -> np.ndarray:
+        return model.means_ * self.sd + self.mu
+
+
+def _label_states(model: GaussianHMM, X: Optional[np.ndarray] = None,
+                  means: Optional[np.ndarray] = None) -> Dict[int, MarketRegime]:
     """
-    Auto-label HMM states by inspecting per-state emission means.
-    Returns state_index → MarketRegime mapping.
+    Auto-label HMM states from their emission means, relative to the
+    symbol's own feature distribution `X` (median volatility, spread of
+    returns), so the same rules work for a calm index, a volatile small cap
+    and intraday bars. Without X, daily-scale defaults are used.
     """
-    means = model.means_    # shape (n_states, n_features)
+    means = model.means_ if means is None else means    # (n_states, n_features), raw scale
     # Feature indices: [log_ret, ret_vol, vol_ratio, atr_ratio, up_ratio]
+    # "Normal" volatility: the 35th percentile rather than the median, so a
+    # symbol that is turbulent half the time still has a calm baseline.
+    med_vol = float(np.percentile(X[:, 1], 35)) if X is not None else 0.008
+    ret_sd = float(np.std(X[:, 0])) if X is not None else 0.012
     state_map: Dict[int, MarketRegime] = {}
-
-    for i in range(N_STATES):
-        ret     = means[i, 0]
-        ret_vol = means[i, 1]
-        vol_r   = means[i, 2]
-        up_r    = means[i, 4]
-
-        if ret_vol > 0.015:                        # very high vol
+    for i in range(model.n_components):
+        ret, ret_vol, _vol_r, atr_r, up_r = (float(v) for v in means[i, :5])
+        if ret_vol > 3.0 * med_vol and ret < -0.5 * ret_sd:
+            regime = MarketRegime.CRISIS
+        elif atr_r > 1.3 and abs(ret) > 0.3 * ret_sd:
+            regime = MarketRegime.BREAKOUT
+        elif ret_vol > 2.0 * med_vol:
             regime = MarketRegime.HIGH_VOLATILITY
-        elif ret > 0.003 and up_r > 0.6:           # consistent up-closes
+        elif ret > 0.15 * ret_sd and up_r > 0.55:
             regime = MarketRegime.TRENDING_UP
-        elif ret < -0.003 and up_r < 0.4:          # consistent down-closes
+        elif ret < -0.15 * ret_sd and up_r < 0.45:
             regime = MarketRegime.TRENDING_DOWN
-        elif ret_vol < 0.004 and vol_r < 0.8:      # low vol, low volume
+        elif ret_vol < 0.6 * med_vol:
             regime = MarketRegime.LOW_VOLATILITY
         else:
             regime = MarketRegime.RANGING
-
         state_map[i] = regime
-
     return state_map
 
 
@@ -141,40 +161,107 @@ class HMMRegimeDetector:
         self.n_states = n_states
         self.model: Optional[GaussianHMM] = None
         self.state_map: Dict[int, MarketRegime] = dict(_DEFAULT_STATE_MAP)
-        self._model_path = _MODEL_DIR / f"hmm_{self.symbol}.pkl"
+        self.meta: dict = {}
+        self.scaler: Optional[_Scaler] = None
+
+    @property
+    def _model_path(self) -> Path:
+        return _MODEL_DIR / f"hmm_{self.symbol}.pkl"
 
     # ── Training ──────────────────────────────────────────────────────────────
 
-    def fit(self, df: pd.DataFrame, min_bars: int = 200) -> bool:
+    def _new_model(self, n_states: int) -> GaussianHMM:
+        return GaussianHMM(n_components=n_states, covariance_type="diag",
+                           n_iter=N_ITER, random_state=RANDOM_STATE, verbose=False)
+
+    def evaluate(self, df: pd.DataFrame, holdout: float = 0.25,
+                 min_mean_run: float = 3.0, min_r2: float = 0.05, horizon: int = 5) -> dict:
+        """Out-of-sample gate. Fit on the first (1 − holdout) of the bars and
+        test on the rest:
+
+        - the regime must predict the next `horizon` bars' realised volatility:
+          each state's average forward volatility (learned on the training
+          bars) must explain at least `min_r2` of its variance on the test
+          bars. Volatility clusters in real markets; in pure noise it does not,
+          and a model that only reflects its own rolling features fails here;
+        - regimes must last at least `min_mean_run` bars on average on the
+          test bars, not flip every bar.
+
+        The per-bar log-likelihood against a one-state model is reported too.
         """
-        Fit HMM on historical OHLCV data.
-        Returns True on success.
-        """
+        X = _extract_features(df)
+        split = int(len(X) * (1 - holdout))
+        try:
+            scaler = _Scaler(X[:split])
+            train, test = scaler(X[:split]), scaler(X[split:])
+            hmm = self._new_model(self.n_states).fit(train)
+            base = self._new_model(1).fit(train)
+            ll_hmm = float(hmm.score(test)) / len(test)
+            ll_base = float(base.score(test)) / len(test)
+            s_train, s_test = hmm.predict(train), hmm.predict(test)
+        except Exception as exc:
+            return {"passed": False, "reason": f"fit failed: {exc}", "test_bars": len(X) - split}
+
+        # Realised volatility of the next `horizon` log returns, per bar
+        ret = X[:, 0]
+        fwd = np.full(len(ret), np.nan)
+        for t in range(len(ret) - horizon):
+            fwd[t] = np.std(ret[t + 1:t + 1 + horizon])
+        f_train, f_test = fwd[:split], fwd[split:]
+        overall = float(np.nanmean(f_train))
+        state_vol = {k: float(np.nanmean(f_train[s_train == k]))
+                     for k in np.unique(s_train) if np.any(~np.isnan(f_train[s_train == k]))}
+        pred = np.array([state_vol.get(k, overall) for k in s_test])
+        ok = ~np.isnan(f_test)
+        sst = float(np.sum((f_test[ok] - overall) ** 2))
+        r2 = 1 - float(np.sum((f_test[ok] - pred[ok]) ** 2)) / sst if sst > 0 else 0.0
+
+        runs = 1 + int(np.sum(s_test[1:] != s_test[:-1]))
+        mean_run = len(s_test) / runs
+        passed = r2 >= min_r2 and mean_run >= min_mean_run
+        reason = ("" if passed else
+                  f"regime does not predict volatility (R² {r2:.2f})" if r2 < min_r2 else
+                  f"regimes too short ({mean_run:.1f} bars)")
+        return {"ll_hmm": round(ll_hmm, 4), "ll_base": round(ll_base, 4), "vol_r2": round(r2, 3),
+                "mean_run": round(mean_run, 2), "test_bars": len(test),
+                "passed": passed, "reason": reason}
+
+    def fit(self, df: pd.DataFrame, min_bars: int = 200, gate: bool = True) -> bool:
+        """Fit on historical OHLCV bars and save. With `gate`, the model is
+        first checked out of sample (evaluate) and saved as unusable if it
+        fails, so RegimeDetector keeps using the ADX rules. Returns True if
+        the saved model passed."""
         if len(df) < min_bars:
             logger.warning(f"HMM {self.symbol}: need {min_bars} bars, got {len(df)}")
             return False
-
-        X = _extract_features(df)
         try:
-            model = GaussianHMM(
-                n_components=self.n_states,
-                covariance_type="diag",
-                n_iter=N_ITER,
-                random_state=RANDOM_STATE,
-                verbose=False,
-            )
-            model.fit(X)
-            self.model    = model
-            self.state_map = _label_states(model)
+            gate_result = self.evaluate(df) if gate else {"passed": True, "reason": ""}
+            X = _extract_features(df)
+            scaler = _Scaler(X)
+            model = self._new_model(self.n_states).fit(scaler(X))
+            if not np.all(np.isfinite(model.means_)):
+                raise ValueError("fit diverged (non-finite state means)")
+            self.model = model
+            self.scaler = scaler
+            self.state_map = _label_states(model, X, scaler.raw_means(model))
+            self.meta = {**gate_result, "fitted_at": time.time(), "n_bars": len(df)}
             self._save()
             logger.info(
-                f"HMM {self.symbol}: fitted on {len(df)} bars, "
-                f"states={[f'{i}={r.value}' for i, r in self.state_map.items()]}"
-            )
-            return True
+                f"HMM {self.symbol}: fitted on {len(df)} bars, gate "
+                f"{'passed' if gate_result['passed'] else 'FAILED: ' + gate_result['reason']}, "
+                f"states={[f'{i}={r.value}' for i, r in self.state_map.items()]}")
+            return bool(gate_result["passed"])
         except Exception as e:
             logger.error(f"HMM {self.symbol} fit failed: {e}")
+            self.meta = {"passed": False, "reason": f"fit failed: {e}", "fitted_at": time.time(),
+                         "n_bars": len(df)}
             return False
+
+    def usable(self, max_age_days: float = 45) -> bool:
+        """Loaded, passed its gate, and fitted within max_age_days."""
+        if self.model is None or not self.meta.get("passed"):
+            return False
+        return time.time() - float(self.meta.get("fitted_at", 0)) <= max_age_days * 86400
 
     # ── Prediction ────────────────────────────────────────────────────────────
 
@@ -192,6 +279,8 @@ class HMMRegimeDetector:
                 return MarketRegime.RANGING, np.ones(self.n_states) / self.n_states
 
         X = _extract_features(df.tail(lookback))
+        if self.scaler is not None:
+            X = self.scaler(X)
         try:
             state_seq  = self.model.predict(X)
             posteriors = self.model.predict_proba(X)   # (T, n_states)
@@ -238,8 +327,10 @@ class HMMRegimeDetector:
 
     def _save(self) -> None:
         try:
+            _MODEL_DIR.mkdir(parents=True, exist_ok=True)
             with open(self._model_path, "wb") as f:
-                pickle.dump({"model": self.model, "state_map": self.state_map}, f)
+                pickle.dump({"model": self.model, "state_map": self.state_map,
+                             "meta": self.meta, "scaler": self.scaler}, f)
         except Exception as e:
             logger.warning(f"HMM save failed: {e}")
 
@@ -251,6 +342,8 @@ class HMMRegimeDetector:
                 data = pickle.load(f)
             self.model    = data["model"]
             self.state_map = data["state_map"]
+            self.meta      = data.get("meta", {})    # models saved before the gate have none
+            self.scaler    = data.get("scaler")
             return True
         except Exception as e:
             logger.warning(f"HMM load failed: {e}")

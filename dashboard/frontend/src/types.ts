@@ -118,6 +118,7 @@ export interface ChartResponse {
   symbol: string
   interval: string
   candles: Candle[]
+  regime?: { value: string; source: 'hmm' | 'hmm+adx' | 'adx' | 'rules' } | null
 }
 
 export interface ConfigResponse {

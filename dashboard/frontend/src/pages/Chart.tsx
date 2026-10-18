@@ -554,6 +554,22 @@ export default function Chart() {
 
           <div className="flex-1" />
 
+          {/* Market regime on the last bar (strategies only trade in their preferred regimes) */}
+          {data?.regime && (
+            <span
+              title={`Regime on the last bar, decided by ${
+                { hmm: 'the fitted HMM', 'hmm+adx': 'the HMM (calm) and ADX rules (trend)',
+                  adx: 'the ADX rules', rules: 'the crisis rule' }[data.regime.source]}`}
+              className={clsx('text-[12px] font-mono px-2 py-0.5 rounded mr-3 border',
+                data.regime.value === 'crisis' ? 'border-red/40 text-red bg-red/10'
+                : data.regime.value === 'trending_up' || data.regime.value === 'breakout' ? 'border-green/30 text-green'
+                : data.regime.value === 'trending_down' || data.regime.value === 'high_volatility' ? 'border-amber/30 text-amber'
+                : 'border-border text-dim')}>
+              {data.regime.value.replace('_', ' ')}
+              <span className="opacity-60"> · {data.regime.source}</span>
+            </span>
+          )}
+
           {/* Status */}
           <span className="text-[12px] text-dim font-mono">
             {data?.candles.length ?? 0} bars · {interval.label}
