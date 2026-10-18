@@ -1,7 +1,9 @@
 # Portfolio and Analytics
 
 Portfolio-level tracking and analysis: the portfolio manager the bot uses,
-plus beta hedging, factor decomposition and live P&L attribution libraries.
+plus beta hedging, factor decomposition and stress testing for the current
+holdings, shown on the [Portfolio Risk](../dashboard/portfolio-risk.md)
+page.
 
 ## PortfolioManager
 
@@ -40,7 +42,9 @@ futures leaves only stock-specific returns:
    the Nifty lot size from `FO_LOT_SIZES` (65) and ~12 % futures margin.
 4. `beta_summary(positions)` — betas, portfolio beta and the current hedge.
 
-Not called by the bot; a building block for a market-neutral setup.
+The Portfolio Risk page shows the betas and the suggested hedge
+(`analytics/portfolio_analytics.py`). The bot does not place hedges
+automatically.
 
 ## Factor model
 
@@ -56,7 +60,24 @@ fm.sector_exposure(positions); fm.hedge_suggestion(...)
 ```
 
 A high R² with little alpha means returns are mostly market and sector
-exposure, not skill. Not wired into the dashboard or reports yet.
+exposure, not skill. `sector_exposure` maps holdings to factor sectors using
+the universe's sectors (Banking and Finance → banking, IT, FMCG,
+Automobile → auto). Before 2026-10-18 it used its own short hard-coded list
+with a wrong ticker.
+
+## Current-holdings analytics
+
+`analytics/portfolio_analytics.analyse(positions, capital, fetch_daily)`
+combines the three for the open positions, at their signed market values,
+over the last year of daily bars:
+
+| Section | From |
+|---|---|
+| `beta` | Per-stock beta (120 days), portfolio beta, rupee beta exposure, a futures `hedge` or a `hedge_note` saying why none is suggested |
+| `factors` | Holdings-weighted daily returns regressed on the six factor indices: loadings, t-statistics, R², annual alpha, residual volatility, sector exposure, hedge suggestion |
+| `stress` | `run_stress_test` with the portfolio beta × gross ÷ capital |
+
+`GET /api/portfolio/analytics` serves it to the Portfolio Risk page.
 
 ## Per-strategy P&L
 

@@ -45,3 +45,28 @@ cannot be fetched is left out rather than failing the page.
 
 The page is a monitor — it does not stop trading. The bots enforce the limits
 themselves; see [Risk Management](../engine/risk-management.md).
+
+## Beta, factors and stress tests
+
+When positions are open, three more panels load from
+`GET /api/portfolio/analytics`. That endpoint is slower, because it fetches
+a year of daily bars (cached), and refreshes every 5 minutes. All three
+treat the current positions as if they had been held over that year; shorts
+count negative.
+
+- **Market beta** — each stock's beta against Nifty 50 (120 days, with R²),
+  the portfolio beta and the rupee beta exposure. If the beta is beyond
+  ±0.15 and large enough, it suggests a Nifty futures hedge (direction and
+  lots). Otherwise it says why not, for example that the exposure is
+  smaller than one futures lot.
+- **Factor exposures** — loadings on Nifty 50, Bank Nifty, Nifty IT, FMCG,
+  Auto and Midcap 150 (hover for the t-statistic), with R², annual alpha and
+  residual volatility. A sector-concentration hedge is suggested when one
+  factor sector holds more than 35 % of the book.
+- **Crisis stress test** — the COVID crash, the IL&FS crisis, the 2015 China
+  crash, the 2008 crisis and demonetisation, replayed on the book. The
+  replay uses the portfolio beta scaled by the share of capital invested.
+  It shows return, maximum drawdown and pass/fail against a 20 % drawdown
+  limit; the worst scenario is in red.
+
+See [Portfolio and Analytics](../engine/portfolio-analytics.md).

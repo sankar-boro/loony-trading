@@ -32,6 +32,7 @@ server error). "Token" below means a valid Upstox daily token; endpoints marked
 | GET | `/api/daily` | `days` from `data/daily_pnl.jsonl` and `summary` (total_realised, avg_daily, best_day, worst_day, sharpe_ann, total_trades, overall_win_rate) |
 | GET | `/api/intraday/desk` | Everything the [Intraday Desk](../dashboard/intraday-desk.md) shows: `session` (phase, entry window, minutes to last entry / squareoff / close), `bot` (running, mode, feed age, `feed_stale`, `exchange_stops`), `guard` (trade counts, caps, cooldowns, halt, pause), `control`, `pnl` (realised, unrealised, day, loss limit, `loss_used_pct`, profit lock), `positions`, today's `trades`, `by_strategy`, `curve` (minute P&L) and today's `events` (newest first) |
 | POST | `/api/intraday/control` | Body `{"action": "pause" \| "resume" \| "flatten"}` → writes `data/bot_control.json`; returns `{ok, action, control}`. 400 for any other action |
+| GET | `/api/portfolio/analytics` | For the open positions: `beta` (per stock, portfolio, hedge or `hedge_note`), `factors` (loadings, t-stats, R², alpha, sector exposure), `stress` (crisis scenarios). Fetches a year of daily bars |
 | GET | `/api/portfolio/risk` | Capital, cash, market value, exposure, daily/unrealised P&L, max loss, `sector_exposure_pct`, `correlation` matrix, `warnings` |
 
 ## Market data (token)

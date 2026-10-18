@@ -58,8 +58,8 @@ groups is self-contained.
 15. ~~**Pair trading.**~~ **Done 2026-10-18** (intraday on MIS); see
     [Pair Trading](engine/strategies-stat-arb.md).
 16. **Unwired code.** These pieces are written but nothing calls them:
-    - CVaR limits, circuit-breaker checks, beta hedging, the factor model,
-      TWAP/VWAP execution;
+    - CVaR limits, circuit-breaker checks, TWAP/VWAP execution (beta,
+      factors and stress tests are now on the Portfolio Risk page);
     - the delivery-% signal and FII/DII size multipliers.
 17. **Crypto executor retries.** `execution_engine/executor.py` still
     retries order placement, which can duplicate orders.

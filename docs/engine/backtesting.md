@@ -168,6 +168,11 @@ volatility through five historical Indian crises, scaled by its Nifty beta:
 | China-driven crash | Aug 2015 |
 | Global financial crisis | 2008 |
 
+Each scenario's hand-entered daily path is rescaled (`calibrated_returns`)
+so that it compounds to the documented Nifty fall. Before 2026-10-18 the
+paths did not add up (COVID compounded to −68 % against −38 %), so every
+stress result overstated losses.
+
 For each it reports the return, maximum drawdown, recovery time and whether
 the strategy stayed within the drawdown limit (`survived`). `report.summary()`
 returns a table; the worst scenario is flagged.

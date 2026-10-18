@@ -28,7 +28,7 @@ Each area gets one of three labels:
 | [Features](#features) | Partial | Advanced OI/IV/macro features used only by tests |
 | [Risk management](#risk-management) | Basic | Sector cap and per-strategy limits done; CVaR and volatility targeting still to wire |
 | [Execution](#execution) | Basic | Market/limit only; the 422-line smart-order router is unused |
-| [Portfolio analytics](#portfolio-analytics) | Not wired | Factor model, beta hedge, stress test: about 720 lines, never called |
+| [Portfolio analytics](#portfolio-analytics) | **Done** | Beta and hedge, factor exposures and stress tests on the Portfolio Risk page |
 | [Backtesting](#backtesting) | Basic | One symbol, one position at a time; no portfolio backtest |
 | [Machine learning](#machine-learning) | Partial | Ensemble trains; TFT, online learning, RL, Bayesian tuning never used |
 | [Composite signals](#composite-signals) | Partial | Outcomes, setup invalidation and a track record done; weights not yet fitted to outcomes |
@@ -249,10 +249,17 @@ slicing and an Indian intraday volume profile.
 | `portfolio_manager/beta_neutral.py` | 219 | Nifty futures hedge to neutralise portfolio beta |
 | `backtester/stress_test.py` | 268 | Replays five Indian crises against a strategy's returns |
 
-**Extend with:**
-- Factor exposures and a stress-test table on the Portfolio Risk page.
-- A "hedge" suggestion from `beta_neutral` on the same page, and later an
-  optional automatic hedge in live mode.
+**Done (2026-10-18):** `analytics/portfolio_analytics.py` and
+`GET /api/portfolio/analytics` put all three on the
+[Portfolio Risk](dashboard/portfolio-risk.md#beta-factors-and-stress-tests)
+page for the current holdings. Fixed along the way:
+- The stress scenarios' daily paths did not compound to their stated falls
+  (COVID: −68 % against −38 %), overstating every loss.
+- The stress beta was applied to all capital rather than the invested share.
+- The factor model's sector map was hard-coded, with a wrong ticker.
+
+**Still to extend:**
+- An optional automatic beta hedge in live mode, once F&O contracts resolve.
 - A stress test after every backtest in the Strategy Lab.
 
 ## Backtesting

@@ -78,6 +78,11 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 - [x] Handbook copied into Postgres (`doc_chapters`, `doc_sections`) by `scripts/migrate_docs.py`, which runs the table definitions in `db/sql/handbook.sql` and loads `docs/`; `DB_*` connection settings and `DB_SCHEMA` support (`tests/test_docs_sync.py`)
 - [x] Deployment documented (Docker Compose, systemd units, security checklist)
 
+### Portfolio analytics ([Portfolio Risk](../dashboard/portfolio-risk.md#beta-factors-and-stress-tests))
+
+- [x] Beta and futures hedge suggestion, factor exposures and crisis stress tests for the current holdings (`GET /api/portfolio/analytics`, `tests/test_portfolio_analytics.py`)
+- [x] Stress scenarios calibrated to their stated Nifty falls; stress beta scaled to the invested share of capital
+
 ### Signal track record ([Did the signals work?](../marketpulse/composite-signals.md#did-the-signals-work))
 
 - [x] `signal_outcomes`: 1/5/20-day returns and setup target/stop/expiry, weekday job and `scripts/evaluate_signals.py`; setups invalidated
@@ -119,7 +124,7 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 - [ ] `order_book_imbalance` never receives an order book and `mtf_trend` never receives multi-timeframe frames, so neither can fire
 - [ ] PEAD has no earnings-surprise source; not in the engine
 - [ ] Stock delivery % signal and FII/DII size multipliers exist but are never called
-- [ ] Libraries not wired into the bot: CVaR limits, circuit-breaker checks, beta hedging, factor model, TWAP/VWAP execution (the live P&L kill switch is now built into the bot)
+- [ ] Libraries not wired into the bot: CVaR limits, circuit-breaker checks, TWAP/VWAP execution (the kill switch is built in; beta, factors and stress tests are on the Portfolio Risk page, not traded on)
 - [ ] Intraday session rules apply to `main.py` only; `scripts/paper_trade.py` has none of them
 - [ ] Backtests do not apply the live session rules (entry window, trade caps, cooldown, kill switch)
 - [ ] Exchange-held stops are untested against the real Upstox API (unit-tested with fakes); try with one share before relying on them
