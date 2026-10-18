@@ -89,5 +89,7 @@ parts:
 
   - title: Appendices
     chapters:
+      - TODO.md
+      - IMPROVEMENTS.md
       - appendix/status.md
       - appendix/intraday-audit.md
