@@ -85,6 +85,7 @@ failed.
 |---|---|---|
 | GET | `/api/signals/composite` | Query: `direction` (bullish/bearish/watch/no_signal), `symbol`, `timeframe` (default `1d`), `latest_only` (default true — one row per stock), `limit` (≤ 500). Rows: id, symbol, timeframe, timestamp, direction, score, confidence, `components` |
 | GET | `/api/signals/composite/{id}` | One signal including `trade_setup` (entry_low/high, stop_loss, target_1/2, risk_reward) |
+| GET | `/api/signals/performance?days=90` | Track record of past signals: `baseline`, `by_direction` (averages, hit rates, excess, setups), `by_score`, `components` (correlations); 7–365 days |
 | POST | `/api/signals/intraday-scan` | Body `{symbols: [], limit: 5, lookback_days: 5, timeframe: "30m"}` → the `run_signal_engine` summary. Synchronous |
 | GET | `/api/stocks/{symbol}/why` | Explanation: signal, drivers, recent_news, historical_analogue, conclusion |
 | GET | `/api/historical-analogues?event_type=…&direction=…&symbol=…` | Per-horizon sample counts, win rates and median returns |

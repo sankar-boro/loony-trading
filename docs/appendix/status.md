@@ -78,6 +78,11 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 - [x] Handbook copied into Postgres (`doc_chapters`, `doc_sections`) by `scripts/migrate_docs.py`, which runs the table definitions in `db/sql/handbook.sql` and loads `docs/`; `DB_*` connection settings and `DB_SCHEMA` support (`tests/test_docs_sync.py`)
 - [x] Deployment documented (Docker Compose, systemd units, security checklist)
 
+### Signal track record ([Did the signals work?](../marketpulse/composite-signals.md#did-the-signals-work))
+
+- [x] `signal_outcomes`: 1/5/20-day returns and setup target/stop/expiry, weekday job and `scripts/evaluate_signals.py`; setups invalidated
+- [x] Track record view on the Signals page and `GET /api/signals/performance` (`tests/test_signal_outcomes.py`)
+
 ### Regimes ([Market regimes](../engine/strategy-framework.md#market-regimes))
 
 - [x] Gated HMM fitting (`scripts/fit_regimes.py`, opt-in weekly job): must predict near-term volatility out of sample and have persistent regimes; standardised features

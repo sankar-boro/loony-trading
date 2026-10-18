@@ -228,6 +228,7 @@ Details: [Composite Signals](../marketpulse/composite-signals.md).
 | `alert_interval_seconds` | `300` | Alert evaluation |
 | `market_hours_only` | `true` | Skip signal/alert jobs while NSE is closed |
 | `historical_backfill_hour`, `_minute`, `_min_age_days` | 18, 0, 7 | Daily analogue backfill |
+| `signal_outcomes_enabled`, `_hour`, `_minute` | true, 16, 30 | Weekday signal outcome recording |
 | `ml_retrain_enabled`, `_day_of_week`, `_hour`, `_days` | true, sun, 6, 730 | Weekly gated ML retrain |
 | `regime_refit_enabled`, `_day_of_week`, `_hour`, `_days` | false, sun, 7, 1095 | Weekly gated HMM regime refit (opt-in: new models change how the bot classifies regimes) |
 | `intraday_enabled` | `false` | Opt-in intraday scoring and alerts |

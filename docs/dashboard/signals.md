@@ -71,3 +71,16 @@ ATR-based stop and target:
 | Risk/reward | Distance to target 1 ÷ distance to the stop |
 
 These are research outputs, not orders — the trading bot does not read them.
+
+## Track record
+
+The **Track record** button switches the page to how past daily signals did,
+over the last 30, 90 or 180 days:
+- by direction: average returns, hit rate, excess over the baseline, and
+  setup targets / stops / expiries;
+- by score band;
+- each component's correlation with later returns.
+
+Outcomes are recorded every weekday at 16:30 IST, so the view starts empty
+and fills in a day after the first signals. See
+[Did the signals work?](../marketpulse/composite-signals.md#did-the-signals-work).

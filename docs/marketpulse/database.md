@@ -77,7 +77,14 @@ per stock" is computed in SQL (`signals/queries.py`): the maximum timestamp
 per stock for the timeframe, joined back to the rows.
 
 **`trade_setups`** — for bullish/bearish signals: `entry_low`, `entry_high`,
-`stop_loss`, `target_1`, `target_2`, `risk_reward`.
+`stop_loss`, `target_1`, `target_2`, `risk_reward`, and `invalidated_at` once
+the stop is hit or the setup expires.
+
+**`signal_outcomes`** — one row per evaluated signal (the last daily signal
+per stock per day): `signal_date`, `entry_price`, raw `ret_1d` / `ret_5d` /
+`ret_20d`, `setup_result` (`target`, `stop`, `expired`), `setup_bars`,
+`complete`. See
+[Did the signals work?](composite-signals.md#did-the-signals-work).
 
 ### History
 
@@ -142,6 +149,7 @@ Schema changes are Alembic migrations in `alembic/versions/`:
 | `46fd98926afb` | `historical_events.direction` and related similarity fields |
 | `a89ec2781941` | `signals.timeframe` |
 | `b3d1e7c2a9f4` | `doc_chapters` and `doc_sections` (the handbook) |
+| `c7e2a1d9b5f3` | `signal_outcomes` |
 
 ```bash
 alembic upgrade head                           # apply everything

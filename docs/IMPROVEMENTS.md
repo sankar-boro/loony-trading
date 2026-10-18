@@ -31,10 +31,10 @@ Each area gets one of three labels:
 | [Portfolio analytics](#portfolio-analytics) | Not wired | Factor model, beta hedge, stress test: about 720 lines, never called |
 | [Backtesting](#backtesting) | Basic | One symbol, one position at a time; no portfolio backtest |
 | [Machine learning](#machine-learning) | Partial | Ensemble trains; TFT, online learning, RL, Bayesian tuning never used |
-| [Composite signals](#composite-signals) | Partial | Scored and stored, but outcomes are never measured |
+| [Composite signals](#composite-signals) | Partial | Outcomes, setup invalidation and a track record done; weights not yet fitted to outcomes |
 | [Copilot](#copilot) | Basic | Keyword router plus one LLM call; no conversation or tools |
 | [News](#news) | Basic | NewsAPI or demo only |
-| [Database](#database) | Partial | `price_bars` table never written; trade setups never invalidated |
+| [Database](#database) | Partial | `price_bars` table never written |
 | [Notifications](#notifications) | Basic | Telegram and e-mail, no rate limit or routing |
 | [Dashboard](#dashboard) | Basic | Read-only settings, polling, no order entry |
 | [Paper trading](#paper-trading) | Partial | A second bot that has diverged from `main.py` |
@@ -310,22 +310,16 @@ only if it beats naive baselines out of sample. The last run did not.
 (catalyst, technical, momentum, volume, historical, regime, risk) and stores
 a `Signal` and a `TradeSetup` with entry zone, stop and targets.
 
-**Gaps:**
-- Nobody checks whether signals worked. There are no forward returns, hit
-  rates or results per component.
-- `TradeSetup.invalidated_at` is never set, so stale setups look live
-  forever.
-- Component weights are fixed in config, never fitted.
+**Done (2026-10-18):** see [Did the signals work?](marketpulse/composite-signals.md#did-the-signals-work).
+- A `signal_outcomes` table filled every weekday: 1/5/20-day returns and
+  target-or-stop results.
+- Setups are invalidated on a stop or expiry.
+- A **Track record** view on the Signals page: by direction against a
+  baseline, by score band, and per component.
 
-**Extend with:**
-- A daily job that records each signal's 1/5/20-day returns and whether the
-  setup hit target or stop first.
-- A signal-performance page: hit rate by direction, score band and
-  component.
+**Still to extend:**
 - Weights fitted to those outcomes, with the same out-of-sample gate the ML
-  model uses.
-- Invalidating setups when price closes beyond the stop or the entry zone
-  passes.
+  model uses. This needs a few months of outcomes first.
 
 ## Copilot
 
@@ -359,8 +353,6 @@ classified (LLM or demo), matched to stocks by
 **Partial:**
 - The `price_bars` table is defined and migrated but never written; candles
   live in parquet files under `data/cache/`.
-- `trade_setups.invalidated_at` is never set (see
-  [Composite signals](#composite-signals)).
 
 **Extend with:**
 - Either store candles in `price_bars` (one place for the dashboard,

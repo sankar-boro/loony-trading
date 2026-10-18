@@ -76,6 +76,40 @@ For bullish and bearish signals:
 | `target_2` | Price + 1.5 × (target 1 − price) |
 | `risk_reward` | Distance to target 1 ÷ distance to stop |
 
+## Did the signals work?
+
+`signals/outcomes.py` records what happened after the signals. The
+`signal_outcomes` scheduler job runs it every weekday at 16:30 IST, or run
+`python scripts/evaluate_signals.py` by hand. For the **last daily signal of
+each stock on each trading day**, it records:
+
+- the return 1, 5 and 20 trading days after that day's close;
+- for bullish and bearish signals with a setup, whether the price reached
+  `target_1` or `stop_loss` first, within 20 bars. If one bar touches both,
+  the stop counts first; if neither is reached, the setup has `expired`.
+
+A setup that hits its stop or expires gets `invalidated_at` set, and its
+signal's `status` becomes `invalidated` (or `closed` on a target). Rows are
+refreshed until every horizon has passed.
+
+`performance(db, days)`, the API `GET /api/signals/performance`, and the
+**Track record** view on the Signals page report:
+
+| Table | Shows |
+|---|---|
+| By direction | Count; average 1/5/20-day return (direction-adjusted for bullish and bearish, so a fall after a bearish signal is a gain); 5-day hit rate; **excess** return over the baseline; setup targets, stops and expiries |
+| By score band | For bullish + bearish signals: does a higher score do better? |
+| Components | Correlation of each component score with the direction-adjusted 5-day return (needs 10 or more signals) |
+
+The **baseline** is the average raw return of every evaluated signal: what
+simply holding the stocks the engine looked at would have done over the same
+days. A bullish average of +1 % means little if the baseline was +1.2 %.
+
+```bash
+python scripts/evaluate_signals.py --days 30
+python scripts/evaluate_signals.py --report-only
+```
+
 ## Timeframes
 
 `score_symbol(..., timeframe=...)` tags every stored row. Daily (`1d`) is the
@@ -89,7 +123,9 @@ some accounts, which is why the intraday defaults are 30 minutes.
 - **More or fewer actionable signals**: move `min_score` / `min_confidence`.
   Lowering them produces more bullish/bearish rows of lower quality.
 - **What matters most**: change `weights` — for example raise `catalyst` to
-  favour news-driven moves. Keep the sum at 1 so scores stay on 0–100.
+  favour news-driven moves. Keep the sum at 1 so scores stay on 0–100. Check
+  the [track record](#did-the-signals-work) first: a component whose score
+  does not correlate with later returns is not earning its weight.
 - **Which strategies feed Technical**: the engine uses your
   `strategies.enabled` list, so tuning the bot's strategies also changes the
   composite scores.

@@ -34,6 +34,7 @@ not passed its 03:30 IST expiry).
 | Daily P&L report | `daily_report.py` | — |
 | MarketPulse: load stocks | `backfill_stocks.py` | — |
 | MarketPulse: score signals | `run_signal_engine.py` | — |
+| MarketPulse: signal track record | `evaluate_signals.py` | — |
 | MarketPulse: historical analogues | `backfill_historical_events.py` | — |
 | Demo data (database) | `seed_demo_data.py` | — |
 | Load the handbook into Postgres | `migrate_docs.py` | — |
@@ -221,6 +222,7 @@ default.
 |---|---|
 | `python scripts/backfill_stocks.py` | Upsert the universe into the `stocks` table |
 | `python scripts/run_signal_engine.py [--limit N] [--lookback-days 200] [--timeframe 1d]` | Score and store composite signals |
+| `python scripts/evaluate_signals.py [--days 90] [--report-only]` | Record outcomes of past signals and print the track record |
 | `python scripts/backfill_historical_events.py [--min-age-days 7]` | Build analogues from matured news events |
 | `python scripts/backfill_historical_events.py --seed-demo TYPE [--seed-count 40] [--seed-symbol RELIANCE]` | Synthetic `[DEMO]` analogues |
 | `python scripts/seed_demo_data.py [--symbols A,B] [--days N]` | Full offline demo database |
