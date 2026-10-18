@@ -120,6 +120,18 @@ def ml_retrain_job(days: int = 730) -> JobRun:
     return _run_tracked("ml_retrain", _do)
 
 
+def signal_outcomes_job() -> JobRun:
+    """Daily, after the close: forward returns and setup results for past
+    composite signals (signals/outcomes.py)."""
+    def _do() -> dict:
+        from data_engine.history import fetch_daily
+        from db.base import session_scope
+        from signals.outcomes import update_outcomes
+        with session_scope() as db:
+            return update_outcomes(db, fetch_daily)
+    return _run_tracked("signal_outcomes", _do)
+
+
 def regime_refit_job(days: int = 1095) -> JobRun:
     """Weekly HMM regime refit for the Nifty 50 stocks and main indices. Each
     model is gated out of sample; failing ones are saved as unusable and the

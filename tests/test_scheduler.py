@@ -34,7 +34,7 @@ def test_scheduler_starts_and_schedules_all_jobs_when_enabled():
         assert sched.running
         job_ids = {j.id for j in sched.get_jobs()}
         assert job_ids == {"news_ingest", "signal_engine", "alert_evaluation",
-                           "historical_backfill", "ml_retrain"}
+                           "historical_backfill", "ml_retrain", "signal_outcomes"}
     finally:
         scheduler_app.stop_scheduler()
 
@@ -127,3 +127,13 @@ def test_scheduler_status_endpoint():
     assert "running" in body
     assert "next_runs" in body
     assert "last_runs" in body
+
+
+def test_regime_refit_is_opt_in():
+    for enabled, expected in ((False, False), (True, True)):
+        sched = scheduler_app.start_scheduler({"scheduler": {"enabled": True,
+                                                             "regime_refit_enabled": enabled}})
+        try:
+            assert ("regime_refit" in {j.id for j in sched.get_jobs()}) is expected
+        finally:
+            scheduler_app.stop_scheduler()

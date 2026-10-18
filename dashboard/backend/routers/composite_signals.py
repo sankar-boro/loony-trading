@@ -104,6 +104,14 @@ def run_intraday_scan(req: IntradayScanRequest) -> dict:
     )
 
 
+@router.get("/signals/performance")
+def get_signal_performance(days: int = Query(90, ge=7, le=365), db: Session = Depends(get_db)) -> dict:
+    """How past composite signals did: forward returns and setup results by
+    direction, score band and component (signals/outcomes.py)."""
+    from signals.outcomes import performance
+    return performance(db, days=days)
+
+
 @router.get("/signals/composite/{signal_id}")
 def get_composite_signal(signal_id: int, db: Session = Depends(get_db)) -> dict:
     row = (

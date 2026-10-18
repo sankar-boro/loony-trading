@@ -564,3 +564,24 @@ export interface DeskResponse {
 }
 
 export type DeskAction = 'pause' | 'resume' | 'flatten'
+
+// ── Signal track record (/api/signals/performance) ──────────────────────────
+
+export interface SignalDirectionStats {
+  direction: 'bullish' | 'bearish' | 'watch' | 'no_signal'
+  count: number
+  avg_1d: number | null; avg_5d: number | null; avg_20d: number | null
+  hit_1d: number | null; hit_5d: number | null; hit_20d: number | null
+  excess_1d: number | null; excess_5d: number | null; excess_20d: number | null
+  setups: { target: number; stop: number; expired: number }
+}
+
+export interface SignalPerformance {
+  days: number
+  evaluated: number
+  complete: number
+  baseline: { ret_1d: number | null; ret_5d: number | null; ret_20d: number | null }
+  by_direction: SignalDirectionStats[]
+  by_score: { band: string; count: number; avg_5d: number | null; hit_5d: number | null }[]
+  components: { component: string; corr_5d: number | null }[]
+}

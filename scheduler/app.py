@@ -88,6 +88,14 @@ def start_scheduler(cfg: dict) -> Optional[BackgroundScheduler]:
             id="ml_retrain", max_instances=1, coalesce=True,
         )
 
+    if sched_cfg.get("signal_outcomes_enabled", True):
+        sched.add_job(
+            jobs.signal_outcomes_job,
+            CronTrigger(day_of_week="mon-fri", hour=sched_cfg.get("signal_outcomes_hour", 16),
+                        minute=sched_cfg.get("signal_outcomes_minute", 30), timezone=tz),
+            id="signal_outcomes", max_instances=1, coalesce=True,
+        )
+
     # Opt-in: fitted models change how the bot classifies regimes.
     if sched_cfg.get("regime_refit_enabled", False):
         sched.add_job(

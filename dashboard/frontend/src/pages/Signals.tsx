@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import { fetcher } from '../api'
-import type { CompositeSignal } from '../types'
+import type { CompositeSignal, SignalPerformance } from '../types'
 import clsx from 'clsx'
 
 const DIRECTIONS = ['all', 'bullish', 'bearish', 'watch', 'no_signal'] as const
@@ -118,7 +118,119 @@ function BreakdownPanel({ signal }: { signal: CompositeSignal }) {
   )
 }
 
+const pct = (v: number | null, signed = true) =>
+  v === null ? '—' : `${signed && v > 0 ? '+' : ''}${v.toFixed(2)}%`
+
+function TrackRecord() {
+  const [days, setDays] = useState(90)
+  const { data: p, isLoading } = useSWR<SignalPerformance>(`/api/signals/performance?days=${days}`, fetcher,
+                                                           { refreshInterval: 300_000 })
+  const card = 'bg-surface border border-border rounded-xl'
+  const head = 'text-left px-3 py-2 text-[11px] uppercase tracking-wide text-dim font-medium whitespace-nowrap'
+  return (
+    <div className="flex-1 overflow-auto min-h-0 flex flex-col gap-3">
+      <div className="flex items-center gap-2 text-sm">
+        {[30, 90, 180].map(d => (
+          <button key={d} onClick={() => setDays(d)}
+                  className={clsx('px-3 py-1 rounded-lg border',
+                    days === d ? 'bg-blue/15 text-blue border-blue/30' : 'border-border text-dim hover:text-primary')}>
+            {d} days
+          </button>
+        ))}
+        {p && <span className="text-dim ml-2">{p.evaluated} signals evaluated · {p.complete} with all horizons</span>}
+      </div>
+      {isLoading && <span className="text-sm text-dim animate-pulse">Loading…</span>}
+      {p && p.evaluated === 0 && (
+        <div className={clsx(card, 'p-8 text-center text-dim')}>
+          No outcomes yet. They are recorded every weekday at 16:30 IST, a day after each signal
+          (<code className="text-blue">python scripts/evaluate_signals.py</code> to run it now).
+        </div>
+      )}
+      {p && p.evaluated > 0 && (
+        <>
+          <div className={card}>
+            <div className="px-4 py-2.5 border-b border-border text-sm text-dim">
+              Returns after the signal day's close. Bullish and bearish are direction-adjusted;
+              <b className="text-primary"> excess</b> is against the baseline (all evaluated signals:
+              {' '}5d {pct(p.baseline.ret_5d)}, 20d {pct(p.baseline.ret_20d)}).
+            </div>
+            <table className="w-full text-sm font-mono">
+              <thead><tr className="border-b border-border">
+                {['Direction', 'N', 'Avg 1d', 'Avg 5d', 'Hit 5d', 'Excess 5d', 'Avg 20d', 'Excess 20d', 'Setups T / S / E'].map(h =>
+                  <th key={h} className={head}>{h}</th>)}
+              </tr></thead>
+              <tbody className="divide-y divide-border/50">
+                {p.by_direction.filter(d => d.count > 0).map(d => (
+                  <tr key={d.direction}>
+                    <td className="px-3 py-2"><DirBadge direction={d.direction} /></td>
+                    <td className="px-3 py-2 text-dim">{d.count}</td>
+                    <td className="px-3 py-2">{pct(d.avg_1d)}</td>
+                    <td className="px-3 py-2">{pct(d.avg_5d)}</td>
+                    <td className="px-3 py-2">{d.hit_5d === null ? '—' : `${d.hit_5d.toFixed(0)}%`}</td>
+                    <td className={clsx('px-3 py-2 font-semibold', d.excess_5d === null ? 'text-dim'
+                      : d.excess_5d >= 0 ? 'text-green' : 'text-red')}>{pct(d.excess_5d)}</td>
+                    <td className="px-3 py-2">{pct(d.avg_20d)}</td>
+                    <td className={clsx('px-3 py-2', d.excess_20d === null ? 'text-dim'
+                      : d.excess_20d >= 0 ? 'text-green' : 'text-red')}>{pct(d.excess_20d)}</td>
+                    <td className="px-3 py-2 text-dim">
+                      {d.setups.target} / {d.setups.stop} / {d.setups.expired}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+            <div className={card}>
+              <div className="px-4 py-2.5 border-b border-border text-sm text-dim">
+                Bullish + bearish by score — does a higher score do better?
+              </div>
+              <table className="w-full text-sm font-mono">
+                <thead><tr className="border-b border-border">
+                  {['Score', 'N', 'Avg 5d', 'Hit 5d'].map(h => <th key={h} className={head}>{h}</th>)}
+                </tr></thead>
+                <tbody className="divide-y divide-border/50">
+                  {p.by_score.map(r => (
+                    <tr key={r.band}>
+                      <td className="px-3 py-2">{r.band}</td>
+                      <td className="px-3 py-2 text-dim">{r.count}</td>
+                      <td className={clsx('px-3 py-2', (r.avg_5d ?? 0) >= 0 ? 'text-green' : 'text-red')}>{pct(r.avg_5d)}</td>
+                      <td className="px-3 py-2">{r.hit_5d === null ? '—' : `${r.hit_5d.toFixed(0)}%`}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className={card}>
+              <div className="px-4 py-2.5 border-b border-border text-sm text-dim">
+                Component score vs direction-adjusted 5-day return (correlation)
+              </div>
+              <div className="p-3 space-y-2">
+                {p.components.map(c => (
+                  <div key={c.component} className="flex items-center gap-3 text-sm">
+                    <span className="w-28 text-dim">{COMPONENT_LABEL[c.component] ?? c.component}</span>
+                    <div className="flex-1 h-2 bg-border rounded-full relative overflow-hidden">
+                      {c.corr_5d !== null && (
+                        <div className={clsx('absolute inset-y-0', c.corr_5d >= 0 ? 'bg-green/70 left-1/2' : 'bg-red/70 right-1/2')}
+                             style={{ width: `${Math.min(Math.abs(c.corr_5d), 1) * 50}%` }} />
+                      )}
+                      <div className="absolute inset-y-0 left-1/2 w-px bg-dim/50" />
+                    </div>
+                    <span className="w-14 text-right font-mono">{c.corr_5d === null ? '—' : c.corr_5d.toFixed(2)}</span>
+                  </div>
+                ))}
+                <div className="text-[11px] text-dim pt-1">Needs at least 10 bullish/bearish signals with a 5-day result.</div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function Signals() {
+  const [view, setView] = useState<'live' | 'record'>('live')
   const [filter, setFilter] = useState<Dir>('all')
   const [timeframe, setTimeframe] = useState<Timeframe>('1d')
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -145,7 +257,18 @@ export default function Signals() {
           Multi-factor composite — Catalyst 25% · Technical 20% · Momentum 15% ·
           Volume 15% · Historical 10% · Regime 10% · Risk 5%
         </span>
+        <div className="ml-auto flex gap-1.5">
+          {(['live', 'record'] as const).map(v => (
+            <button key={v} onClick={() => setView(v)}
+                    className={clsx('px-3 py-1.5 rounded-lg text-sm transition-colors',
+                      view === v ? 'bg-blue text-white font-medium' : 'bg-surface border border-border text-dim hover:text-primary')}>
+              {v === 'live' ? 'Live signals' : 'Track record'}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {view === 'record' ? <TrackRecord /> : <>
 
       <div className="flex items-center gap-3 shrink-0 flex-wrap">
         <div className="flex gap-1.5">
@@ -232,6 +355,7 @@ export default function Signals() {
           )}
         </div>
       </div>
+      </>}
     </div>
   )
 }

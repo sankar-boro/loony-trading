@@ -178,6 +178,28 @@ class TradeSetup(Base):
     signal: Mapped["Signal"] = relationship()
 
 
+class SignalOutcome(Base):
+    """What happened after a signal: forward returns from the signal day's
+    close, and whether its trade setup reached target or stop first. One row
+    per evaluated signal (the last daily signal per stock per day), filled
+    in by signals/outcomes.py as the horizons pass."""
+    __tablename__ = "signal_outcomes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    signal_id: Mapped[int] = mapped_column(ForeignKey("signals.id"), unique=True, nullable=False)
+    signal_date: Mapped[str] = mapped_column(String(10), index=True)     # IST trading day, YYYY-MM-DD
+    entry_price: Mapped[float] = mapped_column(Float)                     # close of the signal day
+    ret_1d: Mapped[float | None] = mapped_column(Float, nullable=True)    # raw returns, not direction-adjusted
+    ret_5d: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ret_20d: Mapped[float | None] = mapped_column(Float, nullable=True)
+    setup_result: Mapped[str | None] = mapped_column(String(16), nullable=True)  # target / stop / expired
+    setup_bars: Mapped[int | None] = mapped_column(Integer, nullable=True)       # bars until resolved
+    complete: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    signal: Mapped["Signal"] = relationship()
+
+
 # ── Historical analogues (Phase 3) ───────────────────────────────────────────
 
 class HistoricalEvent(Base):
