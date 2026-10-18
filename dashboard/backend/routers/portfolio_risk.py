@@ -168,3 +168,15 @@ def get_portfolio_risk() -> dict:
         "correlation": correlation,
         "warnings": warnings,
     }
+
+
+@router.get("/portfolio/analytics")
+def get_portfolio_analytics() -> dict:
+    """Beta and hedge, factor exposures and crisis stress tests for the
+    current holdings (analytics/portfolio_analytics.py). Slower than
+    /portfolio/risk: it fetches a year of daily bars (cached)."""
+    from analytics.portfolio_analytics import analyse
+    from data_engine.history import fetch_daily
+    state = _load_state()
+    capital = float(state.get("initial_capital", 500_000.0)) or 500_000.0
+    return analyse(state.get("positions", []), capital, fetch_daily)

@@ -178,27 +178,23 @@ class FactorModel:
         decomp["residual"] = round(portfolio_return - factor_total - decomp["alpha"], 6)
         return decomp
 
+    # Universe sectors (config/instruments.py) that have a hedgeable factor index
+    _SECTOR_FACTOR = {"Banking": "banking", "Finance": "banking", "IT": "it",
+                      "FMCG": "fmcg", "Automobile": "auto"}
+
     def sector_exposure(self, positions: Dict[str, float]) -> Dict[str, float]:
         """
-        Compute current portfolio sector exposure as % of total capital.
+        Share of gross exposure per factor sector (banking, it, fmcg, auto,
+        other), from the universe's sectors in config/instruments.py.
         positions: {symbol: market_value}
-        Returns: {sector: total_exposure_pct}
         """
-        # Simple sector classification for Nifty50
-        SECTOR_MAP = {
-            "HDFCBANK": "banking", "ICICIBANK": "banking", "KOTAKBANK": "banking",
-            "AXISBANK": "banking", "SBIN": "banking", "BAJFINANCE": "banking",
-            "TCS": "it", "INFY": "it", "WIPRO": "it", "HCLTECH": "it", "TECHM": "it",
-            "HINDUNILVR": "fmcg", "ITC": "fmcg", "NESTLEIND": "fmcg",
-            "MARUTISUZUKI": "auto", "TATAMOTORS": "auto", "M&M": "auto",
-            "RELIANCE": "energy", "ONGC": "energy", "BPCL": "energy",
-            "SUNPHARMA": "pharma", "DRREDDY": "pharma", "CIPLA": "pharma",
-        }
+        from config.instruments import STOCK_UNIVERSE
         total = sum(abs(v) for v in positions.values()) or 1.0
         sector_exp: Dict[str, float] = {}
         for sym, val in positions.items():
-            sector = SECTOR_MAP.get(sym.upper(), "other")
-            sector_exp[sector] = sector_exp.get(sector, 0.0) + abs(val) / total
+            sector = (STOCK_UNIVERSE.get(sym.upper()) or {}).get("sector", "")
+            factor = self._SECTOR_FACTOR.get(sector, "other")
+            sector_exp[factor] = sector_exp.get(factor, 0.0) + abs(val) / total
         return {k: round(v, 4) for k, v in sector_exp.items()}
 
     def hedge_suggestion(

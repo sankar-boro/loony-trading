@@ -585,3 +585,36 @@ export interface SignalPerformance {
   by_score: { band: string; count: number; avg_5d: number | null; hit_5d: number | null }[]
   components: { component: string; corr_5d: number | null }[]
 }
+
+// ── Portfolio analytics (/api/portfolio/analytics) ──────────────────────────
+
+export interface PortfolioAnalytics {
+  positions: number
+  gross?: number
+  net?: number
+  missing?: string[]
+  beta?: {
+    portfolio: number
+    per_symbol: Record<string, { beta: number; r_squared: number }>
+    beta_exposure: number
+    hedge: { direction: string; lots: number; notional: number; instrument: string; reason: string } | null
+    hedge_note: string
+  }
+  factors?: {
+    alpha_annual_pct: number
+    loadings: Record<string, number>
+    t_stats: Record<string, number>
+    r_squared: number
+    residual_vol_pct: number
+    n_obs: number
+    sector_exposure: Record<string, number>
+    hedge_suggestion: string | null
+  } | null
+  stress?: {
+    capital_beta: number
+    worst: string | null
+    tail_cvar_pct: number | null
+    scenarios: { key: string; name: string; return_pct: number; max_drawdown_pct: number;
+                 recovery_days: number; cvar_95_pct: number; survived: boolean }[]
+  }
+}

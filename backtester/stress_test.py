@@ -197,6 +197,19 @@ def run_stress_test(
     return report
 
 
+def calibrated_returns(scenario: dict) -> np.ndarray:
+    """The scenario's daily Nifty returns, rescaled in log space so they
+    compound to its stated `nifty_total_pct`. The hand-entered daily paths
+    keep the shape of each crisis but did not add up — COVID's compounded
+    to −68 % against the −38 % it describes — which overstated every loss."""
+    r = np.asarray(scenario["daily_returns"], dtype=float)
+    target = scenario.get("nifty_total_pct")
+    logs = np.log1p(r)
+    if target is None or abs(logs.sum()) < 1e-12:
+        return r
+    return np.expm1(logs * np.log1p(target / 100) / logs.sum())
+
+
 def _simulate_scenario(
     scenario: dict,
     strategy_vol_daily: float,
@@ -205,7 +218,7 @@ def _simulate_scenario(
     beta: float,
 ) -> ScenarioResult:
     """Simulate one scenario and compute metrics."""
-    nifty_returns = np.array(scenario["daily_returns"])
+    nifty_returns = calibrated_returns(scenario)
     n = len(nifty_returns)
 
     # Strategy returns = beta * nifty + idiosyncratic noise

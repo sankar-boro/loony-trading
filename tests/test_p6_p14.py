@@ -741,7 +741,7 @@ class TestFactorModel:
     def test_sector_exposure_contains_known_sectors(self):
         from analytics.factor_model import FactorModel
         fm = FactorModel()
-        positions = {"TCS": 100_000, "HDFCBANK": 100_000, "MARUTISUZUKI": 100_000}
+        positions = {"TCS": 100_000, "HDFCBANK": 100_000, "MARUTI": 100_000}
         exp = fm.sector_exposure(positions)
         assert "it" in exp
         assert "banking" in exp
