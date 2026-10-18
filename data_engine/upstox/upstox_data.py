@@ -139,9 +139,23 @@ class UpstoxDataEngine:
             age_h = (time.time() - cache_file.stat().st_mtime) / 3600
             if age_h < cache_threshold_hours:
                 df = pd.read_parquet(cache_file)
-                logger.info(f"Cache hit: {symbol}/{timeframe} ({len(df)} bars, {age_h:.1f}h old)")
-                self._candle_cache.setdefault(symbol, {})[timeframe] = df
-                return df
+                # The cache is keyed by symbol and timeframe only, so a fresh
+                # file from a shorter request must not answer a longer one —
+                # that silently truncated backtests and training data.
+                start = now_utc() - timedelta(days=lookback_days)
+                first = df.index.min() if len(df) else None
+                if first is not None and first.tzinfo is None:
+                    first = first.tz_localize("UTC")
+                if first is not None and first <= start + timedelta(days=7):
+                    if df.index.tz is None:
+                        df = df[df.index >= start.replace(tzinfo=None)]
+                    else:
+                        df = df[df.index >= start]
+                    logger.info(f"Cache hit: {symbol}/{timeframe} ({len(df)} bars, {age_h:.1f}h old)")
+                    self._candle_cache.setdefault(symbol, {})[timeframe] = df
+                    return df
+                logger.info(f"Cache for {symbol}/{timeframe} starts {first} — too short for "
+                            f"{lookback_days} days, refetching")
 
         # Demo mode (spec §41): no Upstox token configured — the app must
         # still run end to end, so generate clearly-synthetic OHLCV instead

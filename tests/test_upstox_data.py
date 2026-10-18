@@ -190,3 +190,25 @@ def test_resolve_key_passthrough(engine):
 def test_resolve_key_unknown(engine):
     key = engine._resolve_key("UNKNOWNSYM999")
     assert key is None
+
+
+def _daily(days: int) -> pd.DataFrame:
+    idx = pd.date_range(end=pd.Timestamp.now(tz="UTC").normalize(), periods=days, freq="D")
+    return pd.DataFrame({"open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0, "volume": 1.0}, index=idx)
+
+
+def test_short_cache_does_not_answer_a_longer_request(engine, tmp_path):
+    """The cache is keyed by symbol and timeframe; a fresh 60-day file must
+    not be returned for a 3-year request (it silently truncated backtests)."""
+    _daily(60).to_parquet(tmp_path / "upstox_RELIANCE_1d.parquet")
+    with patch.object(engine, "_fetch_chunk", return_value=_daily(1000)) as fetch:
+        df = engine.fetch_ohlcv("RELIANCE", "1d", lookback_days=1000)
+    assert fetch.called and len(df) >= 990
+
+
+def test_long_cache_answers_a_shorter_request_trimmed(engine, tmp_path):
+    _daily(400).to_parquet(tmp_path / "upstox_RELIANCE_1d.parquet")
+    with patch.object(engine, "_fetch_chunk") as fetch:
+        df = engine.fetch_ohlcv("RELIANCE", "1d", lookback_days=90)
+    assert not fetch.called
+    assert 89 <= len(df) <= 91
