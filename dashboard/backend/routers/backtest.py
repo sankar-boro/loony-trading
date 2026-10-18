@@ -203,7 +203,7 @@ def _run_backtest_sync(job_id: str, req: BacktestRequest) -> None:
         bench_df = None
         if req.benchmark:
             try:
-                tmp = _fetch_ohlcv(token, "NSE_INDEX|Nifty 50", interval, days)
+                tmp = _fetch_ohlcv(token, _IKEYS["NIFTY50"], interval, days)
                 bench_df = tmp if not tmp.empty else None
             except Exception:
                 bench_df = None

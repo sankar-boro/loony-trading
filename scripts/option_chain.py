@@ -301,14 +301,16 @@ def _render_chain(token: str, symbol_name: str, instrument_key: str,
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
+from config.instruments import INDEX_INSTRUMENTS as _IDX  # noqa: E402
+
 SYMBOLS = {
-    "nifty 50":      "NSE_INDEX|Nifty 50",
-    "nifty":         "NSE_INDEX|Nifty 50",
-    "nifty bank":    "NSE_INDEX|Nifty Bank",
-    "banknifty":     "NSE_INDEX|Nifty Bank",
-    "bank nifty":    "NSE_INDEX|Nifty Bank",
-    "finnifty":      "NSE_INDEX|Nifty Fin Service",
-    "midcap nifty":  "NSE_INDEX|NIFTY MIDCAP SELECT",
+    "nifty 50":      _IDX["NIFTY50"],
+    "nifty":         _IDX["NIFTY50"],
+    "nifty bank":    _IDX["BANKNIFTY"],
+    "banknifty":     _IDX["BANKNIFTY"],
+    "bank nifty":    _IDX["BANKNIFTY"],
+    "finnifty":      _IDX["FINNIFTY"],
+    "midcap nifty":  _IDX["MIDCPNIFTY"],
 }
 
 

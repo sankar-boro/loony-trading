@@ -37,13 +37,8 @@ def dim(s):    return f"{DIM}{s}{E}"
 # ── Config ────────────────────────────────────────────────────────────────────
 
 SYMBOLS = ["RELIANCE", "TCS", "HDFCBANK", "SBIN", "AXISBANK"]
-INSTRUMENTS = {
-    "RELIANCE":  "NSE_EQ|INE002A01018",
-    "TCS":       "NSE_EQ|INE467B01029",
-    "HDFCBANK":  "NSE_EQ|INE040A01034",
-    "SBIN":      "NSE_EQ|INE062A01020",
-    "AXISBANK":  "NSE_EQ|INE238A01034",
-}
+from config.instruments import INSTRUMENTS as _UNIVERSE_KEYS  # noqa: E402
+INSTRUMENTS = {sym: _UNIVERSE_KEYS[sym] for sym in SYMBOLS}
 DAYS = 180
 CAPITAL = 500_000.0
 

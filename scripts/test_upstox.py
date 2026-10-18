@@ -49,6 +49,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from config.instruments import INSTRUMENTS  # noqa: E402
+NIFTY50_KEY = INSTRUMENTS["NIFTY50"]
+
 
 # ── Colour helpers ────────────────────────────────────────────────────────────
 
@@ -271,7 +274,7 @@ def test_connectivity(token: str, r: Results, verbose: bool):
     r.section_start("[1] Connectivity & Token Validity")
 
     resp = _get(token, "/market-quote/ltp",
-                {"instrument_key": _encode("NSE_INDEX|Nifty 50")}, verbose)
+                {"instrument_key": _encode(NIFTY50_KEY)}, verbose)
 
     r.check("API reachable (HTTP 200)", resp["status_code"] == 200,
             detail=f"Status: {resp['status_code']}")
@@ -292,14 +295,14 @@ def test_ltp(token: str, r: Results, verbose: bool):
     r.section_start("[2] LTP — Live Last Traded Price")
 
     instruments = {
-        "Nifty 50":     "NSE_INDEX|Nifty 50",
-        "Bank Nifty":   "NSE_INDEX|Nifty Bank",
-        "Nifty IT":     "NSE_INDEX|Nifty IT",
-        "Nifty Midcap": "NSE_INDEX|NIFTY MIDCAP 150",
-        "India VIX":    "NSE_INDEX|India VIX",
-        "RELIANCE":     "NSE_EQ|INE002A01018",
-        "TCS":          "NSE_EQ|INE467B01029",
-        "HDFCBANK":     "NSE_EQ|INE040A01034",
+        "Nifty 50":     INSTRUMENTS["NIFTY50"],
+        "Bank Nifty":   INSTRUMENTS["BANKNIFTY"],
+        "Nifty IT":     INSTRUMENTS["NIFTYIT"],
+        "Nifty Midcap": INSTRUMENTS["MIDCAP"],
+        "India VIX":    INSTRUMENTS["VIXINDIA"],
+        "RELIANCE":     INSTRUMENTS["RELIANCE"],
+        "TCS":          INSTRUMENTS["TCS"],
+        "HDFCBANK":     INSTRUMENTS["HDFCBANK"],
     }
 
     keys = ",".join(_encode(k) for k in instruments.values())
@@ -324,7 +327,7 @@ def test_full_quotes(token: str, r: Results, verbose: bool):
     r.section_start("[3] Full OHLCV Quotes")
 
     resp = _get(token, "/market-quote/quotes",
-                {"instrument_key": _encode("NSE_INDEX|Nifty 50")}, verbose)
+                {"instrument_key": _encode(NIFTY50_KEY)}, verbose)
     r.check("Full quote endpoint returns 200", resp["status_code"] == 200)
 
     data = resp["body"].get("data", {}).get("NSE_INDEX:Nifty 50", {})
@@ -346,7 +349,7 @@ def test_full_quotes(token: str, r: Results, verbose: bool):
 def test_historical(token: str, r: Results, verbose: bool):
     r.section_start("[4] Historical Candles")
 
-    key = _encode("NSE_INDEX|Nifty 50")
+    key = _encode(NIFTY50_KEY)
     to_d = date.today().isoformat()
 
     from_d = _date(60)
@@ -373,7 +376,7 @@ def test_historical(token: str, r: Results, verbose: bool):
 def test_intraday(token: str, r: Results, verbose: bool):
     r.section_start("[5] Intraday Candles")
 
-    key = _encode("NSE_INDEX|Nifty 50")
+    key = _encode(NIFTY50_KEY)
 
     for interval in ("1minute", "30minute"):
         resp = _get(token, f"/historical-candle/intraday/{key}/{interval}", verbose=verbose)
@@ -410,7 +413,7 @@ def test_options(token: str, r: Results, verbose: bool):
     expiry_str = expiry.isoformat()
 
     resp = _get(token, "/option/chain",
-                {"instrument_key": "NSE_INDEX|Nifty 50", "expiry_date": expiry_str}, verbose)
+                {"instrument_key": NIFTY50_KEY, "expiry_date": expiry_str}, verbose)
     code = resp["status_code"]
     r.check(f"Option chain endpoint accessible (status {code})",
             code in (200, 400, 404),
@@ -428,7 +431,7 @@ def test_options(token: str, r: Results, verbose: bool):
 
     try:
         ltp_resp = _get(token, "/market-quote/ltp",
-                        {"instrument_key": _encode("NSE_INDEX|Nifty 50")}, verbose)
+                        {"instrument_key": _encode(NIFTY50_KEY)}, verbose)
         spot = ltp_resp["body"].get("data", {}).get("NSE_INDEX:Nifty 50", {}).get("last_price")
 
         if spot:
@@ -550,7 +553,7 @@ def test_websocket(token: str, r: Results, verbose: bool):
         connected = [False]
         subscribed = [False]
         error_msg = [""]
-        _SUB_KEY = "NSE_INDEX|Nifty 50"
+        _SUB_KEY = NIFTY50_KEY
 
         def on_open(ws):
             connected[0] = True
@@ -627,7 +630,7 @@ def test_production_modules(token: str, r: Results, verbose: bool):
     r.section_start("[11] Production Module Integration")
 
     try:
-        resp = _get(token, "/historical-candle/" + _encode("NSE_INDEX|Nifty 50") +
+        resp = _get(token, "/historical-candle/" + _encode(NIFTY50_KEY) +
                     f"/day/{date.today().isoformat()}/{_date(90)}", verbose=verbose)
         candles = resp["body"].get("data", {}).get("candles", [])
     except Exception as e:
@@ -722,7 +725,7 @@ _SANDBOX_ORDER = {
     "validity": "DAY",
     "price": 1.0,
     "tag": "test_upstox",
-    "instrument_token": "NSE_EQ|INE002A01018",
+    "instrument_token": INSTRUMENTS["RELIANCE"],
     "order_type": "LIMIT",
     "transaction_type": "BUY",
     "disclosed_quantity": 0,

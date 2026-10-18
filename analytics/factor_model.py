@@ -29,6 +29,7 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import Ridge
 
+from config.instruments import INDEX_INSTRUMENTS
 from utils.logger import get_logger
 
 logger = get_logger("factor_model")
@@ -36,12 +37,12 @@ logger = get_logger("factor_model")
 
 # NSE indices to use as factors (Upstox instrument keys)
 INDIA_FACTOR_KEYS = {
-    "market":  "NSE_INDEX|Nifty 50",
-    "banking": "NSE_INDEX|Nifty Bank",
-    "it":      "NSE_INDEX|Nifty IT",
-    "fmcg":    "NSE_INDEX|Nifty FMCG",
-    "auto":    "NSE_INDEX|Nifty Auto",
-    "midcap":  "NSE_INDEX|NIFTY MIDCAP 150",
+    "market":  INDEX_INSTRUMENTS["NIFTY50"],
+    "banking": INDEX_INSTRUMENTS["BANKNIFTY"],
+    "it":      INDEX_INSTRUMENTS["NIFTYIT"],
+    "fmcg":    INDEX_INSTRUMENTS["NIFTYFMCG"],
+    "auto":    INDEX_INSTRUMENTS["NIFTYAUTO"],
+    "midcap":  INDEX_INSTRUMENTS["MIDCAP"],
 }
 
 

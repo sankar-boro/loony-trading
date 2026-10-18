@@ -26,6 +26,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from config.instruments import INDEX_INSTRUMENTS
 from utils.logger import get_logger
 
 logger = get_logger("beta_neutral")
@@ -196,7 +197,7 @@ class BetaNeutralManager:
         self._current_hedge_lots = lots_needed * (1 if direction == "sell" else -1)
 
         return HedgeOrder(
-            instrument="NSE_INDEX|Nifty 50",
+            instrument=INDEX_INSTRUMENTS["NIFTY50"],
             direction=direction,
             lots=lots_needed,
             notional=round(hedge_notional, 2),

@@ -32,15 +32,15 @@ import pandas as pd
 import requests
 
 from data_engine.upstox.market_hours import IST
+from config.instruments import INDEX_INSTRUMENTS
 from utils.logger import get_logger
 
 logger = get_logger("gift_nifty")
 
 # Known Upstox instrument keys for GIFT/SGX Nifty
-_GIFT_NIFTY_KEY   = "NSE_INDEX|NIFTY 50"    # fallback: use spot Nifty
 _GIFT_NIFTY_KEYS  = [
-    "NSE_INDEX|GIFT NIFTY",
-    "BSE_INDEX|SENSEX",                      # cross-check
+    INDEX_INSTRUMENTS["GIFTNIFTY"],
+    INDEX_INSTRUMENTS["SENSEX"],             # cross-check
 ]
 
 # Gap thresholds for signal generation

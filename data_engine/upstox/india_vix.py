@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 import requests
 
+from config.instruments import INDEX_INSTRUMENTS
 from utils.logger import get_logger
 
 logger = get_logger("india_vix")
@@ -31,7 +32,7 @@ logger = get_logger("india_vix")
 _CACHE_DIR = Path("data/nse_cache")
 _CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-VIX_INSTRUMENT_KEY = "NSE_INDEX|India VIX"
+VIX_INSTRUMENT_KEY = INDEX_INSTRUMENTS["VIXINDIA"]
 
 # Thresholds based on empirical NSE data
 VIX_EXTREME_FEAR   = 25.0   # panic territory → potential reversal up
@@ -89,8 +90,8 @@ def get_current_vix(upstox_data_engine=None) -> Optional[float]:
     """
     if upstox_data_engine is not None:
         try:
-            ltp_map = upstox_data_engine.get_ltp(["NSE_INDEX|India VIX"])
-            vix = ltp_map.get("NSE_INDEX|India VIX")
+            ltp_map = upstox_data_engine.get_ltp([VIX_INSTRUMENT_KEY])
+            vix = ltp_map.get(VIX_INSTRUMENT_KEY)
             if vix and vix > 0:
                 return float(vix)
         except Exception as e:

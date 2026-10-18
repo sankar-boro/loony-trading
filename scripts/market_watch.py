@@ -155,35 +155,18 @@ def _market_status(token: str) -> str:
 
 # ── default watchlist ─────────────────────────────────────────────────────────
 
+from config.instruments import INDEX_INSTRUMENTS, INSTRUMENTS, STOCK_UNIVERSE  # noqa: E402
+
 DEFAULT_INDICES = [
-    ("NIFTY 50",       "NSE_INDEX|Nifty 50"),
-    ("BANK NIFTY",     "NSE_INDEX|Nifty Bank"),
-    ("NIFTY IT",       "NSE_INDEX|Nifty IT"),
-    ("INDIA VIX",      "NSE_INDEX|India VIX"),
-    ("NIFTY MIDCAP",   "NSE_INDEX|NIFTY MIDCAP 150"),
+    ("NIFTY 50",     INDEX_INSTRUMENTS["NIFTY50"]),
+    ("BANK NIFTY",   INDEX_INSTRUMENTS["BANKNIFTY"]),
+    ("NIFTY IT",     INDEX_INSTRUMENTS["NIFTYIT"]),
+    ("INDIA VIX",    INDEX_INSTRUMENTS["VIXINDIA"]),
+    ("NIFTY MIDCAP", INDEX_INSTRUMENTS["MIDCAP"]),
 ]
 
-DEFAULT_EQUITIES = [
-    ("RELIANCE",  "NSE_EQ|INE002A01018"),
-    ("TCS",       "NSE_EQ|INE467B01029"),
-    ("HDFCBANK",  "NSE_EQ|INE040A01034"),
-    ("INFY",      "NSE_EQ|INE009A01021"),
-    ("ICICIBANK", "NSE_EQ|INE090A01021"),
-    ("SBIN",      "NSE_EQ|INE062A01020"),
-    ("WIPRO",     "NSE_EQ|INE075A01022"),
-    ("ADANIENT",  "NSE_EQ|INE423A01024"),
-]
-
-EQUITY_ISIN = {
-    "RELIANCE": "INE002A01018", "TCS": "INE467B01029",
-    "HDFCBANK": "INE040A01034", "INFY": "INE009A01021",
-    "ICICIBANK": "INE090A01021", "SBIN": "INE062A01020",
-    "WIPRO": "INE075A01022", "ADANIENT": "INE423A01024",
-    "BAJFINANCE": "INE296A01032", "KOTAKBANK": "INE237A01036",
-    "HINDUNILVR": "INE030A01027", "AXISBANK": "INE238A01034",
-    "LT": "INE018A01030", "MARUTI": "INE585B01010",
-    "SUNPHARMA": "INE044A01036",
-}
+DEFAULT_EQUITIES = [(sym, INSTRUMENTS[sym]) for sym in
+                    ("RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "SBIN", "WIPRO", "ADANIENT")]
 
 
 def _parse_custom_instruments(symbols: str) -> list[tuple[str, str]]:
@@ -192,11 +175,10 @@ def _parse_custom_instruments(symbols: str) -> list[tuple[str, str]]:
         sym = sym.strip()
         if not sym:
             continue
-        isin = EQUITY_ISIN.get(sym)
-        if isin:
-            result.append((sym, f"NSE_EQ|{isin}"))
+        if sym in STOCK_UNIVERSE:
+            result.append((sym, INSTRUMENTS[sym]))
         else:
-            print(f"  [!] Unknown symbol '{sym}' — skipping. Add its ISIN to EQUITY_ISIN dict.")
+            print(f"  [!] Unknown symbol '{sym}' — skipping. Add it to config/instruments.py.")
     return result
 
 

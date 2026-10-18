@@ -14,6 +14,14 @@ Each stock entry has:
   nifty50     — Member of Nifty 50 index
   nifty_next  — Member of Nifty Next 50 index
 
+Every instrument key in the code base comes from here — never hardcode an
+ISIN or an "NSE_INDEX|..." string elsewhere (tests/test_instrument_isins.py
+enforces it). Look keys up instead:
+
+    INSTRUMENTS["TCS"]                  # stock or index, by symbol
+    INDEX_INSTRUMENTS["NIFTY50"]        # "NSE_INDEX|Nifty 50"
+    STOCK_UNIVERSE["TCS"]["isin"]       # bare ISIN
+
 Usage:
     from config.instruments import INSTRUMENTS, STOCK_UNIVERSE, get_sector_map
 
@@ -153,6 +161,14 @@ INDEX_INSTRUMENTS: Dict[str, str] = {
     "FINNIFTY":   "NSE_INDEX|Nifty Fin Service",
     "VIXINDIA":   "NSE_INDEX|India VIX",
     "MIDCAP":     "NSE_INDEX|NIFTY MIDCAP 150",
+    "NIFTYMIDCAP": "NSE_INDEX|Nifty Midcap 50",
+    "MIDCPNIFTY": "NSE_INDEX|NIFTY MIDCAP SELECT",
+    "NIFTYAUTO":  "NSE_INDEX|Nifty Auto",
+    "NIFTYFMCG":  "NSE_INDEX|Nifty FMCG",
+    "SENSEX":     "BSE_INDEX|SENSEX",
+    # Not in the Upstox master yet; data_engine/gift_nifty.py probes it and
+    # falls back to Nifty 50.
+    "GIFTNIFTY":  "NSE_INDEX|GIFT NIFTY",
 }
 
 # ── Derived: flat symbol → instrument_key map (for Upstox API calls) ─────────

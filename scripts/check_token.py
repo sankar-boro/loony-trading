@@ -27,6 +27,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from config.instruments import INSTRUMENTS  # noqa: E402
+
 G = "\033[92m"; R = "\033[91m"; Y = "\033[93m"; B = "\033[1m"; DIM = "\033[2m"; E = "\033[0m"
 
 
@@ -134,9 +136,8 @@ def _check_production(token: str, source: str) -> bool:
     import requests
 
     def _enc(k): return k.replace("|", "%7C").replace(" ", "%20")
-    keys = ",".join(_enc(k) for k in [
-        "NSE_INDEX|Nifty 50", "NSE_INDEX|Nifty Bank", "NSE_INDEX|India VIX"
-    ])
+    from config.instruments import INDEX_INSTRUMENTS as IDX
+    keys = ",".join(_enc(IDX[s]) for s in ("NIFTY50", "BANKNIFTY", "VIXINDIA"))
     try:
         r = requests.get(
             f"https://api.upstox.com/v2/market-quote/ltp?instrument_key={keys}",
@@ -195,7 +196,7 @@ def _check_sandbox(token: str, source: str) -> bool:
         "validity": "DAY",
         "price": 1.0,
         "tag": "token_check",
-        "instrument_token": "NSE_EQ|INE002A01018",  # RELIANCE
+        "instrument_token": INSTRUMENTS["RELIANCE"],
         "order_type": "LIMIT",
         "transaction_type": "BUY",
         "disclosed_quantity": 0,

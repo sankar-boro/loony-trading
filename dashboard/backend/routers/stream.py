@@ -36,7 +36,7 @@ async def _fetch_sse_snapshot(token: str):
                     prev = price_cache.get(sym, {}).get("ltp", float(ltp))
                     chg_pct = (float(ltp) - prev) / prev * 100 if prev else 0
                     price_cache[sym] = {"ltp": float(ltp), "change_pct": round(chg_pct, 2)}
-            _idx_map = {"NSE_INDEX|Nifty 50": "NIFTY50", "NSE_INDEX|Nifty Bank": "BANKNIFTY", "NSE_INDEX|Nifty IT": "NIFTYIT"}
+            _idx_map = {_IKEYS[name]: name for name in ("NIFTY50", "BANKNIFTY", "NIFTYIT")}
             for ikey, name in _idx_map.items():
                 entry = data.get(ikey.replace("|", ":"), {})
                 ltp = entry.get("last_price")

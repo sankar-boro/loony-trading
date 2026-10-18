@@ -35,47 +35,9 @@ _INSTRUMENT_URLS = {
     "MCX_FO":    _MASTER_URL.format(file="MCX"),
 }
 
-# Well-known instrument keys for popular Indian instruments (fallback when master unavailable)
-KNOWN_INSTRUMENTS: Dict[str, str] = {
-    # NSE Equity — Large Cap
-    "RELIANCE":     "NSE_EQ|INE002A01018",
-    "TCS":          "NSE_EQ|INE467B01029",
-    "HDFCBANK":     "NSE_EQ|INE040A01034",
-    "INFY":         "NSE_EQ|INE009A01021",
-    "ICICIBANK":    "NSE_EQ|INE090A01021",
-    "HINDUNILVR":   "NSE_EQ|INE030A01027",
-    "BAJFINANCE":   "NSE_EQ|INE296A01032",
-    "SBIN":         "NSE_EQ|INE062A01020",
-    "BHARTIARTL":   "NSE_EQ|INE397D01024",
-    "KOTAKBANK":    "NSE_EQ|INE237A01036",
-    "LT":           "NSE_EQ|INE018A01030",
-    "AXISBANK":     "NSE_EQ|INE238A01034",
-    "ASIANPAINT":   "NSE_EQ|INE021A01026",
-    "WIPRO":        "NSE_EQ|INE075A01022",
-    "MARUTI":       "NSE_EQ|INE585B01010",
-    "TITAN":        "NSE_EQ|INE280A01028",
-    "SUNPHARMA":    "NSE_EQ|INE044A01036",
-    "ULTRACEMCO":   "NSE_EQ|INE481G01011",
-    "NESTLEIND":    "NSE_EQ|INE239A01024",
-    "POWERGRID":    "NSE_EQ|INE752E01010",
-    "NTPC":         "NSE_EQ|INE733E01010",
-    "ONGC":         "NSE_EQ|INE213A01029",
-    "TECHM":        "NSE_EQ|INE669C01036",
-    "HCLTECH":      "NSE_EQ|INE860A01027",
-    "ITC":          "NSE_EQ|INE154A01025",
-    "ADANIPORTS":   "NSE_EQ|INE742F01042",
-    "BAJAJFINSV":   "NSE_EQ|INE918I01026",
-    "TATAMOTORS":   "NSE_EQ|INE155A01022",
-    "TATASTEEL":    "NSE_EQ|INE081A01020",
-    "JSWSTEEL":     "NSE_EQ|INE019A01038",
-    # NSE Indices
-    "NIFTY50":      "NSE_INDEX|Nifty 50",
-    "NIFTYBANK":    "NSE_INDEX|Nifty Bank",
-    "NIFTYMIDCAP":  "NSE_INDEX|Nifty Midcap 50",
-    "NIFTYIT":      "NSE_INDEX|Nifty IT",
-    "NIFTYAUTO":    "NSE_INDEX|Nifty Auto",
-    "SENSEX":       "BSE_INDEX|SENSEX",
-}
+# Fallback keys when the instrument master is unavailable: the project's
+# universe and indices, from the single source of truth.
+from config.instruments import INSTRUMENTS as KNOWN_INSTRUMENTS  # noqa: E402
 
 
 class InstrumentRegistry:
@@ -99,20 +61,14 @@ class InstrumentRegistry:
         for exch in exchanges:
             self._load_exchange(exch, force_refresh)
         # Seed with the project's verified universe (config/instruments.py —
-        # checked against the master by tests/test_instrument_isins.py) and
-        # the known-instrument fallback, so the stocks we trade always
-        # resolve even when the master download fails.
-        # Universe symbols always win: the master can hold an unrelated
-        # instrument under the same ticker (e.g. "MIDCAP" is an ETF there,
-        # but the universe's Nifty Midcap 150 index here).
-        from config.instruments import INSTRUMENTS as _UNIVERSE_KEYS
-        for sym, key in _UNIVERSE_KEYS.items():
+        # checked against the master by tests/test_instrument_isins.py), so
+        # the stocks we trade always resolve even when the master download
+        # fails. Universe symbols always win: the master can hold an
+        # unrelated instrument under the same ticker (e.g. "MIDCAP" is an
+        # ETF there, but the universe's Nifty Midcap 150 index here).
+        for sym, key in KNOWN_INSTRUMENTS.items():
             self._by_symbol[sym] = self._by_key.get(key) or {
                 "instrument_key": key, "tradingsymbol": sym, "exchange": key.split("|")[0]}
-        for sym, key in KNOWN_INSTRUMENTS.items():
-            if sym not in self._by_symbol:
-                self._by_symbol[sym] = {"instrument_key": key, "tradingsymbol": sym,
-                                         "exchange": key.split("|")[0]}
         self._loaded = True
         logger.info(f"Instrument registry loaded: {len(self._by_symbol):,} symbols")
 
@@ -163,7 +119,7 @@ class InstrumentRegistry:
         rec = self._by_symbol.get(symbol.upper())
         if rec:
             return rec.get("instrument_key")
-        # Try known instruments directly
+        # Fall back to the universe (config/instruments.py)
         return KNOWN_INSTRUMENTS.get(symbol.upper())
 
     def get_metadata(self, instrument_key: str) -> Optional[dict]:

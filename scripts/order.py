@@ -150,25 +150,15 @@ def _delete(base: str, token: str, path: str) -> tuple[int, dict]:
 
 # ── instrument lookup ─────────────────────────────────────────────────────────
 
-COMMON_ISINS = {
-    "RELIANCE": "INE002A01018", "TCS": "INE467B01029",
-    "HDFCBANK": "INE040A01034", "INFY": "INE009A01021",
-    "ICICIBANK": "INE090A01021", "SBIN": "INE062A01020",
-    "WIPRO": "INE075A01022", "ADANIENT": "INE423A01024",
-    "BAJFINANCE": "INE296A01032", "KOTAKBANK": "INE237A01036",
-    "AXISBANK": "INE238A01034", "LT": "INE018A01030",
-    "MARUTI": "INE585B01010", "SUNPHARMA": "INE044A01036",
-    "HINDUNILVR": "INE030A01027",
-}
+from config.instruments import STOCK_UNIVERSE, INSTRUMENTS  # noqa: E402
 
 
 def _resolve_instrument(base: str, token: str, symbol: str) -> str | None:
     """Return instrument_token for a symbol (NSE_EQ|ISIN format)."""
     sym = symbol.upper().strip()
-    # Direct ISIN
-    isin = COMMON_ISINS.get(sym)
-    if isin:
-        return f"NSE_EQ|{isin}"
+    # The project's universe (config/instruments.py)
+    if sym in STOCK_UNIVERSE:
+        return INSTRUMENTS[sym]
     # Search API
     code, resp = _get(base, token, f"/instruments/search?query={sym}&segment=NSE_EQ")
     if code == 200:

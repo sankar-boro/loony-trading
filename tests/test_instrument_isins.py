@@ -2,7 +2,9 @@
 is renamed (10 had, in October 2026 — KOTAKBANK, BAJFINANCE, HAL, ...),
 and Upstox then silently returns no data for that stock."""
 from __future__ import annotations
+import ast
 import csv
+import re
 from pathlib import Path
 
 import pytest
@@ -21,19 +23,36 @@ def test_registry_isins_exist_in_upstox_master():
     assert stale == [], f"ISINs not in the Upstox instrument master: {stale}"
 
 
-def test_duplicate_isin_maps_agree_with_registry():
-    from data_engine.upstox import instruments as up_instruments
-    from scripts.market_watch import EQUITY_ISIN
-    from scripts.order import COMMON_ISINS
+# An ISIN, or an exchange-qualified instrument key such as "NSE_INDEX|Nifty 50"
+_KEY_LITERAL = re.compile(r"\bIN[EF][0-9A-Z]{9}\b|\b(?:NSE|BSE)_(?:EQ|INDEX)\|[A-Za-z]")
+_SOURCE_OF_TRUTH = ROOT / "config" / "instruments.py"
+_SKIP_DIRS = {"tests", "node_modules", ".venv", "venv", "alembic", "__pycache__"}
 
-    copies = {f"scripts/market_watch.py:{s}": f"NSE_EQ|{i}" for s, i in EQUITY_ISIN.items()}
-    copies |= {f"scripts/order.py:{s}": f"NSE_EQ|{i}" for s, i in COMMON_ISINS.items()}
-    for name in dir(up_instruments):
-        obj = getattr(up_instruments, name)
-        if isinstance(obj, dict) and obj and all(isinstance(v, str) and v.startswith("NSE_EQ|")
-                                                 for v in obj.values()):
-            copies |= {f"data_engine/upstox/instruments.py:{s}": k for s, k in obj.items()}
 
-    wrong = {where: key for where, key in copies.items()
-             if where.split(":")[1] in INSTRUMENTS and INSTRUMENTS[where.split(":")[1]] != key}
-    assert wrong == {}
+def _docstring_nodes(tree: ast.AST) -> set[int]:
+    ids = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            body = node.body
+            if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+                ids.add(id(body[0].value))
+    return ids
+
+
+def test_instrument_keys_only_live_in_config_instruments():
+    """Every stock ISIN and index key comes from config/instruments.py; code
+    looks them up (INSTRUMENTS["TCS"], INDEX_INSTRUMENTS["NIFTY50"]) instead
+    of keeping its own copy that can go stale. Docstrings and comments may
+    show example keys."""
+    offenders = []
+    for path in ROOT.rglob("*.py"):
+        rel = path.relative_to(ROOT)
+        if path == _SOURCE_OF_TRUTH or _SKIP_DIRS & set(rel.parts):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        docstrings = _docstring_nodes(tree)
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                    and id(node) not in docstrings and _KEY_LITERAL.search(node.value)):
+                offenders.append(f"{rel}:{node.lineno}: {node.value[:50]!r}")
+    assert offenders == [], "Hardcoded instrument keys (use config/instruments.py):\n" + "\n".join(offenders)

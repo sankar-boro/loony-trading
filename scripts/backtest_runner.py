@@ -485,7 +485,7 @@ def main():
     print(f"  {dim('Fetching Nifty 50 benchmark...')} ", end="", flush=True)
     import pandas as pd
     benchmark_df = (pd.DataFrame() if recorded
-                    else _fetch_ohlcv(token, "NSE_INDEX|Nifty 50", interval, days))
+                    else _fetch_ohlcv(token, INSTRUMENTS["NIFTY50"], interval, days))
     if not benchmark_df.empty:
         print(f"{dim(f'{len(benchmark_df)} bars')}")
     else:
