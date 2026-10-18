@@ -158,29 +158,72 @@ way.
 
 ## Market regimes
 
-`strategies/regime_detector.py` classifies a frame into one of five regimes:
+`strategies/regime_detector.py` classifies the latest bar into one of seven
+regimes. Each strategy trades only in its preferred regimes.
 
-| Regime | ADX/volatility rule |
+| Regime | Rule (ADX / volatility) |
 |---|---|
-| `HIGH_VOLATILITY` | 20-bar return volatility > `regime_detection.volatility_high_pct` (3 %) |
+| `CRISIS` | 20-bar return volatility above `crisis_vol_mult` (2) × `volatility_high_pct` **and** a fall of `crisis_drop_pct` (8 %) over five bars. Checked first, whatever the HMM says |
+| `BREAKOUT` | Close beyond the prior `breakout_lookback` (20) bars' range on a bar whose range is `breakout_range_mult` (1.5) × average |
+| `HIGH_VOLATILITY` | 20-bar return volatility > `volatility_high_pct` (3 %) |
 | `TRENDING_UP` / `TRENDING_DOWN` | ADX ≥ `adx_trend_threshold` (25); direction from price vs EMA(50) |
-| `LOW_VOLATILITY` | volatility < 40 % of the high threshold |
-| `RANGING` | everything else (and frames shorter than 25 bars) |
+| `LOW_VOLATILITY` | Volatility < 40 % of the high threshold |
+| `RANGING` | Everything else (and frames shorter than 25 bars) |
 
-Strategy regime tags map onto these: `trending` (up or down), `trending_up`,
-`trending_down`, `ranging`, `volatile` (high volatility), `low_volatility`,
-`all`.
+Strategy regime tags map onto these:
+
+| Tag | Regimes |
+|---|---|
+| `trending` | trending up, trending down, breakout |
+| `trending_up`, `trending_down`, `ranging`, `low_volatility`, `breakout` | That regime |
+| `volatile` | High volatility, breakout |
+| `high_volatility` | High volatility |
+| `all` | Everything **except crisis** |
+| `crisis` | Crisis |
+
+In a crisis only strategies that name `crisis` trade. `all` does not include
+it, so the bot stops taking new risk when the market is falling apart. No
+shipped strategy names it, so a crisis pauses new entries.
 
 ### The HMM detector
 
-`strategies/hmm_regime.py` fits a six-state Gaussian Hidden Markov Model per
-symbol on log returns, 5-bar volatility, volume ratio, ATR ratio and the share
-of up-closes, maps states to regimes, and can report next-bar regime
-probabilities. `RegimeDetector.detect()` uses it **only if a model has been
-fitted and saved** for that symbol in `models/hmm/hmm_<SYMBOL>.pkl` (via
-`RegimeDetector.fit_hmm(symbol, df)` or `HMMRegimeManager.fit_all()`).
-Nothing in the bot or scripts fits these models today, so in practice the ADX
-rules above are always used.
+`strategies/hmm_regime.py` fits a six-state Gaussian hidden Markov model per
+symbol. Its inputs are log returns, 5-bar volatility, volume ratio, ATR ratio
+and the share of up-closes, standardised before fitting. States are labelled
+from their mean features relative to that symbol's own volatility and
+returns, so the same rules work for a calm index and a volatile stock.
+
+**Fitting and the gate.** `scripts/fit_regimes.py`, or the weekly
+`regime_refit` scheduler job, fits a model per symbol and tests it on the
+last quarter of the bars first. A model is usable only if both hold:
+
+1. **It predicts volatility.** The average next-five-bar volatility of each
+   state, learned on the earlier bars, explains at least 5 % (R²) of the
+   variance on the test bars. Real markets cluster volatility; pure noise
+   does not. A model that merely reflects its own rolling features fails.
+2. **Its regimes last.** At least three bars on average, not a flip every
+   bar.
+
+Every model is saved to `models/hmm/hmm_<SYMBOL>.pkl` with its gate result.
+`RegimeDetector` uses a model only if it passed and is younger than
+`hmm_max_age_days` (45). Otherwise that symbol uses the ADX rules.
+
+**How the two combine.** The HMM is good at separating calm from turbulent
+markets, but with short-window features it rarely finds trends. So when it
+says crisis, breakout, high or low volatility, that is the answer. When it
+says "ranging", the ADX rules decide between trending and ranging.
+`RegimeDetector.last_source` records which method decided: `rules` (crisis
+check), `hmm`, `hmm+adx` or `adx`. The Chart page shows the regime and its
+source.
+
+On 2026-10-18, with three years of daily bars, Nifty 50, Bank Nifty and ITC
+passed the gate. Most single stocks did not: their regimes either did not
+predict volatility or flipped every 2–3 bars.
+
+```bash
+python scripts/fit_regimes.py                     # Nifty 50 stocks + NIFTY50, BANKNIFTY
+python scripts/fit_regimes.py --symbols ITC,SBIN  # a few
+```
 
 ## Strategy catalogue
 

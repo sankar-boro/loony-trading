@@ -194,6 +194,10 @@ Details: [Composite Signals](../marketpulse/composite-signals.md).
 | `adx_strong_threshold` | `40` | Read but not used in classification |
 | `volatility_high_pct` | `0.03` | 20-bar return volatility above → high volatility (below 40 % of it → low volatility) |
 | `volatility_lookback` | `20` | Bars for the volatility estimate |
+| `use_hmm` | `true` | Use fitted, gated HMM models where they exist ([The HMM detector](../engine/strategy-framework.md#the-hmm-detector)) |
+| `hmm_max_age_days` | `45` | Ignore HMM models older than this |
+| `breakout_lookback`, `breakout_range_mult` | `20`, `1.5` | Breakout: close beyond the prior N bars' range on a bar this many times the average range |
+| `crisis_vol_mult`, `crisis_drop_pct` | `2.0`, `0.08` | Crisis: volatility this many times `volatility_high_pct` and this fall over five bars |
 
 ## ml
 
@@ -225,6 +229,7 @@ Details: [Composite Signals](../marketpulse/composite-signals.md).
 | `market_hours_only` | `true` | Skip signal/alert jobs while NSE is closed |
 | `historical_backfill_hour`, `_minute`, `_min_age_days` | 18, 0, 7 | Daily analogue backfill |
 | `ml_retrain_enabled`, `_day_of_week`, `_hour`, `_days` | true, sun, 6, 730 | Weekly gated ML retrain |
+| `regime_refit_enabled`, `_day_of_week`, `_hour`, `_days` | false, sun, 7, 1095 | Weekly gated HMM regime refit (opt-in: new models change how the bot classifies regimes) |
 | `intraday_enabled` | `false` | Opt-in intraday scoring and alerts |
 | `intraday_timeframe` | `30m` | Bar size for the intraday track |
 | `intraday_signal_interval_seconds`, `intraday_alert_interval_seconds` | 900, 900 | Intraday cadence |

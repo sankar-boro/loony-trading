@@ -101,7 +101,10 @@ in 30-day chunks.
 
 Each result is written to `data/cache/upstox_<symbol>_<timeframe>.parquet` and
 reused while it is younger than **1 hour for minute bars** and **12 hours for
-daily and longer bars**. Delete the files to force a refresh.
+daily and longer bars**, and only if it reaches back far enough for the
+request. A fresh 60-day file is not returned for a three-year request; it is
+refetched. A longer file is trimmed to the requested range. Delete the files
+to force a refresh.
 
 ### Split and bonus adjustment
 

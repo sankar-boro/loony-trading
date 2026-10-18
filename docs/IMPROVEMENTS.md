@@ -24,7 +24,7 @@ Each area gets one of three labels:
 | [Core strategies](#core-strategies) | Partial | Parameters, setup-based confidence and strategy exits done; ensemble voting and multi-timeframe data still to do |
 | [Options, PEAD and expiry strategies](#options-pead-and-expiry-strategies) | Not wired | About 1,550 lines of strategies that never run |
 | [Pair trading](#pair-trading) | **Done** | Pair discovery, pair backtester and live trading of both legs as one unit (MIS) |
-| [Regime detection](#regime-detection) | Partial | HMM detector never fitted; only the ADX rules run |
+| [Regime detection](#regime-detection) | **Done** | Gated HMM (fit script and weekly job), breakout and crisis regimes, regime on the Chart page |
 | [Features](#features) | Partial | Advanced OI/IV/macro features used only by tests |
 | [Risk management](#risk-management) | Basic | Sector cap and per-strategy limits done; CVaR and volatility targeting still to wire |
 | [Execution](#execution) | Basic | Market/limit only; the 422-line smart-order router is unused |
@@ -152,18 +152,25 @@ tokens from the instrument master.
 
 ## Regime detection
 
-**Today:** `RegimeDetector` labels each bar with one of five regimes using
-ADX and volatility rules. Strategies declare `preferred_regimes` and are
-skipped outside them. `strategies/hmm_regime.py` (310 lines) implements a
-hidden Markov model detector, but no model is ever fitted, so the ADX rules
-always run.
+**Done (2026-10-18):** see [Market regimes](engine/strategy-framework.md#market-regimes).
+- `scripts/fit_regimes.py`, plus an opt-in weekly `regime_refit` job. An
+  out-of-sample gate requires each model to predict near-term volatility
+  and to have persistent regimes; failing models are never used.
+- Features are standardised before fitting. With raw features the fit
+  could diverge to NaN, for example for an index whose volume is always
+  zero, and return variance sat below hmmlearn's variance floor.
+- `BREAKOUT` and `CRISIS` regimes. In a crisis only strategies tagged
+  `crisis` trade, so new entries pause.
+- The HMM decides calm versus turbulent, and the ADX rules decide trend
+  inside calm markets.
+- The regime and its source are on the Chart page.
+- Fixed along the way: a fresh candle cache from a short request was
+  returned for a longer one, silently truncating backtests and training
+  data.
 
-**Extend with:**
-- A fitting job (weekly, like ML retraining) that saves HMM models per
-  index, and a check that the HMM beats the ADX rules before it is used.
-- Breakout and crisis regimes (volatility spike, gap through a range).
-- Showing the current regime on the Chart and Strategies pages; it is
-  computed but invisible.
+**Still to extend:**
+- Features that let the HMM find trends itself (longer-window returns).
+- Per-strategy results by regime, to check that the regime filters help.
 
 ## Features
 

@@ -78,8 +78,8 @@ groups is self-contained.
 21. **Macro strategy backtests.** VIX, FII/DII and GIFT read today's data,
     so their backtests are meaningless. They need historical data, read as
     it was on each day.
-22. **Regimes.** The HMM regime models are never fitted, and there are no
-    breakout or crisis regimes.
+22. ~~**Regimes.**~~ **Done 2026-10-18:** gated HMM fitting, breakout and
+    crisis regimes; see [Market regimes](engine/strategy-framework.md#market-regimes).
 23. ~~**Strategy parameters.**~~ **Done 2026-10-18:** `strategies.params`,
     see [Where parameters come from](engine/strategy-framework.md#where-parameters-come-from).
 24. **ML.**
@@ -128,8 +128,8 @@ groups is self-contained.
     pins a version. Pin them, and split runtime from dev (pytest).
 37. **No frontend tests.**
 38. **Paths and ports.**
-    - `logs/trading.log` and `models/hmm/` depend on the directory you start
-      from.
+    - `logs/trading.log` depends on the directory you start from
+      (`models/hmm/` is fixed).
     - `loony.sh status` hard-codes port 8000.
 39. **Missing reports and tests.** No walk-forward optimisation pipeline or
     execution-quality report, and `ModelTrainer` is only tested indirectly.

@@ -26,6 +26,7 @@ not passed its 03:30 IST expiry).
 | Paper trade | `paper_trade.py` | `paper` |
 | Backtest | `backtest_runner.py` | `backtest` |
 | Find cointegrated pairs | `find_pairs.py` | — |
+| Fit regime models | `fit_regimes.py` | — |
 | Tune strategy weights | `tune_weights.py` | `tune` |
 | Train the ML model | `train_ml.py` | `train` |
 | Trade journal | `trade_journal.py` | `journal` |
@@ -172,6 +173,13 @@ See [Backtesting](../engine/backtesting.md).
 tests every same-sector pair for cointegration and half-life, optionally
 backtests the tradable ones, and prints a `strategies.pairs` block. See
 [Finding pairs](../engine/strategies-stat-arb.md#finding-pairs).
+
+### fit_regimes.py
+
+`[--symbols A,B] [--all] [--days 1095]` — fits and gates the per-symbol HMM
+regime models (default: Nifty 50 stocks plus NIFTY50 and BANKNIFTY) and
+prints which are usable. See
+[The HMM detector](../engine/strategy-framework.md#the-hmm-detector).
 
 ### tune_weights.py
 

@@ -33,6 +33,7 @@ restart the backend after changing the setting. Times are in
 | `signal_engine` | every 300 s, market hours* | [Score the whole universe](composite-signals.md) on daily bars | `signal_interval_seconds` |
 | `alert_evaluation` | every 300 s, market hours* | [Evaluate alerts](watchlists-alerts.md) against daily signals, notify via Telegram | `alert_interval_seconds` |
 | `historical_backfill` | daily 18:00 | [Organic analogue backfill](historical-analogues.md) for events ≥ 7 days old | `historical_backfill_hour`, `_minute`, `_min_age_days` |
+| `regime_refit` | Sundays 07:00, if `regime_refit_enabled` | [Gated HMM regime refit](../engine/strategy-framework.md#the-hmm-detector) for Nifty 50 stocks and the main indices; failing models are saved as unusable | `regime_refit_enabled`, `regime_refit_day_of_week`, `regime_refit_hour`, `regime_refit_days` |
 | `ml_retrain` | Sundays 06:00 | [Gated ML retrain](../engine/machine-learning.md#weekly-retraining) — replaces the model only if it beats the baselines; never enables it | `ml_retrain_enabled`, `ml_retrain_day_of_week`, `ml_retrain_hour`, `ml_retrain_days` |
 | `intraday_signal_engine` | every 900 s, market hours (opt-in) | Score the universe on `intraday_timeframe` bars | `intraday_enabled`, `intraday_timeframe`, `intraday_signal_interval_seconds`, `intraday_lookback_days` |
 | `intraday_alert_evaluation` | every 900 s, market hours (opt-in) | Evaluate alerts against intraday signals | `intraday_alert_interval_seconds` |

@@ -55,6 +55,10 @@ valid Upstox token, so the chart is empty in demo mode.
 - The header shows the latest bar's **O/H/L**, volume, and the change versus
   the previous bar in ₹ and %.
 - The crosshair follows the mouse; scroll to zoom and drag to pan.
+- The top bar shows the **market regime** on the last bar (for example
+  `trending up · adx` or `high volatility · hmm`) and which method decided
+  it. Strategies only trade in their preferred regimes; see
+  [Market regimes](../engine/strategy-framework.md#market-regimes).
 - The bottom bar shows how many bars are loaded and the interval.
 - The left toolbar (cursor, trend line, horizontal line, rectangle, circle,
   text, Fibonacci) is **visual only** — drawing tools are not implemented yet.

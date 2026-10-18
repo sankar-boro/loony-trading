@@ -78,6 +78,12 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 - [x] Handbook copied into Postgres (`doc_chapters`, `doc_sections`) by `scripts/migrate_docs.py`, which runs the table definitions in `db/sql/handbook.sql` and loads `docs/`; `DB_*` connection settings and `DB_SCHEMA` support (`tests/test_docs_sync.py`)
 - [x] Deployment documented (Docker Compose, systemd units, security checklist)
 
+### Regimes ([Market regimes](../engine/strategy-framework.md#market-regimes))
+
+- [x] Gated HMM fitting (`scripts/fit_regimes.py`, opt-in weekly job): must predict near-term volatility out of sample and have persistent regimes; standardised features
+- [x] `BREAKOUT` and `CRISIS` regimes; crisis pauses new entries
+- [x] Regime and its source on the Chart page (`tests/test_regimes.py`)
+
 ### Pair trading ([Pair Trading](../engine/strategies-stat-arb.md))
 
 - [x] Stateless pair evaluation with numpy Engle-Granger test and half-life (statsmodels was never installed, so the old tests were no-ops)
@@ -123,8 +129,6 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 - [ ] **Re-tune the default strategy list and weights.** The shipped `enabled`/`weights` came from backtests that predate the VWAP fix (on daily bars `vwap_reversion` used to fire on every bar) and the cost fix (costs were double-counted)
 - [ ] **GIFT Nifty has no data source** (`NSE_INDEX|GIFT NIFTY` is not in the Upstox master; the fallback reads Nifty's own last price) — `gift_nifty_gap` is enabled but effectively inactive
 - [ ] Macro strategies (VIX, FII/DII, GIFT) read today's data and the wall clock, so their backtests are not meaningful
-- [ ] HMM regime models are never fitted, so the regime detector always uses its ADX rules
-- [ ] Regime detector has 5 regimes; no breakout / crisis states
 - [ ] Strategy parameters are read from top-level config keys and none are set; consider a `strategies.params` section
 - [ ] ML model with a real edge: the 2026-10-09 run reached 40.9 % accuracy vs a 48.7 % baseline (not saved, not enabled). Try intraday bars, other horizons, point-in-time context features
 - [ ] `train_ml.py` downloads raw candles and skips the split/bonus adjustment
@@ -153,7 +157,7 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 ### Infrastructure
 
 - [ ] Split `requirements.txt` into runtime and dev (pytest)
-- [ ] `logs/trading.log` and `models/hmm/` are relative to the working directory
+- [ ] `logs/trading.log` is relative to the working directory
 - [ ] `loony.sh status` hardcodes port 8000
 - [ ] Walk-forward optimisation pipeline; execution-quality report
 - [ ] `ModelTrainer` only covered indirectly by tests
@@ -196,6 +200,7 @@ regression tests.
 
 ### Strategies and backtesting
 
+- [x] **A fresh candle cache from a short request answered longer ones** (2026-10-18), silently truncating backtests, ML training and research to as little as 60 days — the cache is used only if it covers the requested range
 - [x] **Backtest stops and targets were checked on bar closes only**, with no trailing stop, so wicks through a stop were missed (2026-10-12) — high/low fills, gaps at the open, trailing stop
 - [x] **`end_of_data` exits paid no cost or slippage**, and their P&L was missing from the equity curve (2026-10-12)
 
