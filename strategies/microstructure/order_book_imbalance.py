@@ -15,9 +15,9 @@ class OrderBookImbalanceStrategy(BaseStrategy):
 
     def __init__(self, cfg: dict):
         super().__init__(cfg)
-        self.imbalance_threshold = cfg.get("ob_imbalance_threshold", 0.3)
-        self.whale_threshold_usd = cfg.get("whale_threshold_usd", 100_000)
-        self.depth = cfg.get("ob_depth", 10)
+        self.imbalance_threshold = self.param("ob_imbalance_threshold", 0.3)
+        self.whale_threshold_usd = self.param("whale_threshold_usd", 100_000)
+        self.depth = self.param("ob_depth", 10)
 
     def generate_signal(self, df: pd.DataFrame, symbol: str,
                          orderbook: Optional[OrderBookSnapshot] = None) -> Optional[Signal]:

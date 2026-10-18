@@ -30,7 +30,7 @@ class MLClassifierStrategy(BaseStrategy):
         super().__init__(cfg)
         self.model = model
         self._warned: set[str] = set()
-        self.min_confidence = cfg.get("ml_min_confidence", 0.6)
+        self.min_confidence = self.param("ml_min_confidence", 0.6)
 
     def set_model(self, model) -> None:
         self.model = model

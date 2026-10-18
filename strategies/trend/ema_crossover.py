@@ -15,9 +15,9 @@ class EmaCrossoverStrategy(BaseStrategy):
 
     def __init__(self, cfg: dict):
         super().__init__(cfg)
-        self.fast = cfg.get("ema_fast", 9)
-        self.slow = cfg.get("ema_slow", 21)
-        self.adx_min = cfg.get("adx_min", 20)
+        self.fast = self.param("ema_fast", 9)
+        self.slow = self.param("ema_slow", 21)
+        self.adx_min = self.param("adx_min", 20)
 
     def generate_signal(self, df: pd.DataFrame, symbol: str) -> Optional[Signal]:
         if not self.validate_df(df, min_bars=self.slow + 10):
@@ -54,4 +54,16 @@ class EmaCrossoverStrategy(BaseStrategy):
                 confidence=min(adx_vals.iloc[-1] / 50, 1.0),
             )
 
+        return None
+
+    def should_exit(self, df: pd.DataFrame, direction: int, bars_held: int) -> Optional[str]:
+        """Exit on the opposite crossover."""
+        base = super().should_exit(df, direction, bars_held)
+        if base or not self.validate_df(df, self.slow + 2):
+            return base
+        fast_above = TI.ema(df["close"], self.fast).iloc[-1] > TI.ema(df["close"], self.slow).iloc[-1]
+        if direction == 1 and not fast_above:
+            return "EMA death cross"
+        if direction == -1 and fast_above:
+            return "EMA golden cross"
         return None

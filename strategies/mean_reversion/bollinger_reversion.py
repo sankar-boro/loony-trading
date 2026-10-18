@@ -15,8 +15,8 @@ class BollingerReversionStrategy(BaseStrategy):
 
     def __init__(self, cfg: dict):
         super().__init__(cfg)
-        self.period = cfg.get("bb_period", 20)
-        self.std_dev = cfg.get("bb_std", 2.0)
+        self.period = self.param("bb_period", 20)
+        self.std_dev = self.param("bb_std", 2.0)
 
     def generate_signal(self, df: pd.DataFrame, symbol: str) -> Optional[Signal]:
         if not self.validate_df(df, self.period + 5):

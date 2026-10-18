@@ -32,6 +32,23 @@ STATE_FILE = ROOT / "data" / "live_positions.json"   # also read by the dashboar
 _STATE_HEARTBEAT_SEC = 5   # rewrite at least this often so the dashboard sees the bot as running
 
 
+def _bars_since(df, entry_time: str) -> int:
+    """Bars in `df` that closed after a position's entry time (ISO string)."""
+    import pandas as pd
+    if not entry_time or not isinstance(df.index, pd.DatetimeIndex):
+        return 0
+    try:
+        entry = pd.Timestamp(entry_time)
+    except (TypeError, ValueError):
+        return 0
+    idx = df.index
+    if idx.tz is None and entry.tzinfo is not None:
+        entry = entry.tz_convert("Asia/Kolkata").tz_localize(None)   # naive bars are IST
+    elif idx.tz is not None and entry.tzinfo is None:
+        entry = entry.tz_localize("UTC")
+    return int((idx > entry).sum())
+
+
 # ── Upstox Bot ─────────────────────────────────────────────────────────────────
 
 class UpstoxTradingBot:
@@ -750,6 +767,11 @@ class UpstoxTradingBot:
         if df is None or len(df) < 60:
             return
 
+        # Strategy-specific exits for positions in this symbol, on the bar
+        # that just closed (supertrend flip, opposite channel, time stop, ...)
+        if await self._check_strategy_exits(symbol, df, price):
+            return
+
         # No new intraday entries after the squareoff cut-off: the broker
         # would force-close them minutes later.
         if past_cutoff and self._is_intraday_product():
@@ -807,6 +829,25 @@ class UpstoxTradingBot:
                 f"🟢 {best.signal_type.value} {symbol} @ ₹{best.price:.2f} "
                 f"| {best.strategy} | conf={best.confidence:.0%}"
             )
+
+    async def _check_strategy_exits(self, symbol: str, df, price: float) -> bool:
+        """Ask the strategy that opened each position in `symbol` whether to
+        exit now (BaseStrategy.should_exit). Returns True if anything closed."""
+        lookup = getattr(self.meta_engine, "strategy", None)
+        closed = False
+        for pos in list(self.risk_manager.positions.get(symbol, [])):
+            strategy = lookup(pos.strategy) if lookup else None
+            if strategy is None:
+                continue
+            try:
+                reason = strategy.should_exit(df, pos.direction, _bars_since(df, pos.entry_time))
+            except Exception as exc:
+                logger.warning(f"{pos.strategy}.should_exit failed for {symbol}: {exc}")
+                continue
+            if reason:
+                await self._close_tracked(pos, price, f"strategy_exit ({reason})")
+                closed = True
+        return closed
 
     async def _handle_existing_position(self, signal, price: float) -> bool:
         """Apply a signal to any position already open in its symbol.

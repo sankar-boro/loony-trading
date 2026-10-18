@@ -73,6 +73,18 @@ def registered_strategy_names() -> list[str]:
     return ([cls.name for cls in _CORE_STRATEGIES] + _EXTRA_STRATEGY_NAMES
             + [MLClassifierStrategy.name, PairTradingStrategy.name])
 
+def strategy_params(cfg: dict) -> dict[str, dict]:
+    """Effective parameters of every core strategy (defaults merged with
+    strategies.params), without building an engine."""
+    out = {}
+    for cls in _CORE_STRATEGIES + [PairTradingStrategy]:
+        try:
+            out[cls.name] = dict(cls(cfg).params)
+        except Exception as exc:
+            logger.warning(f"Could not read params of {cls.name}: {exc}")
+    return out
+
+
 _ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -128,6 +140,10 @@ class MetaStrategyEngine:
         ]
         self._pair_strategy = PairTradingStrategy(cfg)
         logger.info(f"MetaEngine loaded {len(self.strategies)} strategies")
+
+    def strategy(self, name: str) -> Optional[BaseStrategy]:
+        """The loaded strategy with this name, or None."""
+        return next((s for s in self.strategies if s.name == name), None)
 
     def has_ml_model(self) -> bool:
         return any(isinstance(s, MLClassifierStrategy) and s.model is not None

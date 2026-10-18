@@ -37,8 +37,8 @@ class RangeBreakoutStrategy(BaseStrategy):
 
     def __init__(self, cfg: dict):
         super().__init__(cfg)
-        self.range_bars = cfg.get("range_bars", 8)          # legacy bar-count fallback
-        self.range_minutes = cfg.get("range_minutes", 15)    # NSE opening-range window
+        self.range_bars = self.param("range_bars", 8)          # legacy bar-count fallback
+        self.range_minutes = self.param("range_minutes", 15)    # NSE opening-range window
 
     def generate_signal(self, df: pd.DataFrame, symbol: str) -> Optional[Signal]:
         session = self._session_range(df)
@@ -57,13 +57,18 @@ class RangeBreakoutStrategy(BaseStrategy):
             return None
         atr = TI.atr(df, 14).iloc[-1]
         buffer = atr * 0.1
+        # Strength: breakout size relative to the range's height, and volume
+        height = (session_high - session_low) or 1e-9
+        vol = self._unit((self._volume_ratio(df) - 1) / 1.5)
+        up = 0.5 * self._unit((price - session_high) / height) + 0.5 * vol
+        down = 0.5 * self._unit((session_low - price) / height) + 0.5 * vol
 
         if price > session_high + buffer:
             sl, tp = self._atr_stops(df, 1)
             return Signal(
                 strategy=self.name, symbol=symbol,
                 signal_type=SignalType.BUY, price=price,
-                stop_loss=sl, take_profit=tp, confidence=0.68,
+                stop_loss=sl, take_profit=tp, confidence=self.scaled_confidence(up),
                 metadata={"session_high": session_high, "session_low": session_low},
             )
 
@@ -72,7 +77,7 @@ class RangeBreakoutStrategy(BaseStrategy):
             return Signal(
                 strategy=self.name, symbol=symbol,
                 signal_type=SignalType.SELL, price=price,
-                stop_loss=sl, take_profit=tp, confidence=0.68,
+                stop_loss=sl, take_profit=tp, confidence=self.scaled_confidence(down),
                 metadata={"session_high": session_high, "session_low": session_low},
             )
 

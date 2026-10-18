@@ -12,10 +12,12 @@ class CandlestickPatternStrategy(BaseStrategy):
     name = "candle_patterns"
     category = "price_action"
     preferred_regimes = ["all"]
+    default_atr_stop = 1.5
+    default_atr_target = 2.5
 
     def __init__(self, cfg: dict):
         super().__init__(cfg)
-        self.min_strength = cfg.get("pattern_min_strength", 0.65)
+        self.min_strength = self.param("pattern_min_strength", 0.65)
         self.candle_detector = CandlestickPatternDetector()
         self.chart_detector = ChartPatternDetector()
 
@@ -40,7 +42,7 @@ class CandlestickPatternStrategy(BaseStrategy):
         price = df["close"].iloc[-1]
 
         if best.direction == 1:
-            sl, tp = self._atr_stops(df, 1, atr_sl_mult=1.5, atr_tp_mult=2.5)
+            sl, tp = self._atr_stops(df, 1)
             return Signal(
                 strategy=self.name, symbol=symbol,
                 signal_type=SignalType.BUY, price=price,
@@ -50,7 +52,7 @@ class CandlestickPatternStrategy(BaseStrategy):
             )
 
         if best.direction == -1:
-            sl, tp = self._atr_stops(df, -1, atr_sl_mult=1.5, atr_tp_mult=2.5)
+            sl, tp = self._atr_stops(df, -1)
             return Signal(
                 strategy=self.name, symbol=symbol,
                 signal_type=SignalType.SELL, price=price,

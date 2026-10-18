@@ -65,6 +65,7 @@ class _FakeBot:
     _apply_control = UpstoxTradingBot._apply_control
     _check_day_limits = UpstoxTradingBot._check_day_limits
     _log_intraday_pnl = UpstoxTradingBot._log_intraday_pnl
+    _check_strategy_exits = UpstoxTradingBot._check_strategy_exits
 
     def _save_state(self, force=False):
         pass

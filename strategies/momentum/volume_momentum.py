@@ -15,8 +15,8 @@ class VolumeMomentumStrategy(BaseStrategy):
 
     def __init__(self, cfg: dict):
         super().__init__(cfg)
-        self.vol_spike = cfg.get("vol_spike_mult", 2.0)
-        self.price_pct = cfg.get("price_move_pct", 0.01)
+        self.vol_spike = self.param("vol_spike_mult", 2.0)
+        self.price_pct = self.param("price_move_pct", 0.01)
 
     def generate_signal(self, df: pd.DataFrame, symbol: str) -> Optional[Signal]:
         if not self.validate_df(df, 30):
@@ -31,13 +31,17 @@ class VolumeMomentumStrategy(BaseStrategy):
         obv_falling = obv.iloc[-1] < obv.iloc[-3]
 
         price = df["close"].iloc[-1]
+        ratio = float(df["volume"].iloc[-1] / vol_avg.iloc[-1]) if vol_avg.iloc[-1] else 0.0
+        # Strength: how far the volume spike and the price move exceed their thresholds
+        strength = (0.5 * self._unit((ratio - self.vol_spike) / self.vol_spike)
+                    + 0.5 * self._unit((abs(price_move) - self.price_pct) / (2 * self.price_pct)))
 
         if vol_spike and price_move > self.price_pct and obv_rising:
             sl, tp = self._atr_stops(df, 1)
             return Signal(
                 strategy=self.name, symbol=symbol,
                 signal_type=SignalType.BUY, price=price,
-                stop_loss=sl, take_profit=tp, confidence=0.72,
+                stop_loss=sl, take_profit=tp, confidence=self.scaled_confidence(strength),
                 metadata={"vol_ratio": round(float(df["volume"].iloc[-1] / vol_avg.iloc[-1]), 2)},
             )
 
@@ -46,7 +50,7 @@ class VolumeMomentumStrategy(BaseStrategy):
             return Signal(
                 strategy=self.name, symbol=symbol,
                 signal_type=SignalType.SELL, price=price,
-                stop_loss=sl, take_profit=tp, confidence=0.72,
+                stop_loss=sl, take_profit=tp, confidence=self.scaled_confidence(strength),
                 metadata={"vol_ratio": round(float(df["volume"].iloc[-1] / vol_avg.iloc[-1]), 2)},
             )
 

@@ -15,9 +15,9 @@ class MacdMomentumStrategy(BaseStrategy):
 
     def __init__(self, cfg: dict):
         super().__init__(cfg)
-        self.fast = cfg.get("macd_fast", 12)
-        self.slow = cfg.get("macd_slow", 26)
-        self.signal = cfg.get("macd_signal", 9)
+        self.fast = self.param("macd_fast", 12)
+        self.slow = self.param("macd_slow", 26)
+        self.signal = self.param("macd_signal", 9)
 
     def generate_signal(self, df: pd.DataFrame, symbol: str) -> Optional[Signal]:
         if not self.validate_df(df, self.slow + 10):

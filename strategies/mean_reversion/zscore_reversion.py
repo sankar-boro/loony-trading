@@ -12,12 +12,14 @@ class ZscoreReversionStrategy(BaseStrategy):
     name = "zscore_reversion"
     category = "mean_reversion"
     preferred_regimes = ["ranging"]
+    default_atr_stop = 1.5
+    default_atr_target = 2.0
 
     def __init__(self, cfg: dict):
         super().__init__(cfg)
-        self.window = cfg.get("zscore_window", 20)
-        self.entry_z = cfg.get("zscore_entry", 2.0)
-        self.exit_z = cfg.get("zscore_exit", 0.5)
+        self.window = self.param("zscore_window", 20)
+        self.entry_z = self.param("zscore_entry", 2.0)
+        self.exit_z = self.param("zscore_exit", 0.5)
 
     def generate_signal(self, df: pd.DataFrame, symbol: str) -> Optional[Signal]:
         if not self.validate_df(df, self.window + 5):
@@ -28,7 +30,7 @@ class ZscoreReversionStrategy(BaseStrategy):
         price = df["close"].iloc[-1]
 
         if z < -self.entry_z:
-            sl, tp = self._atr_stops(df, 1, atr_sl_mult=1.5, atr_tp_mult=2.0)
+            sl, tp = self._atr_stops(df, 1)
             return Signal(
                 strategy=self.name, symbol=symbol,
                 signal_type=SignalType.BUY, price=price,
@@ -38,7 +40,7 @@ class ZscoreReversionStrategy(BaseStrategy):
             )
 
         if z > self.entry_z:
-            sl, tp = self._atr_stops(df, -1, atr_sl_mult=1.5, atr_tp_mult=2.0)
+            sl, tp = self._atr_stops(df, -1)
             return Signal(
                 strategy=self.name, symbol=symbol,
                 signal_type=SignalType.SELL, price=price,
@@ -47,4 +49,14 @@ class ZscoreReversionStrategy(BaseStrategy):
                 metadata={"zscore": round(z, 3)},
             )
 
+        return None
+
+    def should_exit(self, df: pd.DataFrame, direction: int, bars_held: int) -> Optional[str]:
+        """Exit once the z-score has reverted to within ±exit_z of the mean."""
+        base = super().should_exit(df, direction, bars_held)
+        if base or not self.validate_df(df, self.window + 5):
+            return base
+        z = rolling_zscore(df["close"].values, self.window)[-1]
+        if (direction == 1 and z > -self.exit_z) or (direction == -1 and z < self.exit_z):
+            return f"z-score reverted ({z:+.2f})"
         return None

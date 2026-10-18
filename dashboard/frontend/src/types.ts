@@ -125,6 +125,7 @@ export interface ConfigResponse {
   enabled: string[]
   capital: number
   all_strategies: string[]
+  params?: Record<string, Record<string, number | string | boolean>>
 }
 
 export interface StrategyStats {

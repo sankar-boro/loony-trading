@@ -15,9 +15,9 @@ class SupportResistanceBreakoutStrategy(BaseStrategy):
 
     def __init__(self, cfg: dict):
         super().__init__(cfg)
-        self.swing_window = cfg.get("swing_window", 10)
-        self.confirm_bars = cfg.get("confirm_bars", 2)
-        self.min_touches = cfg.get("sr_min_touches", 2)
+        self.swing_window = self.param("swing_window", 10)
+        self.confirm_bars = self.param("confirm_bars", 2)
+        self.min_touches = self.param("sr_min_touches", 2)
 
     def generate_signal(self, df: pd.DataFrame, symbol: str) -> Optional[Signal]:
         if not self.validate_df(df, 60):

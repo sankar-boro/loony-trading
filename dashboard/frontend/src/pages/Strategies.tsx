@@ -1,3 +1,4 @@
+import { Fragment, useState } from 'react'
 import useSWR from 'swr'
 import { fetcher } from '../api'
 import type { ConfigResponse, TradesResponse } from '../types'
@@ -25,6 +26,8 @@ export default function Strategies() {
   const enabled  = new Set(cfg?.enabled ?? [])
   const allNames = Array.from(new Set([...Object.keys(weights), ...(cfg?.all_strategies ?? [])])).sort()
   const maxW     = Math.max(...Object.values(weights), 1)
+  const params   = cfg?.params ?? {}
+  const [open, setOpen] = useState<string | null>(null)
 
   // Per-strategy trade aggregation
   const stratMap: Record<string, { trades: number; wins: number; total_pnl: number }> = {}
@@ -119,9 +122,16 @@ export default function Strategies() {
                 {allNames.map(name => {
                   const w = weights[name] ?? 0
                   const on = enabled.has(name)
+                  const p = params[name]
                   return (
-                    <tr key={name} className="hover:bg-white/3 transition-colors">
-                      <td className="px-4 py-2 font-mono">{name}</td>
+                    <Fragment key={name}>
+                    <tr className={clsx('hover:bg-white/3 transition-colors', p && 'cursor-pointer')}
+                        onClick={() => p && setOpen(open === name ? null : name)}
+                        title={p ? 'Show parameters' : undefined}>
+                      <td className="px-4 py-2 font-mono">
+                        {p && <span className="text-dim mr-1.5 text-[11px]">{open === name ? '▾' : '▸'}</span>}
+                        {name}
+                      </td>
                       <td className="px-4 py-2 font-mono text-dim w-14">{w.toFixed(2)}</td>
                       <td className="px-4 py-2 w-32">
                         <div className="h-1.5 rounded-full bg-border overflow-hidden">
@@ -139,6 +149,24 @@ export default function Strategies() {
                         </span>
                       </td>
                     </tr>
+                    {open === name && p && (
+                      <tr className="bg-white/[0.02]">
+                        <td colSpan={4} className="px-4 py-2.5">
+                          <div className="flex flex-wrap gap-1.5">
+                            {Object.entries(p).map(([k, v]) => (
+                              <span key={k} className="font-mono text-[12px] px-2 py-0.5 rounded bg-border/70">
+                                <span className="text-dim">{k}</span> {String(v)}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="text-[11px] text-dim mt-1.5">
+                            Override in <code className="text-blue">config/settings.yaml</code> under{' '}
+                            <code className="text-blue">strategies.params.{name}</code>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   )
                 })}
               </tbody>

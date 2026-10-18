@@ -127,6 +127,9 @@ class Backtester:
                 exit_fill = self._intrabar_exit(position, opens[i], highs[i], lows[i])
                 if exit_fill is None and mis_squareoff_now:
                     exit_fill = (price, "mis_squareoff")
+                if exit_fill is None:
+                    exit_fill = self._strategy_exit(position, df.iloc[:i + 1], i, price,
+                                                    engine, strategy)
                 if exit_fill is not None:
                     capital += book_exit(position, exit_fill[0], i, exit_fill[1])
                     position = None
@@ -193,6 +196,18 @@ class Backtester:
                                  metrics=metrics, symbol=symbol)
         logger.info(result.summary())
         return result
+
+    @staticmethod
+    def _strategy_exit(pos: dict, window: pd.DataFrame, i: int, price: float,
+                       engine, strategy) -> Optional[tuple]:
+        """The opening strategy's own exit rule (BaseStrategy.should_exit),
+        judged on bars up to and including this one and filled at its close."""
+        strat = (engine.strategy(pos["strategy"]) if engine is not None
+                 and hasattr(engine, "strategy") else strategy)
+        if strat is None or getattr(strat, "name", None) != pos["strategy"]:
+            return None
+        reason = strat.should_exit(window, pos["direction"], i - pos["bar"])
+        return (price, "strategy_exit") if reason else None
 
     @staticmethod
     def _intrabar_exit(pos: dict, o: float, h: float, lo: float) -> Optional[tuple]:

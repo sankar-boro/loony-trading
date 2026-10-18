@@ -12,12 +12,14 @@ class RsiReversionStrategy(BaseStrategy):
     name = "rsi_mean_reversion"
     category = "mean_reversion"
     preferred_regimes = ["ranging"]
+    default_atr_stop = 1.5
+    default_atr_target = 2.5
 
     def __init__(self, cfg: dict):
         super().__init__(cfg)
-        self.oversold = cfg.get("rsi_oversold", 30)
-        self.overbought = cfg.get("rsi_overbought", 70)
-        self.period = cfg.get("rsi_period", 14)
+        self.oversold = self.param("rsi_oversold", 30)
+        self.overbought = self.param("rsi_overbought", 70)
+        self.period = self.param("rsi_period", 14)
 
     def generate_signal(self, df: pd.DataFrame, symbol: str) -> Optional[Signal]:
         if not self.validate_df(df, self.period + 5):
@@ -30,7 +32,7 @@ class RsiReversionStrategy(BaseStrategy):
         overbought_exit = rsi.iloc[-2] > self.overbought and rsi.iloc[-1] < rsi.iloc[-2]
 
         if oversold_exit:
-            sl, tp = self._atr_stops(df, 1, atr_sl_mult=1.5, atr_tp_mult=2.5)
+            sl, tp = self._atr_stops(df, 1)
             confidence = (self.oversold - rsi.iloc[-2]) / self.oversold
             return Signal(
                 strategy=self.name, symbol=symbol,
@@ -40,7 +42,7 @@ class RsiReversionStrategy(BaseStrategy):
             )
 
         if overbought_exit:
-            sl, tp = self._atr_stops(df, -1, atr_sl_mult=1.5, atr_tp_mult=2.5)
+            sl, tp = self._atr_stops(df, -1)
             confidence = (rsi.iloc[-2] - self.overbought) / (100 - self.overbought)
             return Signal(
                 strategy=self.name, symbol=symbol,

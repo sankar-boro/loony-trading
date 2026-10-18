@@ -12,11 +12,13 @@ class AtrBreakoutStrategy(BaseStrategy):
     name = "breakout_atr"
     category = "breakout"
     preferred_regimes = ["volatile"]
+    default_atr_stop = 1.5
+    default_atr_target = 3.0
 
     def __init__(self, cfg: dict):
         super().__init__(cfg)
-        self.squeeze_window = cfg.get("squeeze_window", 20)
-        self.expansion_mult = cfg.get("atr_expansion_mult", 1.5)
+        self.squeeze_window = self.param("squeeze_window", 20)
+        self.expansion_mult = self.param("atr_expansion_mult", 1.5)
 
     def generate_signal(self, df: pd.DataFrame, symbol: str) -> Optional[Signal]:
         if not self.validate_df(df, self.squeeze_window + 10):
@@ -37,7 +39,7 @@ class AtrBreakoutStrategy(BaseStrategy):
         prev_close = df["close"].iloc[-2]
         direction = 1 if price > prev_close else -1
 
-        sl, tp = self._atr_stops(df, direction, atr_sl_mult=1.5, atr_tp_mult=3.0)
+        sl, tp = self._atr_stops(df, direction)
         sig_type = SignalType.BUY if direction == 1 else SignalType.SELL
 
         return Signal(

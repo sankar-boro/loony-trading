@@ -42,13 +42,13 @@ class PairTradingStrategy(BaseStrategy):
 
     def __init__(self, cfg: dict):
         super().__init__(cfg)
-        self.entry_z          = cfg.get("pair_entry_z", 2.0)
-        self.exit_z           = cfg.get("pair_exit_z", 0.5)
-        self.min_half_life    = cfg.get("pair_min_half_life", 5)
-        self.max_half_life    = cfg.get("pair_max_half_life", 60)
-        self.min_history      = cfg.get("pair_min_history", 120)
-        self.coint_pvalue     = cfg.get("pair_coint_pvalue", 0.05)
-        self.kalman_delta     = cfg.get("pair_kalman_delta", 1e-4)
+        self.entry_z          = self.param("pair_entry_z", 2.0)
+        self.exit_z           = self.param("pair_exit_z", 0.5)
+        self.min_half_life    = self.param("pair_min_half_life", 5)
+        self.max_half_life    = self.param("pair_max_half_life", 60)
+        self.min_history      = self.param("pair_min_history", 120)
+        self.coint_pvalue     = self.param("pair_coint_pvalue", 0.05)
+        self.kalman_delta     = self.param("pair_kalman_delta", 1e-4)
         self._trackers: Dict[str, KalmanSpreadTracker] = {}
 
     # Public entry point ───────────────────────────────────────────────────────
