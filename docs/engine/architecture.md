@@ -99,7 +99,9 @@ passed):
 10. Need at least 60 bars.
     Then ask the strategy behind each open position in the symbol whether
     to exit ([Strategy exits](strategy-framework.md#strategy-exits)); if one
-    closes, stop here for this bar.
+    closes, stop here for this bar. Then check any configured pair that
+    includes the symbol: close it on a spread exit, or open both legs
+    ([Pair Trading](strategies-stat-arb.md#live-trading)).
 11. **No new intraday entries after 15:14** when trading MIS.
 12. **Score** — `meta_engine.generate_signals()` → `best_signal()` (confidence
     × weight); continue only for BUY/SELL.

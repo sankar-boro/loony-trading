@@ -78,6 +78,12 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 - [x] Handbook copied into Postgres (`doc_chapters`, `doc_sections`) by `scripts/migrate_docs.py`, which runs the table definitions in `db/sql/handbook.sql` and loads `docs/`; `DB_*` connection settings and `DB_SCHEMA` support (`tests/test_docs_sync.py`)
 - [x] Deployment documented (Docker Compose, systemd units, security checklist)
 
+### Pair trading ([Pair Trading](../engine/strategies-stat-arb.md))
+
+- [x] Stateless pair evaluation with numpy Engle-Granger test and half-life (statsmodels was never installed, so the old tests were no-ops)
+- [x] `scripts/find_pairs.py` and `backtester/pair_backtester.py`
+- [x] Live pairs from `strategies.pairs`: both legs together, unwind on a failed leg, spread exits, partner close; MIS only (`tests/test_pair_trading.py`)
+
 ### Intraday trading ([Intraday Session Controls](../engine/intraday-controls.md))
 
 - [x] Entry window (09:30–14:45 by default) for new MIS entries
@@ -99,7 +105,6 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 - [ ] **Index signals are not tradable.** `vix_strategy`, `fii_dii` and `gift_nifty_gap` signal on `NIFTY50`/`BANKNIFTY`; the executor has no mapping to futures, options or an ETF, so live index orders would be rejected and paper mode treats the index as a stock
 - [ ] Options strategies not in the engine; the options resolver builds name-based keys (`NSE_FO|NIFTY25JUN24500CE`) but real Upstox F&O keys are numeric tokens from the instrument master; F&O STT is not modelled in `_compute_charges()`
 - [ ] `ExpiryDayStrategy` assumes weekly BankNifty expiries, which NSE discontinued in 2024
-- [ ] Pair trading never runs: nothing calls `generate_pair_signals()`, there is no configured pair list, and legs are not placed atomically
 - [ ] `order_book_imbalance` never receives an order book and `mtf_trend` never receives multi-timeframe frames, so neither can fire
 - [ ] PEAD has no earnings-surprise source; not in the engine
 - [ ] Stock delivery % signal and FII/DII size multipliers exist but are never called

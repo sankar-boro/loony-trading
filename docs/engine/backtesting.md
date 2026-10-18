@@ -13,6 +13,7 @@ believe.
 | `scripts/backtest_runner.py` | Several symbols, the full enabled set, trade lists, ASCII equity curves |
 | `python main.py --mode backtest` | Every configured symbol with the enabled set |
 | `scripts/tune_weights.py` | Backtest every strategy separately and derive weights |
+| `run_pair_backtest()` / `scripts/find_pairs.py --backtest` | A pair's two legs together ([Pair Trading](strategies-stat-arb.md#backtesting-a-pair)) |
 | `Backtester` in Python | Anything custom |
 
 ```bash

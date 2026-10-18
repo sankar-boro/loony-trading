@@ -25,6 +25,7 @@ not passed its 03:30 IST expiry).
 | Place / cancel orders by hand | `order.py` | — |
 | Paper trade | `paper_trade.py` | `paper` |
 | Backtest | `backtest_runner.py` | `backtest` |
+| Find cointegrated pairs | `find_pairs.py` | — |
 | Tune strategy weights | `tune_weights.py` | `tune` |
 | Train the ML model | `train_ml.py` | `train` |
 | Trade journal | `trade_journal.py` | `journal` |
@@ -164,6 +165,13 @@ python scripts/backtest_runner.py [--symbol S | --symbols A,B] [--days 365]
 `data/live_bars/` (timeframes `1m` to `1h`, no token needed).
 
 See [Backtesting](../engine/backtesting.md).
+
+### find_pairs.py
+
+`[--sectors A,B] [--symbols A,B] [--days 365] [--top 25] [--backtest]` —
+tests every same-sector pair for cointegration and half-life, optionally
+backtests the tradable ones, and prints a `strategies.pairs` block. See
+[Finding pairs](../engine/strategies-stat-arb.md#finding-pairs).
 
 ### tune_weights.py
 

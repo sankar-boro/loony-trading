@@ -116,6 +116,7 @@ Session rules, operator controls and monitoring for the live bot
 | `slippage_pct` | `0.0005` | Paper-fill and backtest slippage per fill |
 | `commission_intraday` | `0.00055` | Backtest round-trip cost, MIS |
 | `commission_delivery` | `0.0021` | Backtest round-trip cost, CNC |
+| `commission_futures` | `0.0006` | Pair backtest round-trip cost per leg (futures) |
 | `retry_attempts` | `3` | Crypto executor only — Upstox orders are never retried |
 | `retry_delay_ms` | `500` | Crypto executor retry delay |
 | `latency_budget_ms` | `100` | Informational |
@@ -154,6 +155,13 @@ is a side-car; options strategies and `pead` are not wired.)
 
 `scripts/tune_weights.py` rewrites both keys from backtests;
 `scripts/train_ml.py --enable` appends `ml_classifier`.
+
+### Pairs
+
+`strategies.pairs` lists pairs the live bot trades as one unit, for example
+`pairs: [[TCS, INFY]]`. It is empty by default. Pairs need MIS (a short leg).
+Find candidates with `scripts/find_pairs.py`. See
+[Pair Trading](../engine/strategies-stat-arb.md#live-trading).
 
 ### Strategy parameters
 

@@ -23,7 +23,7 @@ Each area gets one of three labels:
 | [Short selling in delivery](#short-selling-in-delivery) | **Done** | CNC short entries are refused in the executor, the bot and the backtester |
 | [Core strategies](#core-strategies) | Partial | Parameters, setup-based confidence and strategy exits done; ensemble voting and multi-timeframe data still to do |
 | [Options, PEAD and expiry strategies](#options-pead-and-expiry-strategies) | Not wired | About 1,550 lines of strategies that never run |
-| [Pair trading](#pair-trading) | Not wired | Built on a Kalman tracker; nothing calls it |
+| [Pair trading](#pair-trading) | **Done** | Pair discovery, pair backtester and live trading of both legs as one unit (MIS) |
 | [Regime detection](#regime-detection) | Partial | HMM detector never fitted; only the ADX rules run |
 | [Features](#features) | Partial | Advanced OI/IV/macro features used only by tests |
 | [Risk management](#risk-management) | Basic | Sector cap and per-strategy limits done; CVaR and volatility targeting still to wire |
@@ -133,18 +133,22 @@ tokens from the instrument master.
 
 ## Pair trading
 
-**Not wired:** `PairTradingStrategy` (175 lines) tracks a spread with a
-Kalman filter (`utils/kalman.py`, 212 lines). `MetaStrategyEngine` builds it
-and has `generate_pair_signals()`, but nothing calls that method, no pairs
-are configured, and the executor cannot place two legs together.
+**Done (2026-10-18):** see [Pair Trading](engine/strategies-stat-arb.md).
+- The strategy is stateless: an OLS (or calibrated Kalman) hedge ratio,
+  z-score, Engle-Granger test and half-life over a lookback window. Pairs
+  that fail the tests are no longer traded "with caution". The tests were
+  silently no-ops before, because they needed statsmodels, which is not
+  installed. They are now plain numpy.
+- `scripts/find_pairs.py` scans same-sector pairs, and
+  `backtester/pair_backtester.py` backtests both legs together.
+- The live bot trades `strategies.pairs` as one unit: legs opened and
+  closed together, an unwind if the second leg fails, spread exits, and
+  partner close if one leg stops out. MIS only.
 
-**Extend with:**
-- A `strategies.pairs` list, plus a discovery script that finds
-  cointegrated pairs in the same sector from `config/instruments.py`.
-- A pair position in `RiskManager`: two legs opened and closed together,
-  hedge ratio from the Kalman filter.
-- Calling it from the bot's bar-close step, and a pair-spread chart on the
-  Chart page.
+**Still to extend:**
+- Overnight pairs through futures, once F&O contracts resolve.
+- A pair-spread chart on the Chart page.
+- Both legs in one basket order.
 
 ## Regime detection
 

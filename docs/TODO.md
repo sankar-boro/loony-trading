@@ -55,8 +55,8 @@ groups is self-contained.
     - F&O STT is not in the charges model.
 14. **Expiry-day strategy.** `ExpiryDayStrategy` assumes weekly BankNifty
     expiries, which NSE ended in 2024.
-15. **Pair trading.** Nothing runs it, no pairs are configured, and the two
-    legs are not placed together.
+15. ~~**Pair trading.**~~ **Done 2026-10-18** (intraday on MIS); see
+    [Pair Trading](engine/strategies-stat-arb.md).
 16. **Unwired code.** These pieces are written but nothing calls them:
     - CVaR limits, circuit-breaker checks, beta hedging, the factor model,
       TWAP/VWAP execution;
