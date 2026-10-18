@@ -61,7 +61,10 @@ For each bar *i* after the first `data.warmup_bars` (200):
      `take_profit` at the target;
    - if one bar touches both, the **stop is assumed to come first**, since
      bar data cannot show which came first;
-   - for MIS, a bar at or after 15:14 IST → `mis_squareoff` at the close.
+   - for MIS, a bar at or after 15:14 IST → `mis_squareoff` at the close;
+   - otherwise the opening strategy's own exit rule, judged on bars up to
+     this one → `strategy_exit` at the close
+     ([Strategy exits](strategy-framework.md#strategy-exits)).
 
    Every exit pays slippage against you and the exit-side cost.
 2. **Trailing stop**: if the position is still open, its stop is raised to
@@ -69,7 +72,8 @@ For each bar *i* after the first `data.warmup_bars` (200):
    `low × (1 + pct)` for a short), never loosened. This mirrors the live
    `RiskManager`, which trails on every tick. Set `trailing_stop_pct: 0` to
    turn it off.
-3. **Entry** (if flat): strategies see bars `0 … i−1` only — never the bar
+3. **Entry** (if flat; a CNC backtest never opens a short, as live —
+   see [Shorts need MIS](execution.md#shorts-need-mis)): strategies see bars `0 … i−1` only — never the bar
    being traded — and the best signal (confidence × weight) is entered at bar
    *i*'s close plus slippage. MIS backtests open nothing at or after 15:14.
 4. **Sizing**: risk `risk.max_risk_per_trade` of current capital over the

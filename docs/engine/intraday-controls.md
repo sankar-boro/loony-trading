@@ -27,12 +27,18 @@ checks in order. The first one that fails stops the entry:
 2. The best signal is a BUY or SELL.
 3. No open position in that symbol in the same direction. An opposite signal
    closes the position instead; see [Position Safety](position-safety.md#one-position-per-symbol).
-4. **Session rules** (`IntradayGuard.can_enter`), in this order:
+4. A SELL on a flat symbol needs a product that can hold a short (MIS);
+   see [Shorts need MIS](execution.md#shorts-need-mis).
+5. **Session rules** (`IntradayGuard.can_enter`), in this order:
    operator pause → day halted → entry window (MIS only) → daily trade
-   cap → per-symbol trade cap → cooldown.
-5. Not correlated with another open position (`portfolio.correlation_limit`, 0.7).
-6. `RiskManager.validate_signal`: concurrent positions, realised daily loss
-   and minimum confidence (0.5).
+   cap → per-symbol trade cap → cooldown → the signal's strategy switched
+   off by its loss limits.
+6. The symbol's sector is below its exposure cap
+   ([Sector exposure cap](risk-management.md#sector-exposure-cap)).
+7. Not correlated with another open position (`portfolio.correlation_limit`, 0.7).
+8. `RiskManager.validate_signal`: concurrent positions, realised daily loss,
+   minimum confidence (0.5) and the sector cap. The size is then trimmed to
+   the sector's remaining room.
 
 When a session rule blocks a signal, the bot logs a `block` event naming the
 rule. It logs it once per symbol per reason, not on every bar.
@@ -49,6 +55,7 @@ Settings live under `intraday:` in `config/settings.yaml`:
 | Cooldown | `cooldown_minutes_after_stop` (`30`) | After a **stop-loss** exit, no new entry in that symbol for this long. Other exit reasons do not start a cooldown |
 | Kill switch | `risk.max_daily_drawdown` (`0.05`), `kill_switch.flatten_on_daily_loss` (`true`) | See below |
 | Profit lock | `profit_lock_pct` (`0.0`, off) | See below |
+| Strategy limits | `strategy_limits.max_daily_loss_pct` (`0.01`), `strategy_limits.max_consecutive_losses` (`4`) | See below |
 
 Only **filled** entries count towards the caps; a rejected or unfilled order
 does not.
@@ -74,10 +81,27 @@ With `profit_lock_pct` above zero (for example `0.01`), the day is halted once
 day P&L reaches that fraction of capital. Open positions are kept and their
 stops keep trailing. The bot just stops taking new risk on a good day.
 
+### Strategy limits
+
+Every closed trade is booked against the strategy that opened it. A
+strategy is **switched off for the rest of the day** when either:
+
+- its realised loss today reaches `strategy_limits.max_daily_loss_pct` ×
+  capital (₹5,000 on ₹5 lakh at 1 %); or
+- it loses `strategy_limits.max_consecutive_losses` trades in a row (a
+  winning trade resets the count).
+
+The other strategies keep trading. The bot logs a `halt` event ("Strategy
+orb switched off for the day — 4 losing trades in a row") and sends a
+notification. Later signals from that strategy are blocked with a `block`
+event. **Resume** on the Intraday Desk turns switched-off strategies back
+on. Set either limit to `0` to disable it.
+
 ### A new day
 
-On the first tick of a new trading day, the caps, cooldowns and any halt
-reset. An operator **pause** does not reset; it lasts until you resume.
+On the first tick of a new trading day, the caps, cooldowns, strategy
+limits and any halt reset. An operator **pause** does not reset; it lasts
+until you resume.
 
 ## Operator controls
 
@@ -91,7 +115,7 @@ file, `data/bot_control.json`:
 | Action | Written by `write_control()` | The bot, on its next tick |
 |---|---|---|
 | `pause` | `paused: true` | Blocks new entries. Open positions keep their stops and targets |
-| `resume` | `paused: false`, new `resume_id` | Allows entries again **and clears a kill-switch or profit-lock halt** |
+| `resume` | `paused: false`, new `resume_id` | Allows entries again **and clears a kill-switch or profit-lock halt**, and turns strategies switched off by their limits back on |
 | `flatten` | new `flatten_id` | Closes every open position at market, reason `operator_flatten` |
 
 How a request is executed exactly once:
@@ -163,7 +187,7 @@ The bot keeps the last 100 events in memory and saves the last 50 to
 | `entry` | An entry filled |
 | `exit` | A position closed (with reason and P&L) |
 | `block` | A session rule refused a signal |
-| `halt` | Kill switch or profit lock |
+| `halt` | Kill switch, profit lock, or a strategy switched off by its limits |
 | `flatten` | Positions flattened (operator or kill switch) |
 | `control` | Pause, resume or halt cleared |
 | `squareoff` | MIS squareoff ran |
@@ -217,7 +241,8 @@ python scripts/backtest_runner.py --source recorded --timeframe 5m --product MIS
 
 The guard's counters are saved with the positions under `"intraday"` in
 `data/live_positions.json`. A restart on the same day keeps the trade counts,
-cooldowns, halt and pause; a state file from an earlier day is ignored. See
+cooldowns, strategy results, halt and pause; a state file from an earlier day
+is ignored. See
 [Position Safety](position-safety.md#crash-recovery) for the rest of the file.
 
 ```json
@@ -226,7 +251,11 @@ cooldowns, halt and pause; a state file from an earlier day is ignored. See
               "trades_today": 7, "trades_by_symbol": {"TCS": 2, "INFY": 1},
               "cooldowns": {"INFY": "2026-10-12T13:20:00+05:30"},
               "max_daily_loss_pct": 0.05, "profit_lock_pct": 0.0,
-              "halted": false, "halt_reason": "", "paused": false },
+              "halted": false, "halt_reason": "", "paused": false,
+              "strategy_max_daily_loss_pct": 0.01, "strategy_max_consecutive_losses": 4,
+              "strategy_pnl": {"orb": -5480.0, "vwap_reversion": 870.0},
+              "strategy_streak": {"orb": 2, "vwap_reversion": 0},
+              "strategies_off": {"orb": "lost ₹5,480 today (limit 1.0%)"} },
 "events": [ … ], "last_tick_at": 1791545520.4, "exchange_stops": false,
 "handled_control": { "flatten_id": "3f9a1c2e", "resume_id": null }
 ```

@@ -82,6 +82,7 @@ Timeframe strings: `1m`, `3m`, `5m`, `10m`, `15m`, `30m`, `1h`, `60m`, `2h`,
 | `max_portfolio_risk` | `0.20` | Largest single position as a fraction of capital (the Portfolio Risk page also uses it as a total-exposure warning) |
 | `stop_loss_atr_multiplier`, `take_profit_atr_multiplier` | `2.0`, `3.0` | Informational — stops come from each strategy |
 | `trailing_stop_pct` | `0.02` | Trailing stop distance (live, and in backtests from each bar's high/low) |
+| `max_sector_exposure` | `0.30` | Largest share of capital (at entry prices) in one sector; new entries are trimmed to fit and rejected when the sector is full. `0` = no cap ([Sector exposure cap](../engine/risk-management.md#sector-exposure-cap)) |
 | `use_kelly_criterion` | `false` | Size with fractional Kelly instead |
 | `kelly_fraction` | `0.25` | Fraction of full Kelly |
 
@@ -100,6 +101,8 @@ Session rules, operator controls and monitoring for the live bot
 | `max_trades_per_symbol` | `3` | Filled entries per symbol per day (`0` = no cap) |
 | `cooldown_minutes_after_stop` | `30` | No re-entry into a symbol this long after a stop-loss exit |
 | `profit_lock_pct` | `0.0` | Halt new entries once day P&L reaches this fraction of capital (`0` = off) |
+| `strategy_limits.max_daily_loss_pct` | `0.01` | Switch a strategy off for the day once its realised loss reaches this fraction of capital (`0` = off) |
+| `strategy_limits.max_consecutive_losses` | `4` | ... or after this many losing trades in a row (`0` = off) |
 | `kill_switch.flatten_on_daily_loss` | `true` | When day P&L (realised + unrealised) reaches −`risk.max_daily_drawdown` × capital, close every position as well as halting entries |
 | `heartbeat_minutes` | `5` | Alert once if no tick arrives for this long during market hours |
 | `record_bars` | `true` | Save every finished 1-minute bar to `data/live_bars/` |
@@ -154,12 +157,15 @@ is a side-car; options strategies and `pead` are not wired.)
 
 ### Strategy parameters
 
-Strategy parameters are optional keys read from the **top level** of this file
-(e.g. `ema_fast: 12`) or from nested sections — `microstructure:`,
-`volatility:`, `gap:`, `institutional:`, `options:`. None are set by default;
-each strategy chapter lists its keys and defaults
-([The Strategy Framework](../engine/strategy-framework.md#where-parameters-come-from)).
-`ml_min_confidence` (top level, default 0.6) sets the ML strategy's threshold.
+`strategies.params.<strategy>.<key>` overrides a strategy's parameter, for
+example `strategies.params.donchian_breakout.dc_period: 55`. Every strategy
+has `max_hold_bars` (time stop, `0` = off), `atr_stop_mult` and
+`atr_target_mult`; the rest are listed in each strategy chapter and on the
+Strategies page. Legacy top-level keys (`ema_fast: 12`) are still read when
+no nested value is set. The microstructure, volatility, gap, institutional
+and options strategies read their own sections (`microstructure:`,
+`volatility:`, `gap:`, `institutional:`, `options:`). See
+[The Strategy Framework](../engine/strategy-framework.md#where-parameters-come-from).
 
 ## signal_engine
 

@@ -19,7 +19,9 @@ Data: `GET /api/config` (every 5 minutes), which reads `config/settings.yaml`:
   the total weight.
 - **All Strategies** — every registered strategy with its weight (and a bar
   relative to the largest weight) and status **enabled** or **off**, plus the
-  count "N enabled / M total".
+  count "N enabled / M total". Click a row to see the strategy's effective
+  parameters (defaults merged with `strategies.params.<name>`; see
+  [Where parameters come from](../engine/strategy-framework.md#where-parameters-come-from)).
 
 `all_strategies` comes from `registered_strategy_names()` in
 `strategies/meta_engine.py`, so it always matches what the engine can run.

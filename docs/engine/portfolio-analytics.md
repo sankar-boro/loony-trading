@@ -58,20 +58,14 @@ fm.sector_exposure(positions); fm.hedge_suggestion(...)
 A high R² with little alpha means returns are mostly market and sector
 exposure, not skill. Not wired into the dashboard or reports yet.
 
-## Live P&L tracker
+## Per-strategy P&L
 
-`analytics/live_pnl.py` (`LivePnLTracker`) attributes each closed trade to its
-strategy and applies kill switches:
-
-| Rule | Limit | Effect |
-|---|---|---|
-| Strategy daily loss | > 2 % of capital | strategy disabled for the day |
-| Portfolio drawdown | > 5 % | all trading halted |
-| Losing streak | 5 in a row | strategy size halved (`get_size_multiplier`) |
-
-`reset_daily()` re-enables everything for a new day; `portfolio_summary()`
-and `pnl_dataframe()` report. Not wired into the bot — the risk manager's own
-daily drawdown limit applies instead.
+The live bot books every closed trade against its strategy and switches off
+a strategy that loses too much in a day or too many trades in a row
+([Strategy limits](intraday-controls.md#strategy-limits)). Today's P&L per
+strategy is on the [Intraday Desk](../dashboard/intraday-desk.md).
+(`analytics/live_pnl.py`, an earlier unconnected version of these limits,
+was removed.)
 
 ## Performance metrics
 

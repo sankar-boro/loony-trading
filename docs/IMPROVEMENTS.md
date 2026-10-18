@@ -20,15 +20,15 @@ Each area gets one of three labels:
 
 | Area | Status | In one line |
 |---|---|---|
-| [Short selling in delivery](#short-selling-in-delivery) | Partial | SELL signals open shorts even on CNC, which Indian cash markets do not allow overnight |
-| [Core strategies](#core-strategies) | Basic | 19 strategies of 40–60 lines, fixed parameters, constant confidence |
+| [Short selling in delivery](#short-selling-in-delivery) | **Done** | CNC short entries are refused in the executor, the bot and the backtester |
+| [Core strategies](#core-strategies) | Partial | Parameters, setup-based confidence and strategy exits done; ensemble voting and multi-timeframe data still to do |
 | [Options, PEAD and expiry strategies](#options-pead-and-expiry-strategies) | Not wired | About 1,550 lines of strategies that never run |
 | [Pair trading](#pair-trading) | Not wired | Built on a Kalman tracker; nothing calls it |
 | [Regime detection](#regime-detection) | Partial | HMM detector never fitted; only the ADX rules run |
 | [Features](#features) | Partial | Advanced OI/IV/macro features used only by tests |
-| [Risk management](#risk-management) | Basic | Fixed-fraction sizing; CVaR and per-strategy limits not wired |
+| [Risk management](#risk-management) | Basic | Sector cap and per-strategy limits done; CVaR and volatility targeting still to wire |
 | [Execution](#execution) | Basic | Market/limit only; the 422-line smart-order router is unused |
-| [Portfolio analytics](#portfolio-analytics) | Not wired | Factor model, beta hedge, live P&L limits, stress test: about 960 lines, never called |
+| [Portfolio analytics](#portfolio-analytics) | Not wired | Factor model, beta hedge, stress test: about 720 lines, never called |
 | [Backtesting](#backtesting) | Basic | One symbol, one position at a time; no portfolio backtest |
 | [Machine learning](#machine-learning) | Partial | Ensemble trains; TFT, online learning, RL, Bayesian tuning never used |
 | [Composite signals](#composite-signals) | Partial | Scored and stored, but outcomes are never measured |
@@ -49,10 +49,12 @@ through ends in an exchange auction with a penalty. Paper mode and the
 backtester simulate these shorts happily, so their results include trades
 the live bot cannot make.
 
-**Fix and extend:**
-- For CNC, treat SELL as "close a long" only, never open a short. Apply
-  this in the executor, the paper fill path and the backtester.
-- Allow intraday shorts on MIS, closed by the 15:14 squareoff.
+**Done (2026-10-18):** on CNC a SELL now only closes a long. New shorts
+need MIS or NRML (`risk_manager.can_open_short()`), enforced in the executor
+(live and paper), the bot (logged as a `block` event) and the backtester. See
+[Shorts need MIS](engine/execution.md#shorts-need-mis).
+
+**Still to extend:**
 - Route bearish views to futures or puts once
   [options are wired in](#options-pead-and-expiry-strategies).
 - Add a `direction` setting per strategy: long-only, short-only or both.
@@ -71,22 +73,25 @@ The best signal is chosen by confidence × weight. With constant confidences
 that is effectively a fixed priority order, not a judgement of signal
 quality.
 
+**Done (2026-10-18):**
+- [Parameters](engine/strategy-framework.md#where-parameters-come-from)
+  under `strategies.params.<name>`, including stop/target ATR multiples and
+  a time stop for every strategy, shown on the Strategies page.
+- Setup-based confidence (`scaled_confidence`) for the six strategies that
+  used a constant: `donchian_breakout`, `supertrend`, `vwap_reversion`,
+  `volume_momentum`, `rsi_momentum`, `range_breakout`.
+- [Strategy exits](engine/strategy-framework.md#strategy-exits)
+  (`should_exit`) in the live bot and the backtester. Rules are written for
+  `donchian_breakout`, `supertrend`, `ema_crossover`, `rsi_momentum` and
+  `zscore_reversion`, plus a time stop for all.
+
 **Gaps:**
-- No parameters from config: `strategies.params` does not exist (see
-  [TODO](TODO.md) item 23).
-- Confidence does not reflect how strong the setup is.
-- Exits are only stop and target. There are no time stops, no exit when the
-  signal reverses inside the strategy, no partial profit-taking.
+- No partial profit-taking.
 - `order_book_imbalance` never receives an order book and `mtf_trend` never
   receives multi-timeframe frames, so both can never fire.
+- Exit rules for the remaining strategies.
 
 **Extend with:**
-- A parameter schema per strategy (periods, thresholds, stop multiples),
-  read from `strategies.params.<name>` and shown on the Strategies page.
-- Confidence computed from the setup: distance from the threshold, volume
-  confirmation, agreement with the higher timeframe.
-- Strategy-specific exits: `should_exit(df, position)` on `BaseStrategy`,
-  called on every bar for open positions.
 - Subscribe the live feed in `full` mode (it supports it, but defaults to
   `ltpc` and only parses LTPC messages), decode the market depth, and pass
   it to `order_book_imbalance`.
@@ -180,23 +185,29 @@ trails stops, and blocks new trades after the daily loss limit. The
 intraday guard adds the session rules and the kill switch. The bot skips a
 symbol highly correlated with an open position.
 
+**Done (2026-10-18):**
+- [Sector exposure cap](engine/risk-management.md#sector-exposure-cap)
+  (`risk.max_sector_exposure`, 30 %). Entries are trimmed to fit and
+  blocked when the sector is full.
+- [Per-strategy loss limits](engine/intraday-controls.md#strategy-limits).
+  A strategy is switched off for the day after a daily loss or a losing
+  streak; this shows on the Intraday Desk, and Resume re-enables it. They
+  replace the unconnected `analytics/live_pnl.py`, which was removed.
+- Orders sized below one lot are skipped instead of rounded up to a lot.
+
 **Not wired:**
 - `risk_manager/cvar.py` (261 lines): CVaR / expected-shortfall limits.
-- `analytics/live_pnl.py` (237 lines): per-strategy loss limits that
-  disable a strategy after a losing streak or drawdown.
 
 **Gaps:**
-- Sector exposure is shown on Portfolio Risk but never enforced.
 - No capital allocation per strategy.
 - No volatility targeting: position size ignores how volatile the stock is,
   beyond the stop distance.
 - No check of available margin or funds before ordering.
 
 **Extend with:**
-- Sector caps (for example 30 % of capital) checked in `validate_signal`.
-- Wiring `live_pnl` limits into the bot, so a strategy that keeps losing
-  switches itself off for the day, with an event on the Intraday Desk.
 - A portfolio CVaR check before each entry.
+- Halving a strategy's size after a shorter losing streak, before switching
+  it off.
 - A funds check through the Upstox funds API before live orders.
 
 ## Execution
@@ -225,7 +236,6 @@ slicing and an Indian intraday volume profile.
 |---|---|---|
 | `analytics/factor_model.py` | 232 | Exposure to market, banking, IT, FMCG, auto and midcap index factors |
 | `portfolio_manager/beta_neutral.py` | 219 | Nifty futures hedge to neutralise portfolio beta |
-| `analytics/live_pnl.py` | 237 | Live P&L per strategy with loss limits (see [Risk management](#risk-management)) |
 | `backtester/stress_test.py` | 268 | Replays five Indian crises against a strategy's returns |
 
 **Extend with:**

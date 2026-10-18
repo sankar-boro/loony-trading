@@ -97,6 +97,9 @@ passed):
    a full `timeframes.intraday` bar has completed, then rebuild the frame
    (history + live bars). Symbols without an intraday base use the daily frame.
 10. Need at least 60 bars.
+    Then ask the strategy behind each open position in the symbol whether
+    to exit ([Strategy exits](strategy-framework.md#strategy-exits)); if one
+    closes, stop here for this bar.
 11. **No new intraday entries after 15:14** when trading MIS.
 12. **Score** — `meta_engine.generate_signals()` → `best_signal()` (confidence
     × weight); continue only for BUY/SELL.

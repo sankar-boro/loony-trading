@@ -45,7 +45,7 @@ has arrived for two minutes.
 | Button | When shown | Effect |
 |---|---|---|
 | **Pause entries** | Not paused or halted | No new entries. Open positions keep their stops and targets |
-| **Resume entries** / **Clear halt & resume** | Paused or halted | Entries allowed again; also clears a kill-switch or profit-lock halt for today |
+| **Resume entries** / **Clear halt & resume** / **Re-enable strategies** | Paused, halted, or a strategy switched off | Entries allowed again; clears a kill-switch or profit-lock halt and turns switched-off strategies back on for today |
 | **Flatten all** | Any open position | Closes every position at market (reason `operator_flatten`) |
 
 Each button asks for confirmation, then calls `POST /api/intraday/control`.
@@ -78,7 +78,10 @@ one marks it. The line only appears when it is inside the chart's range. The
 curve starts when the bot does; before that the panel says it will fill in.
 
 Next to it, **By strategy** totals today's closed trades per strategy: wins
-over trades and net P&L, best first.
+over trades and net P&L, best first. A strategy switched off by its
+[loss limits](../engine/intraday-controls.md#strategy-limits) is marked
+**● off**, with the reason listed under the table; the panel header shows
+the limits.
 
 ## Open positions
 

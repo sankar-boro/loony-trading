@@ -20,6 +20,23 @@ order = await executor.execute_signal(signal)
 The product for every order comes from `exchanges.upstox.default_product`
 (`CNC` by default); `execution.upstox_product`, if set, overrides it.
 
+### Shorts need MIS
+
+A SELL signal on a flat symbol would open a short. NSE does not allow an
+overnight short in the cash segment: Upstox rejects it, or a short that slips
+through ends in an exchange auction with a penalty. So new shorts are opened
+only on `MIS` (closed by the intraday squareoff) or `NRML` (F&O);
+`risk_manager.can_open_short()` holds the rule. On `CNC`:
+
+- a SELL that closes an open long works as usual;
+- a SELL on a flat symbol is refused. `execute_signal` returns nothing and
+  logs a warning. The bot logs a `block` event ("no short entries on CNC") on
+  the [Intraday Desk](../dashboard/intraday-desk.md). The backtester skips
+  the entry the same way.
+
+Paper mode goes through the same executor, so paper results no longer
+include shorts the live bot could not make.
+
 | Order type | Needs | Chosen when `execution.order_type` is |
 |---|---|---|
 | `MARKET` | — | `market`; or `smart` with confidence > 0.85 |
@@ -32,6 +49,8 @@ Limit prices are rounded to the instrument's tick size.
 
 1. `RiskManager.validate_signal()` — stop if rejected (see
    [Risk Management](risk-management.md#validating-a-signal)).
+   A short entry on a product that cannot hold one (CNC) is also refused
+   ([Shorts need MIS](#shorts-need-mis)).
 2. Resolve the instrument key; read lot and tick size from the registry.
 3. Size: `RiskManager.size_position()`, rounded to whole lots (≥ 1 lot), then
    snapped again to the contract's lot size for F&O.

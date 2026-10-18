@@ -31,6 +31,7 @@ stops actually come from each strategy's signal.)
 | Too many positions | open positions ≥ `max_concurrent_trades` |
 | Bad day | today's realised P&L < −`max_daily_drawdown` × capital |
 | Weak signal | confidence < 0.5 |
+| Sector full | the symbol's sector is at `max_sector_exposure` ([below](#sector-exposure-cap)) |
 | Already positioned | any position is open in that symbol |
 
 The last rule means **one position per symbol**: no pyramiding, and no opening
@@ -50,6 +51,7 @@ risk amount    = capital × max_risk_per_trade
 risk per share = |entry price − stop-loss|
 size           = risk amount ÷ risk per share
 size           = min(size, capital × max_portfolio_risk ÷ price)
+size           = min(size, sector room ÷ price)
 ```
 
 Example: ₹5,00,000 capital, 1 % risk = ₹5,000; entry ₹2,800, stop ₹2,750 →
@@ -66,10 +68,25 @@ calibrated probabilities.
 If the stop equals the entry price, a tiny fallback size is used and a warning
 logged.
 
-The executor then rounds the size to whole shares — or whole **lots** for F&O
-(at least one lot) using the contract's lot size from the Upstox instrument
-master, with `FO_LOT_SIZES` (NIFTY 65, BANKNIFTY 30, FINNIFTY 60,
-MIDCPNIFTY 120, SENSEX 10, BANKEX 15) as the fallback.
+The executor then rounds the size **down** to whole shares, or whole **lots**
+for F&O, using the contract's lot size from the Upstox instrument master,
+with `FO_LOT_SIZES` (NIFTY 65, BANKNIFTY 30, FINNIFTY 60, MIDCPNIFTY 120,
+SENSEX 10, BANKEX 15) as the fallback. A size below one lot (for example
+when the sector cap leaves little room) skips the order rather than rounding
+up to a lot nobody sized.
+
+## Sector exposure cap
+
+`risk.max_sector_exposure` (default `0.30`) caps how much capital, at entry
+prices, may sit in one sector. Sectors come from `config/instruments.py`;
+indices have none and are not capped.
+
+- A new entry is **trimmed** to the sector's remaining room. With ₹5 lakh
+  capital and ₹1 lakh already in Banking, a new bank trade may add at most
+  ₹50,000.
+- When the sector is full, the signal is **rejected**. The live bot logs a
+  `block` event: "sector Banking at its 30% exposure cap".
+- Set it to `0` to turn the cap off.
 
 ## Managing open positions
 
@@ -111,18 +128,18 @@ tails). `CVaRRiskManager` records realised P&L per strategy and:
 
 `CircuitBreakerDetector` — see [Market Hours and Calendar](market-calendar.md#circuit-breakers).
 
-### Live P&L tracker
+### Per-strategy loss limits
 
-`analytics/live_pnl.py` (`LivePnLTracker`) applies per-strategy kill switches:
-a strategy losing more than 2 % of capital in a day is disabled for the day,
-portfolio drawdown beyond 5 % halts everything, and five consecutive losses
-halve that strategy's size. See [Portfolio and Analytics](portfolio-analytics.md).
+Built into the live bot: a strategy that loses more than its daily limit,
+or several trades in a row, is switched off for the rest of the day. See
+[Strategy limits](intraday-controls.md#strategy-limits).
 
 ### Portfolio-level checks
 
 The Portfolio Risk dashboard page reports sector concentration, correlation
-between holdings and limit breaches, but only as warnings
-([Portfolio Risk](../dashboard/portfolio-risk.md)). The live bot additionally
+between holdings and limit breaches ([Portfolio Risk](../dashboard/portfolio-risk.md)).
+Sector concentration is also enforced at entry by the
+[sector exposure cap](#sector-exposure-cap). The live bot additionally
 skips a new entry when its recent returns correlate above
 `portfolio.correlation_limit` (0.7) with an open position (needs at least ten
 observed prices for both).

@@ -34,12 +34,9 @@ groups is self-contained.
    - Alerts have no cooldown.
    - The notifier has no rate limit.
 
-8. **No shorts in delivery.** A SELL signal on a flat symbol opens a short
-   even on CNC, the default product. NSE does not allow overnight cash
-   shorts, so Upstox rejects these orders or they end in an auction penalty.
-   Paper mode and the backtester simulate them anyway. Block CNC short
-   entries everywhere; see
-   [Improvements](IMPROVEMENTS.md#short-selling-in-delivery).
+8. ~~**No shorts in delivery.**~~ **Done 2026-10-18.** SELL never opens a
+   short on CNC in the executor, the bot or the backtester; see
+   [Shorts need MIS](engine/execution.md#shorts-need-mis).
 
 ## 2. Trading correctness
 
@@ -83,8 +80,8 @@ groups is self-contained.
     it was on each day.
 22. **Regimes.** The HMM regime models are never fitted, and there are no
     breakout or crisis regimes.
-23. **Strategy parameters.** Add a `strategies.params` section; today
-    parameters come from unset top-level keys.
+23. ~~**Strategy parameters.**~~ **Done 2026-10-18:** `strategies.params`,
+    see [Where parameters come from](engine/strategy-framework.md#where-parameters-come-from).
 24. **ML.**
     - No model with a real edge yet: the last run reached 40.9 % accuracy
       against a 48.7 % baseline.

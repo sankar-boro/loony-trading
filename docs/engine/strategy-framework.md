@@ -37,22 +37,40 @@ class MyStrategy(BaseStrategy):
 
     def __init__(self, cfg):
         super().__init__(cfg)
-        self.lookback = cfg.get("my_lookback", 20)
+        self.lookback = self.param("lookback", 20)        # strategies.params.my_strategy.lookback
 
     def generate_signal(self, df, symbol):
         if not self.validate_df(df, self.lookback + 5):   # enough bars?
             return None
         ...
-        sl, tp = self._atr_stops(df, direction=1)          # 2×ATR stop, 3×ATR target
+        strength = self._unit(breakout_atrs)               # 0–1: how decisive the setup is
+        sl, tp = self._atr_stops(df, direction=1)          # atr_stop_mult / atr_target_mult
         return Signal(strategy=self.name, symbol=symbol, signal_type=SignalType.BUY,
                       price=df["close"].iloc[-1], stop_loss=sl, take_profit=tp,
-                      confidence=0.7)
+                      confidence=self.scaled_confidence(strength))
+
+    def should_exit(self, df, direction, bars_held):       # optional
+        base = super().should_exit(df, direction, bars_held)   # time stop
+        if base:
+            return base
+        return "my exit rule" if ... else None
 ```
 
+- `param(key, default)` — a tunable parameter (see below). The value is cast
+  to the default's type and recorded in `self.params`, which the Strategies
+  page shows.
 - `validate_df(df, min_bars=50)` — enough data to compute indicators.
-- `_atr_stops(df, direction, atr_sl_mult=2.0, atr_tp_mult=3.0)` — stop and
-  target at multiples of ATR(14) from the last close: a 1 : 1.5 risk/reward by
-  default. Most strategies use it, with their own multipliers.
+- `_atr_stops(df, direction)` — stop and target at `atr_stop_mult` /
+  `atr_target_mult` ATR(14)s from the last close. The defaults come from the
+  class attributes `default_atr_stop` / `default_atr_target` (2 and 3, a
+  1 : 1.5 risk/reward); mean-reversion strategies set tighter ones.
+- `scaled_confidence(strength, low=0.55, high=0.85)` — maps a 0–1 setup
+  strength to a confidence. The engine ranks signals by confidence × weight,
+  so a constant confidence would make the choice a fixed priority order.
+  `_unit(x)` clamps to 0–1, and `_volume_ratio(df)` gives the last bar's
+  volume over its 20-bar average.
+- `should_exit(df, direction, bars_held)` — a strategy-specific exit (see
+  [Strategy exits](#strategy-exits)).
 - `self.weight` — the strategy's weight from config.
 
 Then register the class in `_CORE_STRATEGIES` in `strategies/meta_engine.py`
@@ -61,14 +79,43 @@ that can fail) and add a test.
 
 ### Where parameters come from
 
-Strategies read their parameters from the configuration dictionary, with
-defaults in code. **Most read top-level keys** — for example
-`cfg.get("ema_fast", 9)` reads `ema_fast:` at the top level of
-`config/settings.yaml`, not under `strategies:`. The newer strategies read
-nested sections (`microstructure.anchored_vwap`, `volatility`, `gap`,
-`institutional`, `options`). The shipped `settings.yaml` sets **none** of these,
-so every strategy currently runs on its code defaults. Each strategy chapter
-lists the exact keys.
+`param(key, default)` looks in this order:
+
+1. `strategies.params.<strategy name>.<key>` in `config/settings.yaml`;
+2. the legacy top-level key of the same name (for example `ema_fast: 12`),
+   kept so older configs still work;
+3. the default in code.
+
+```yaml
+strategies:
+  params:
+    donchian_breakout: {dc_period: 55, exit_period: 20, max_hold_bars: 30}
+    rsi_momentum:      {rsi_period: 21, atr_stop_mult: 2.5}
+```
+
+Every strategy has `max_hold_bars` (time stop, 0 = off), `atr_stop_mult`
+and `atr_target_mult`, plus its own keys. The Strategies page lists each
+strategy's effective values (click a row), and `GET /api/config` returns
+them under `params`. The data-dependent strategies (VIX, GIFT Nifty, FII/DII)
+and the microstructure ones still read their own nested sections
+(`volatility`, `gap`, `institutional`, `microstructure`).
+
+### Strategy exits
+
+Besides its stop and target, a position can be closed by the strategy that
+opened it. On every closed bar the live bot calls
+`should_exit(df, direction, bars_held)` on that strategy; a returned reason
+closes the position as `strategy_exit (<reason>)`. The backtester does the
+same, filling at that bar's close with reason `strategy_exit`.
+
+| Strategy | Exit rule |
+|---|---|
+| All | Time stop after `max_hold_bars` bars (off by default) |
+| `donchian_breakout` | Close through the opposite `exit_period`-bar channel (10) |
+| `supertrend` | Supertrend flips against the position |
+| `ema_crossover` | The opposite crossover |
+| `rsi_momentum` | RSI back through 50 by `exit_buffer` (5) against the position |
+| `zscore_reversion` | Z-score back within ±`zscore_exit` (0.5) of the mean |
 
 ## The MetaStrategyEngine
 
