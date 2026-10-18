@@ -58,6 +58,7 @@ class Position:
     entry_time: str = ""     # ISO timestamp, set when the position is opened
     stop_order_id: str = ""  # live: exchange-held SL-M order protecting this position
     stop_synced: float = 0.0 # trigger price last sent to the exchange
+    pair_id: str = ""        # set on both legs of a pair trade (opened/closed together)
 
     def update_trailing_stop(self, current_price: float) -> None:
         if self.direction == 1 and current_price > self.peak_price:

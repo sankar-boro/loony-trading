@@ -155,6 +155,13 @@ class UpstoxTradingBot:
         self._exchange_stops = bool(ic.get("exchange_stops", False)) and mode == "live"
         self._recorder = BarRecorder(data_dir / "live_bars") if ic.get("record_bars", True) else None
         self._control = ControlReader(data_dir / "bot_control.json")
+        # Pair trading (strategies.pairs): both legs open and close together
+        from strategies.stat_arb.pair_trading import PairTradingStrategy
+        sc = cfg.get("strategies", {}) or {}
+        self._pairs: list[tuple[str, str]] = [
+            (str(p[0]).upper(), str(p[1]).upper()) for p in (sc.get("pairs") or []) if len(p) == 2]
+        self._pair_strategy = PairTradingStrategy(cfg)
+        self._pending_pair_closes: list = []
         self._handled_control: dict = {}
         self._events: deque = deque(maxlen=100)
         self._last_blocked: dict[str, str] = {}
@@ -298,6 +305,15 @@ class UpstoxTradingBot:
         return self.executor._default_product.value == "MIS"
 
     async def _close_tracked(self, pos, price: float, reason: str, send_order: bool = True) -> None:
+        await self._close_tracked_one(pos, price, reason, send_order)
+        # Partner legs of pair trades queued by _after_close
+        while self._pending_pair_closes:
+            partner, why = self._pending_pair_closes.pop(0)
+            if any(p is partner for p in self.risk_manager.positions.get(partner.symbol, [])):
+                await self._close_tracked_one(
+                    partner, self._last_price.get(partner.symbol, partner.entry_price), why)
+
+    async def _close_tracked_one(self, pos, price: float, reason: str, send_order: bool = True) -> None:
         """Close a position the bot is tracking. With send_order=False the
         position is only removed from the books (the broker already closed it).
 
@@ -338,6 +354,14 @@ class UpstoxTradingBot:
         off = self.guard.record_strategy_result(pos.strategy, pnl)
         if off:
             self._event("halt", f"Strategy {pos.strategy} switched off for the day — {off}", notify=True)
+        if pos.pair_id and not reason.startswith(("mis_squareoff", "kill_switch", "operator_flatten",
+                                                  "pair_exit", "pair_unwind")):
+            # One leg closed (its own stop, a reconcile, ...): close the other
+            # so the bot is never left holding half a hedge. The squareoff,
+            # kill switch, flatten and pair exits close both legs themselves.
+            partner = self._pair_partner(pos)
+            if partner is not None:
+                self._pending_pair_closes.append((partner, f"pair_leg_closed ({pos.symbol})"))
 
     # ── Intraday session helpers ───────────────────────────────────────────────
 
@@ -772,6 +796,10 @@ class UpstoxTradingBot:
         if await self._check_strategy_exits(symbol, df, price):
             return
 
+        # Pairs that include this symbol: spread exits and new pair entries
+        if self._pairs:
+            await self._check_pairs(symbol, ist_now)
+
         # No new intraday entries after the squareoff cut-off: the broker
         # would force-close them minutes later.
         if past_cutoff and self._is_intraday_product():
@@ -830,6 +858,108 @@ class UpstoxTradingBot:
                 f"| {best.strategy} | conf={best.confidence:.0%}"
             )
 
+    # ── Pair trading ───────────────────────────────────────────────────────────
+
+    def _pair_partner(self, pos):
+        """The other open leg of `pos`'s pair trade, or None."""
+        for lst in self.risk_manager.positions.values():
+            for p in lst:
+                if p is not pos and p.pair_id == pos.pair_id:
+                    return p
+        return None
+
+    def _pair_frames(self, a: str, b: str):
+        """Bars for both legs in the same timeframe: intraday if both have an
+        intraday frame, else daily; (None, None) if either is missing."""
+        ka, kb = f"{a}_{self.intraday_tf}", f"{b}_{self.intraday_tf}"
+        if ka in self._df_cache and kb in self._df_cache:
+            return self._df_cache[ka], self._df_cache[kb]
+        return self._df_cache.get(a), self._df_cache.get(b)
+
+    async def _check_pairs(self, symbol: str, now) -> None:
+        """For each configured pair containing `symbol`: close an open pair
+        whose spread has reverted (or hit its stop), else consider opening one."""
+        strat = self._pair_strategy
+        for a, b in self._pairs:
+            if symbol not in (a, b):
+                continue
+            df_a, df_b = self._pair_frames(a, b)
+            if df_a is None or df_b is None:
+                continue
+            state = strat.evaluate(strat.align(df_a, df_b))
+            if state is None:
+                continue
+            legs = [p for s in (a, b) for p in self.risk_manager.positions.get(s, []) if p.pair_id]
+            leg_a = next((p for p in legs if p.symbol == a), None)
+            if leg_a is not None:
+                why = strat.exit_reason(state, leg_a.direction, _bars_since(df_a, leg_a.entry_time))
+                if why:
+                    for leg in legs:
+                        if any(p is leg for p in self.risk_manager.positions.get(leg.symbol, [])):
+                            await self._close_tracked(
+                                leg, self._last_price.get(leg.symbol, leg.entry_price), f"pair_exit ({why})")
+                continue
+            if self.risk_manager.positions.get(a) or self.risk_manager.positions.get(b):
+                continue                       # a leg is held by another strategy
+            await self._open_pair(a, b, state, df_a, df_b, now)
+
+    async def _open_pair(self, a: str, b: str, state, df_a, df_b, now) -> None:
+        from risk_manager.risk_manager import can_open_short
+        strat = self._pair_strategy
+        sides = state.entry_sides(strat.entry_z)
+        if not sides:
+            return
+        key = f"{a}/{b}"
+
+        def blocked(why: str) -> None:
+            if self._last_blocked.get(key) != why:
+                self._last_blocked[key] = why
+                self._event("block", f"Pair {key} (z {state.z:+.2f}) not taken — {why}")
+
+        product = self.executor._default_product
+        if not can_open_short(product):
+            return blocked(f"a pair needs a short leg; {product.value} cannot hold one (use MIS)")
+        for sym in (a, b):
+            ok, why = self.guard.can_enter(sym, now, self._is_intraday_product(), strategy=strat.name)
+            if not ok:
+                return blocked(why)
+        sig_a, sig_b = strat.generate_pair_signals(df_a, df_b, a, b)
+        if not sig_a or not sig_b:
+            return
+        qty_a, qty_b = strat.leg_quantities(state, sig_a.price, self.risk_manager.capital)
+        if qty_a <= 0 or qty_b <= 0:
+            return blocked("capital too small for one share of each leg")
+        gross = qty_a * sig_a.price + qty_b * sig_b.price
+        if self.risk_manager.sector_room(a) < gross:
+            return blocked(f"sector {self.risk_manager.sector_of(a)} has no room for "
+                           f"₹{gross:,.0f} gross")
+        self._last_blocked.pop(key, None)
+
+        order_a = await self.executor.execute_signal(sig_a, quantity=qty_a)
+        if not order_a or order_a.status != "complete":
+            self._event("error", f"Pair {key}: leg {a} did not fill — pair not opened")
+            return
+        pos_a = self.risk_manager.positions[a][-1]
+        order_b = await self.executor.execute_signal(sig_b, quantity=qty_b)
+        if not order_b or order_b.status != "complete":
+            # Never leave half a hedge open
+            self._event("error", f"Pair {key}: leg {b} did not fill — unwinding {a}", notify=True)
+            await self._close_tracked(pos_a, self._last_price.get(a, sig_a.price), "pair_unwind")
+            return
+        pos_b = self.risk_manager.positions[b][-1]
+        pair_id = f"{key}@{now.isoformat(timespec='minutes')}"
+        pos_a.pair_id = pos_b.pair_id = pair_id
+        self.risk_manager.version += 1
+        for sym in (a, b):
+            self.guard.record_entry(sym)
+        self._event("entry", f"Pair {key}: {sig_a.signal_type.value.upper()} {pos_a.size:g} {a}, "
+                             f"{sig_b.signal_type.value.upper()} {pos_b.size:g} {b} "
+                             f"(z {state.z:+.2f}, β {state.beta:.2f}, half-life {state.half_life:.0f} bars)")
+        if self._exchange_stops:
+            for pos in (pos_a, pos_b):
+                if not await self.executor.place_exchange_stop(pos):
+                    self._event("error", f"{pos.symbol}: pair leg filled but no exchange stop", notify=True)
+
     async def _check_strategy_exits(self, symbol: str, df, price: float) -> bool:
         """Ask the strategy that opened each position in `symbol` whether to
         exit now (BaseStrategy.should_exit). Returns True if anything closed."""
@@ -858,6 +988,8 @@ class UpstoxTradingBot:
         open_pos = self.risk_manager.positions.get(signal.symbol, [])
         if not open_pos:
             return True
+        if any(p.pair_id for p in open_pos):
+            return False          # a pair leg is managed on its spread, not by other strategies
         if any(p.direction != signal.direction for p in open_pos):
             for pos in list(open_pos):
                 await self._close_tracked(pos, price, "signal_reversal")

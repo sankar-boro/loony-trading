@@ -180,33 +180,63 @@ class KalmanSpreadTracker:
     def is_cointegrated(
         self, price_a: pd.Series, price_b: pd.Series, p_value: float = 0.05,
     ) -> bool:
-        """
-        Engle-Granger cointegration test.
-        Returns True if the pair is statistically cointegrated.
-        """
-        try:
-            from statsmodels.tsa.stattools import coint
-            _, pval, _ = coint(price_a.values, price_b.values)
-            return float(pval) < p_value
-        except Exception:
-            return False
+        """Engle-Granger cointegration test at the 1 / 5 / 10 % level."""
+        return engle_granger_stat(price_a, price_b) < coint_critical_value(p_value)
 
     def half_life(self, spread: pd.Series) -> float:
-        """
-        Ornstein-Uhlenbeck half-life of mean reversion.
-        half_life = -log(2) / lambda  where lambda from AR(1) regression.
-        Useful for calibrating entry/exit z-score windows.
-        """
-        try:
-            from statsmodels.regression.linear_model import OLS
-            from statsmodels.tools import add_constant
-            s      = spread.dropna().values
-            delta  = np.diff(s)
-            lag    = s[:-1]
-            model  = OLS(delta, add_constant(lag)).fit()
-            lam    = model.params[1]
-            if lam >= 0:
-                return float("inf")    # non-mean-reverting
-            return float(-np.log(2) / lam)
-        except Exception:
-            return 20.0   # default 20-bar half-life
+        """Ornstein-Uhlenbeck half-life of mean reversion, in bars."""
+        return half_life(spread)
+
+
+# ── Cointegration statistics (numpy only) ────────────────────────────────────
+# MacKinnon (1991/2010) asymptotic critical values of the Engle-Granger test
+# for two series with a constant. A t-statistic below the value rejects "no
+# cointegration" at that level.
+_EG_CRITICAL = {0.01: -3.90, 0.05: -3.34, 0.10: -3.04}
+
+
+def coint_critical_value(level: float = 0.05) -> float:
+    """Critical value for the nearest supported level (1, 5 or 10 %)."""
+    return _EG_CRITICAL[min(_EG_CRITICAL, key=lambda k: abs(k - level))]
+
+
+def _ols(y: np.ndarray, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    coef, *_ = np.linalg.lstsq(X, y, rcond=None)
+    return coef, y - X @ coef
+
+
+def engle_granger_stat(price_a, price_b, lags: int = 1) -> float:
+    """Augmented Dickey-Fuller t-statistic of the residuals of a ~ b (with
+    a constant). More negative = more strongly mean-reverting; compare with
+    coint_critical_value(). NaN-safe; returns +inf when undefined."""
+    a = np.asarray(price_a, dtype=float)
+    b = np.asarray(price_b, dtype=float)
+    ok = ~(np.isnan(a) | np.isnan(b))
+    a, b = a[ok], b[ok]
+    if len(a) < 30:
+        return float("inf")
+    _, e = _ols(a, np.column_stack([b, np.ones_like(b)]))
+    de = np.diff(e)
+    rows = len(de) - lags
+    if rows < 20:
+        return float("inf")
+    cols = [e[lags:-1]] + [de[lags - k - 1:len(de) - k - 1] for k in range(lags)]
+    X = np.column_stack(cols)
+    y = de[lags:]
+    coef, resid = _ols(y, X)
+    dof = rows - X.shape[1]
+    sigma2 = resid @ resid / dof
+    cov = sigma2 * np.linalg.pinv(X.T @ X)
+    se = np.sqrt(cov[0, 0])
+    return float(coef[0] / se) if se > 0 else float("inf")
+
+
+def half_life(spread) -> float:
+    """Ornstein-Uhlenbeck half-life from an AR(1) fit of the spread changes:
+    -ln 2 / λ, or +inf if the spread is not mean-reverting."""
+    s = pd.Series(spread).dropna().to_numpy(dtype=float)
+    if len(s) < 10:
+        return float("inf")
+    coef, _ = _ols(np.diff(s), np.column_stack([s[:-1], np.ones(len(s) - 1)]))
+    lam = coef[0]
+    return float(-np.log(2) / lam) if lam < -1e-6 else float("inf")

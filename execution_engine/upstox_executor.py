@@ -198,7 +198,10 @@ class UpstoxExecutor:
     # ── Signal execution ──────────────────────────────────────────────────────
 
     async def execute_signal(self, signal: Signal,
-                              product: UpstoxProduct | None = None) -> Optional[UpstoxOrder]:
+                              product: UpstoxProduct | None = None,
+                              quantity: int | None = None) -> Optional[UpstoxOrder]:
+        """Validate, size, place and track one entry. `quantity` overrides the
+        risk-based size (pair legs are sized to a hedge ratio)."""
         if not self.risk_manager.validate_signal(signal):
             return None
 
@@ -209,7 +212,7 @@ class UpstoxExecutor:
 
         lot_size = self.registry.get_lot_size(instrument_key)
         tick_size = self.registry.get_tick_size(instrument_key)
-        size_float = self.risk_manager.size_position(signal)
+        size_float = float(quantity) if quantity else self.risk_manager.size_position(signal)
         if size_float < lot_size:
             # Risk, exposure or sector limits leave room for less than one
             # lot: skip rather than round up to a lot nobody sized.

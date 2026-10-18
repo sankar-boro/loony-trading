@@ -66,6 +66,11 @@ class _FakeBot:
     _check_day_limits = UpstoxTradingBot._check_day_limits
     _log_intraday_pnl = UpstoxTradingBot._log_intraday_pnl
     _check_strategy_exits = UpstoxTradingBot._check_strategy_exits
+    _close_tracked_one = UpstoxTradingBot._close_tracked_one
+    _pair_partner = UpstoxTradingBot._pair_partner
+    _pair_frames = UpstoxTradingBot._pair_frames
+    _check_pairs = UpstoxTradingBot._check_pairs
+    _open_pair = UpstoxTradingBot._open_pair
 
     def _save_state(self, force=False):
         pass
