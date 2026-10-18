@@ -23,6 +23,19 @@ FO_LOT_SIZES: dict[str, int] = {
 }
 
 
+# Products on which a new short may be opened. NSE does not allow an
+# overnight short in the cash segment, so a short in CNC (delivery) is
+# rejected by the broker or ends in an exchange auction with a penalty.
+# MIS shorts are closed by the intraday squareoff; NRML is for F&O.
+SHORTABLE_PRODUCTS = frozenset({"MIS", "NRML"})
+
+
+def can_open_short(product: str) -> bool:
+    """True if a new short position may be opened on this product. A SELL
+    that closes an existing long is always fine; this only governs entries."""
+    return str(getattr(product, "value", product)).upper() in SHORTABLE_PRODUCTS
+
+
 def snap_to_lot(symbol: str, quantity: float) -> int:
     """Round quantity down to the nearest valid F&O lot size. Equity lot size is 1."""
     lot = FO_LOT_SIZES.get(symbol.upper().split("|")[-1][:10], 1)
@@ -112,6 +125,11 @@ class RiskManager:
             logger.debug(f"Signal confidence too low: {signal.confidence:.2f}")
             return False
 
+        if self.sector_room(signal.symbol) <= 0:
+            logger.warning(f"Sector {self.sector_of(signal.symbol)} at its "
+                           f"{self.max_sector_exposure:.0%} cap — {signal.symbol} rejected")
+            return False
+
         # One position per symbol: never pyramid into the same direction, and
         # never open the other way on top of an open position (close it first).
         if self.positions.get(signal.symbol):
@@ -145,7 +163,39 @@ class RiskManager:
         max_size = self.capital * max_exposure_pct / price
         size = min(size, max_size)
 
+        # ... and to what is left of the sector's exposure cap
+        room = self.sector_room(signal.symbol)
+        if room != math.inf:
+            size = min(size, max(room, 0.0) / price)
+
         return round(size, 8)
+
+    # ── Sector exposure ────────────────────────────────────────────────────────
+
+    @property
+    def max_sector_exposure(self) -> float:
+        """Largest share of capital in one sector (risk.max_sector_exposure;
+        0 = no cap)."""
+        return float(self.cfg.get("max_sector_exposure", 0.30) or 0.0)
+
+    @staticmethod
+    def sector_of(symbol: str) -> str | None:
+        from config.instruments import STOCK_UNIVERSE
+        return (STOCK_UNIVERSE.get(symbol.upper()) or {}).get("sector")
+
+    def sector_exposure(self, sector: str) -> float:
+        """Rupees at entry price currently held in a sector."""
+        return sum(p.entry_price * p.size
+                   for sym, lst in self.positions.items() if self.sector_of(sym) == sector
+                   for p in lst)
+
+    def sector_room(self, symbol: str) -> float:
+        """Rupees that may still be added to this symbol's sector; infinite
+        for symbols without a sector (indices) or with the cap off."""
+        sector = self.sector_of(symbol)
+        if not sector or self.max_sector_exposure <= 0:
+            return math.inf
+        return self.capital * self.max_sector_exposure - self.sector_exposure(sector)
 
     def _kelly_size(self, signal: Signal, risk_per_unit: float) -> float:
         win_prob = signal.confidence

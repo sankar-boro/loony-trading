@@ -210,3 +210,66 @@ def test_failed_cancel_sends_no_close_order(monkeypatch):
     assert bot.executor.closed == []
     assert bot.risk_manager.open_count == 1
     assert bot._events[-1]["kind"] == "error"
+
+
+# ── No shorts in delivery ───────────────────────────────────────────────────
+
+def test_cnc_sell_closes_a_long_but_never_opens_a_short(monkeypatch):
+    bot = _FakeBot(product="CNC")
+    _at(monkeypatch, 11, 0)
+    _with_signal(bot, side=SignalType.SELL)
+    _open(bot, "RELIANCE")                          # long
+
+    _tick(bot)                                      # SELL closes the long, stays flat
+    assert ("RELIANCE", "signal_reversal") in bot.executor.closed
+    assert bot.risk_manager.open_count == 0
+
+    _tick(bot)                                      # flat: SELL must not open a short
+    assert bot.executor.executed == []
+    assert bot.risk_manager.open_count == 0
+    assert "no short entries on CNC" in bot._events[-1]["message"]
+
+
+def test_mis_sell_opens_an_intraday_short(monkeypatch):
+    bot = _FakeBot(product="MIS")
+    _at(monkeypatch, 11, 0)
+    _with_signal(bot, side=SignalType.SELL)
+    _tick(bot)
+    assert len(bot.executor.executed) == 1
+    assert bot.risk_manager.positions["RELIANCE"][0].direction == -1
+
+
+# ── Strategy limits and sector cap in the bot ───────────────────────────────
+
+def test_losing_strategy_is_switched_off_and_its_signals_blocked(monkeypatch):
+    bot = _FakeBot()
+    bot.guard.strategy_max_consecutive_losses = 2
+    _at(monkeypatch, 11, 0)
+    for sym in ("TCS", "INFY"):
+        _open(bot, sym)
+        _tick(bot, 97.0, sym)                               # stop-out, strategy "test"
+    assert "test" in bot.guard.strategies_off
+    assert any("Strategy test switched off" in e["message"] for e in bot._events)
+
+    _with_signal(bot, fill=False)
+    _tick(bot)
+    assert bot.executor.executed == []
+    assert "strategy test off for the day" in bot._events[-1]["message"]
+
+
+def test_full_sector_blocks_entry(monkeypatch):
+    bot = _FakeBot()
+    _at(monkeypatch, 11, 0)
+    bot.risk_manager.cfg["max_sector_exposure"] = 0.30
+    held = _signal("HDFCBANK", SignalType.BUY, price=1500.0)
+    bot.risk_manager.open_position(held, 100)               # ₹1.5 lakh = 30 % of ₹5 lakh
+    _with_signal(bot, fill=False)                           # RELIANCE: Energy, allowed
+    _tick(bot)
+    assert len(bot.executor.executed) == 1
+
+    bot.executor.executed.clear()
+    bot._df_cache["ICICIBANK"] = bot._df_cache["RELIANCE"]
+    bot.meta_engine.generate_signals = lambda symbol, d: [_signal("ICICIBANK", SignalType.BUY)]
+    _tick(bot, symbol="ICICIBANK")
+    assert bot.executor.executed == []
+    assert "sector Banking at its 30% exposure cap" in bot._events[-1]["message"]

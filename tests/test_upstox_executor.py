@@ -118,15 +118,30 @@ def test_execute_signal_paper_returns_order(executor):
     assert order.instrument_key == "NSE_EQ|INE002A01018"
 
 
-def test_execute_signal_sell(executor):
-    sig = Signal(
+def _sell_signal() -> Signal:
+    return Signal(
         strategy="test", symbol="RELIANCE",
         signal_type=SignalType.SELL, price=2900.0,
         stop_loss=2960.0, take_profit=2760.0, confidence=0.75,
     )
-    order = asyncio.run(executor.execute_signal(sig))
+
+
+def test_execute_signal_sell_opens_short_on_mis(executor):
+    order = asyncio.run(executor.execute_signal(_sell_signal(), product=UpstoxProduct.MIS))
     assert order is not None
     assert order.transaction_type == "SELL"
+
+
+def test_short_entry_refused_on_cnc(executor):
+    """NSE allows no overnight short in the cash segment."""
+    assert asyncio.run(executor.execute_signal(_sell_signal())) is None   # default CNC
+    assert executor.risk_manager.open_count == 0
+
+
+def test_can_open_short():
+    from risk_manager.risk_manager import can_open_short
+    assert can_open_short("MIS") and can_open_short(UpstoxProduct.NRML)
+    assert not can_open_short("CNC") and not can_open_short(UpstoxProduct.CNC)
 
 
 def test_execute_signal_low_confidence_rejected(executor):
@@ -261,3 +276,9 @@ def test_partial_live_fill_tracks_only_filled_quantity():
     [pos] = ex.risk_manager.positions["RELIANCE"]
     assert ex.cancelled == ["OID2"]
     assert pos.size == 3 and pos.entry_price == 2801.5
+
+
+def test_order_sized_below_one_lot_is_skipped_not_rounded_up(executor, monkeypatch):
+    monkeypatch.setattr(executor.risk_manager, "size_position", lambda s: 0.4)
+    assert asyncio.run(executor.execute_signal(make_signal())) is None
+    assert executor.risk_manager.open_count == 0

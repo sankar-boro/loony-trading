@@ -132,6 +132,9 @@ class UpstoxTradingBot:
 
         ic = cfg.get("intraday", {}) or {}
         self.guard = IntradayGuard.from_config(cfg)
+        rm = getattr(self, "risk_manager", None)
+        if rm is not None:
+            self.guard.capital = rm.initial_capital
         self._exchange_stops = bool(ic.get("exchange_stops", False)) and mode == "live"
         self._recorder = BarRecorder(data_dir / "live_bars") if ic.get("record_bars", True) else None
         self._control = ControlReader(data_dir / "bot_control.json")
@@ -315,6 +318,9 @@ class UpstoxTradingBot:
         self.portfolio.record_trade(pos.symbol, pnl, pos.strategy)
         self.guard.record_exit(pos.symbol, reason.split(" ")[0], now_ist())
         self._event("exit", f"{pos.symbol} closed ({reason}) P&L ₹{pnl:+,.2f}")
+        off = self.guard.record_strategy_result(pos.strategy, pnl)
+        if off:
+            self._event("halt", f"Strategy {pos.strategy} switched off for the day — {off}", notify=True)
 
     # ── Intraday session helpers ───────────────────────────────────────────────
 
@@ -761,8 +767,18 @@ class UpstoxTradingBot:
         if not await self._handle_existing_position(best, price):
             return
 
-        # Session rules: pause, halt, entry window, trade caps, cooldown
-        allowed, why = self.guard.can_enter(symbol, ist_now, self._is_intraday_product())
+        # Session rules: pause, halt, entry window, trade caps, cooldown —
+        # and no new shorts on a product that cannot hold one (CNC).
+        from risk_manager.risk_manager import can_open_short
+        product = self.executor._default_product
+        if best.signal_type == SignalType.SELL and not can_open_short(product):
+            allowed, why = False, f"no short entries on {product.value} (shorts need MIS)"
+        else:
+            allowed, why = self.guard.can_enter(symbol, ist_now, self._is_intraday_product(),
+                                                strategy=best.strategy)
+        if allowed and self.risk_manager.sector_room(symbol) <= 0:
+            allowed, why = False, (f"sector {self.risk_manager.sector_of(symbol)} at its "
+                                   f"{self.risk_manager.max_sector_exposure:.0%} exposure cap")
         if not allowed:
             if self._last_blocked.get(symbol) != why:
                 self._last_blocked[symbol] = why

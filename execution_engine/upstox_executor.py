@@ -30,7 +30,7 @@ from typing import Dict, List, Optional, Callable
 from data_engine.upstox.auth import UpstoxAuth
 from data_engine.upstox.instruments import InstrumentRegistry
 from execution_engine.order import Order, OrderSide, OrderStatus, OrderType
-from risk_manager.risk_manager import RiskManager, Position
+from risk_manager.risk_manager import RiskManager, Position, can_open_short
 from strategies.base import Signal, SignalType
 from utils.logger import get_logger
 from utils.timeutils import now_utc
@@ -210,13 +210,22 @@ class UpstoxExecutor:
         lot_size = self.registry.get_lot_size(instrument_key)
         tick_size = self.registry.get_tick_size(instrument_key)
         size_float = self.risk_manager.size_position(signal)
-        qty = max(lot_size, int(round(size_float / lot_size) * lot_size))
+        if size_float < lot_size:
+            # Risk, exposure or sector limits leave room for less than one
+            # lot: skip rather than round up to a lot nobody sized.
+            logger.warning(f"{signal.symbol}: sized {size_float:.2f} < 1 lot ({lot_size}) — skipped")
+            return None
+        qty = int(size_float // lot_size) * lot_size
         qty = self._validate_quantity(instrument_key, qty, self.registry.get_lot_size(instrument_key))
         if qty <= 0:
             logger.warning(f"Zero qty for {signal.symbol}")
             return None
 
         prod = product or self._default_product
+        if signal.signal_type == SignalType.SELL and not can_open_short(prod):
+            logger.warning(f"Short entry in {signal.symbol} refused: {prod.value} does not allow "
+                           "opening a short (use MIS for intraday shorts)")
+            return None
         tx = "BUY" if signal.signal_type == SignalType.BUY else "SELL"
         order_cfg = self.cfg.get("order_type", "limit")
         o_type = self._choose_order_type(signal, order_cfg)

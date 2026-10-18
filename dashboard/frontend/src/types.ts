@@ -510,6 +510,11 @@ export interface DeskGuard {
   halted: boolean
   halt_reason: string
   paused: boolean
+  strategy_max_daily_loss_pct?: number
+  strategy_max_consecutive_losses?: number
+  strategy_pnl?: Record<string, number>
+  strategy_streak?: Record<string, number>
+  strategies_off?: Record<string, string>
 }
 
 export interface DeskPosition extends Position {

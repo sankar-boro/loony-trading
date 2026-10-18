@@ -104,7 +104,7 @@ function SessionBar({ d }: { d: DeskResponse }) {
 
 const CONFIRM: Record<DeskAction, string> = {
   pause:   'Pause new entries? Open positions keep their stops and targets.',
-  resume:  'Resume entries? This also clears a kill-switch or profit-lock halt for today.',
+  resume:  'Resume entries? This also clears a kill-switch or profit-lock halt and re-enables strategies switched off by their loss limits.',
   flatten: 'Close EVERY open position at market now?',
 }
 
@@ -113,6 +113,7 @@ function Controls({ d, onDone }: { d: DeskResponse; onDone: () => void }) {
   const [error, setError] = useState('')
   const paused = d.guard.paused || !!d.control.paused
   const halted = d.guard.halted
+  const strategiesOff = Object.keys(d.guard.strategies_off ?? {}).length > 0
 
   async function run(action: DeskAction) {
     if (!window.confirm(CONFIRM[action])) return
@@ -125,10 +126,11 @@ function Controls({ d, onDone }: { d: DeskResponse; onDone: () => void }) {
   const btn = 'px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors disabled:opacity-40'
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      {paused || halted ? (
+      {paused || halted || strategiesOff ? (
         <button className={clsx(btn, 'border-green/40 text-green hover:bg-green/10')}
                 disabled={!!busy} onClick={() => run('resume')}>
-          {busy === 'resume' ? 'Resuming…' : halted ? 'Clear halt & resume' : 'Resume entries'}
+          {busy === 'resume' ? 'Resuming…' : halted ? 'Clear halt & resume'
+            : paused ? 'Resume entries' : 'Re-enable strategies'}
         </button>
       ) : (
         <button className={clsx(btn, 'border-amber/40 text-amber hover:bg-amber/10')}
@@ -359,19 +361,37 @@ export default function IntradayDesk() {
             </div>
           ) : <Empty text="The curve fills in minute by minute while the bot runs" />}
         </Panel>
-        <Panel title="By strategy">
-          {d.by_strategy.length === 0 ? <Empty text="No closed trades yet" /> : (
+        <Panel title="By strategy"
+               right={g.strategy_max_consecutive_losses || g.strategy_max_daily_loss_pct ? (
+                 <span className="text-[12px] text-dim font-mono">
+                   off after {g.strategy_max_daily_loss_pct ? `−${inr((g.strategy_max_daily_loss_pct) * d.pnl.capital)}` : ''}
+                   {g.strategy_max_daily_loss_pct && g.strategy_max_consecutive_losses ? ' or ' : ''}
+                   {g.strategy_max_consecutive_losses ? `${g.strategy_max_consecutive_losses} losses in a row` : ''}
+                 </span>) : undefined}>
+          {d.by_strategy.length === 0 && !Object.keys(g.strategies_off ?? {}).length ? <Empty text="No closed trades yet" /> : (
             <table className="w-full text-sm font-mono">
               <tbody className="divide-y divide-border/50">
-                {d.by_strategy.map(s => (
-                  <tr key={s.strategy}>
-                    <td className="px-3 py-2">{s.strategy}</td>
-                    <td className="px-3 py-2 text-dim">{s.wins}/{s.trades}</td>
-                    <td className={clsx('px-3 py-2 text-right font-semibold', s.pnl >= 0 ? 'text-green' : 'text-red')}>{pnlFmt(s.pnl)}</td>
-                  </tr>
-                ))}
+                {d.by_strategy.map(s => {
+                  const off = g.strategies_off?.[s.strategy]
+                  return (
+                    <tr key={s.strategy} title={off ? `Off for the day: ${off}` : undefined}>
+                      <td className="px-3 py-2">
+                        {s.strategy}
+                        {off && <span className="ml-2 text-[11px] text-red">● off</span>}
+                      </td>
+                      <td className="px-3 py-2 text-dim">{s.wins}/{s.trades}</td>
+                      <td className={clsx('px-3 py-2 text-right font-semibold', s.pnl >= 0 ? 'text-green' : 'text-red')}>{pnlFmt(s.pnl)}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
+          )}
+          {Object.keys(g.strategies_off ?? {}).length > 0 && (
+            <div className="px-3 py-2 text-[12px] text-dim border-t border-border">
+              Switched off for the day: {Object.entries(g.strategies_off ?? {}).map(([n, r]) => `${n} (${r})`).join('; ')}.
+              {' '}<span className="text-primary/80">Resume</span> turns them back on.
+            </div>
           )}
         </Panel>
       </div>

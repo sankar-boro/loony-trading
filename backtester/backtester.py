@@ -8,6 +8,7 @@ from strategies.meta_engine import MetaStrategyEngine
 from utils.math_utils import sharpe_ratio, sortino_ratio, max_drawdown, profit_factor
 from utils.logger import get_logger
 from utils.timeutils import is_mis_squareoff_time
+from risk_manager.risk_manager import can_open_short
 
 logger = get_logger("backtester")
 
@@ -152,6 +153,9 @@ class Backtester:
                 signal = strategy.generate_signal(window, symbol)
 
             if signal is None or signal.signal_type not in (SignalType.BUY, SignalType.SELL):
+                continue
+            # Same rule as the live executor: no new shorts in delivery (CNC)
+            if signal.signal_type == SignalType.SELL and not can_open_short(self.product):
                 continue
 
             # Size position — cap at 25% of capital to prevent excessive leverage

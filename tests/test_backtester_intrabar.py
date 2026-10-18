@@ -50,8 +50,8 @@ def _df(bars: list[tuple[float, float, float, float]]) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["open", "high", "low", "close"], index=idx).assign(volume=1000.0)
 
 
-def _run(bars, side=SignalType.BUY, **cfg):
-    bt = Backtester(_cfg(**cfg), initial_capital=100_000)
+def _run(bars, side=SignalType.BUY, product="CNC", **cfg):
+    bt = Backtester(_cfg(**cfg), initial_capital=100_000, product=product)
     return bt.run(_df(bars), "TEST", strategy=_BuyOnce(side))
 
 
@@ -83,9 +83,10 @@ def test_gap_above_the_target_fills_at_the_open():
 
 
 def test_short_side_mirrors():
-    [t] = _run([(100, 106, 99, 100)], side=SignalType.SELL).trades
+    # Shorts need MIS; the daily test bars never reach the 15:14 squareoff
+    [t] = _run([(100, 106, 99, 100)], side=SignalType.SELL, product="MIS").trades
     assert t.reason == "stop_loss" and t.exit_price == pytest.approx(105.0)
-    [t] = _run([(100, 101, 89, 100)], side=SignalType.SELL).trades
+    [t] = _run([(100, 101, 89, 100)], side=SignalType.SELL, product="MIS").trades
     assert t.reason == "take_profit" and t.exit_price == pytest.approx(90.0)
 
 
@@ -122,3 +123,7 @@ def test_close_only_data_still_works():
     df = _df([(100, 101, 94, 94)])[["close"]]
     [t] = Backtester(_cfg(), initial_capital=100_000).run(df, "TEST", strategy=_BuyOnce()).trades
     assert t.reason == "stop_loss" and t.exit_price == pytest.approx(94.0)
+
+
+def test_cnc_backtest_never_opens_a_short():
+    assert _run([(100, 106, 89, 100)], side=SignalType.SELL).trades == []

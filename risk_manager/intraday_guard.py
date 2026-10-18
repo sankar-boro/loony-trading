@@ -9,6 +9,9 @@ of per-trade risk checks:
                           × capital → flatten everything and halt entries for the day
   • profit lock           day P&L above profit_lock_pct × capital → halt new entries
   • pause                 entries paused by the operator (dashboard / control file)
+  • strategy limits       a strategy that loses more than strategy_max_daily_loss_pct
+                          of capital, or strategy_max_consecutive_losses trades in a
+                          row, is switched off for the rest of the day
 
 Pure logic with no I/O, so every rule is unit-testable; main.py owns the
 side effects (closing positions, notifications, persistence).
@@ -37,6 +40,9 @@ class IntradayGuard:
     max_daily_loss_pct: float = 0.05
     flatten_on_daily_loss: bool = True
     profit_lock_pct: float = 0.0          # 0 = off
+    strategy_max_daily_loss_pct: float = 0.01   # 0 = off
+    strategy_max_consecutive_losses: int = 4    # 0 = off
+    capital: float = 0.0                  # for the strategy loss limit
 
     # Session state
     session_date: date | None = None
@@ -46,12 +52,16 @@ class IntradayGuard:
     halted: bool = False
     halt_reason: str = ""
     paused: bool = False
+    strategy_pnl: dict[str, float] = field(default_factory=dict)
+    strategy_streak: dict[str, int] = field(default_factory=dict)      # consecutive losses
+    strategies_off: dict[str, str] = field(default_factory=dict)       # name → reason
 
     @classmethod
     def from_config(cls, cfg: dict) -> "IntradayGuard":
         ic = cfg.get("intraday", {}) or {}
         risk = cfg.get("risk", {}) or {}
         ks = ic.get("kill_switch", {}) or {}
+        sl = ic.get("strategy_limits", {}) or {}
         return cls(
             entry_start=_parse_hhmm(ic.get("entry_start", "09:30"), time(9, 30)),
             entry_end=_parse_hhmm(ic.get("entry_end", "14:45"), time(14, 45)),
@@ -61,6 +71,9 @@ class IntradayGuard:
             max_daily_loss_pct=float(risk.get("max_daily_drawdown", 0.05)),
             flatten_on_daily_loss=bool(ks.get("flatten_on_daily_loss", True)),
             profit_lock_pct=float(ic.get("profit_lock_pct", 0.0) or 0.0),
+            strategy_max_daily_loss_pct=float(sl.get("max_daily_loss_pct", 0.01) or 0.0),
+            strategy_max_consecutive_losses=int(sl.get("max_consecutive_losses", 4) or 0),
+            capital=float((cfg.get("portfolio", {}) or {}).get("initial_capital", 0) or 0),
         )
 
     # ── Session ──────────────────────────────────────────────────────────────
@@ -76,6 +89,9 @@ class IntradayGuard:
         self.cooldown_until.clear()
         self.halted = False
         self.halt_reason = ""
+        self.strategy_pnl.clear()
+        self.strategy_streak.clear()
+        self.strategies_off.clear()
         return True
 
     def in_entry_window(self, now: datetime) -> bool:
@@ -83,7 +99,8 @@ class IntradayGuard:
 
     # ── Entry decisions ──────────────────────────────────────────────────────
 
-    def can_enter(self, symbol: str, now: datetime, intraday_product: bool) -> tuple[bool, str]:
+    def can_enter(self, symbol: str, now: datetime, intraday_product: bool,
+                  strategy: str = "") -> tuple[bool, str]:
         """(allowed, reason). The reason names the first rule that blocks."""
         if self.paused:
             return False, "entries paused"
@@ -100,6 +117,8 @@ class IntradayGuard:
         until = self.cooldown_until.get(symbol)
         if until and now < until:
             return False, f"{symbol} cooling down until {until:%H:%M}"
+        if strategy in self.strategies_off:
+            return False, f"strategy {strategy} off for the day: {self.strategies_off[strategy]}"
         return True, ""
 
     def record_entry(self, symbol: str) -> None:
@@ -109,6 +128,27 @@ class IntradayGuard:
     def record_exit(self, symbol: str, reason: str, now: datetime) -> None:
         if reason == "stop_loss" and self.cooldown_minutes > 0:
             self.cooldown_until[symbol] = now + timedelta(minutes=self.cooldown_minutes)
+
+    def record_strategy_result(self, strategy: str, pnl: float) -> str | None:
+        """Book a closed trade against its strategy. Returns the reason if this
+        trade newly switches the strategy off for the day, else None."""
+        if not strategy:
+            return None
+        self.strategy_pnl[strategy] = self.strategy_pnl.get(strategy, 0.0) + pnl
+        self.strategy_streak[strategy] = 0 if pnl > 0 else self.strategy_streak.get(strategy, 0) + 1
+        if strategy in self.strategies_off:
+            return None
+        limit = self.strategy_max_daily_loss_pct * self.capital
+        if limit > 0 and self.strategy_pnl[strategy] <= -limit:
+            reason = (f"lost ₹{-self.strategy_pnl[strategy]:,.0f} today "
+                      f"(limit {self.strategy_max_daily_loss_pct:.1%})")
+        elif (self.strategy_max_consecutive_losses
+              and self.strategy_streak[strategy] >= self.strategy_max_consecutive_losses):
+            reason = f"{self.strategy_streak[strategy]} losing trades in a row"
+        else:
+            return None
+        self.strategies_off[strategy] = reason
+        return reason
 
     # ── Day P&L limits ───────────────────────────────────────────────────────
 
@@ -132,10 +172,13 @@ class IntradayGuard:
         return None
 
     def resume(self) -> None:
-        """Operator override: clear a halt (and a pause)."""
+        """Operator override: clear a halt, a pause and any strategies
+        switched off by their loss limits."""
         self.halted = False
         self.halt_reason = ""
         self.paused = False
+        self.strategies_off.clear()
+        self.strategy_streak.clear()
 
     # ── Reporting / persistence ──────────────────────────────────────────────
 
@@ -156,6 +199,11 @@ class IntradayGuard:
             "halted": self.halted,
             "halt_reason": self.halt_reason,
             "paused": self.paused,
+            "strategy_max_daily_loss_pct": self.strategy_max_daily_loss_pct,
+            "strategy_max_consecutive_losses": self.strategy_max_consecutive_losses,
+            "strategy_pnl": {k: round(v, 2) for k, v in self.strategy_pnl.items()},
+            "strategy_streak": dict(self.strategy_streak),
+            "strategies_off": dict(self.strategies_off),
         }
 
     def restore(self, state: dict, today: date) -> None:
@@ -170,3 +218,6 @@ class IntradayGuard:
         self.halted = bool(state.get("halted", False))
         self.halt_reason = state.get("halt_reason", "")
         self.paused = bool(state.get("paused", False))
+        self.strategy_pnl = {k: float(v) for k, v in (state.get("strategy_pnl") or {}).items()}
+        self.strategy_streak = {k: int(v) for k, v in (state.get("strategy_streak") or {}).items()}
+        self.strategies_off = dict(state.get("strategies_off") or {})

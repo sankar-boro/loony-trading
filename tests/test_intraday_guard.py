@@ -121,3 +121,46 @@ def test_state_round_trip_same_day_only():
     other = IntradayGuard()
     other.restore(state, date(2026, 10, 13))
     assert other.trades_today == 0 and not other.halted
+
+
+# ── Per-strategy limits ─────────────────────────────────────────────────────
+
+def test_strategy_switched_off_after_daily_loss():
+    g = _guard(strategy_max_daily_loss_pct=0.01, capital=500_000)
+    assert g.record_strategy_result("orb", -3_000) is None
+    reason = g.record_strategy_result("orb", -2_500)          # -5,500 ≤ -5,000
+    assert reason and "lost ₹5,500" in reason
+    ok, why = g.can_enter("TCS", _t(11, 0), True, strategy="orb")
+    assert not ok and "strategy orb off" in why
+    assert g.can_enter("TCS", _t(11, 0), True, strategy="vwap")[0]
+    assert g.record_strategy_result("orb", -100) is None        # reported once
+
+
+def test_strategy_switched_off_after_losing_streak():
+    g = _guard(strategy_max_consecutive_losses=3, strategy_max_daily_loss_pct=0, capital=500_000)
+    g.record_strategy_result("orb", -10); g.record_strategy_result("orb", -10)
+    g.record_strategy_result("orb", +50)                        # streak resets
+    g.record_strategy_result("orb", -10); g.record_strategy_result("orb", -10)
+    assert "orb" not in g.strategies_off
+    assert "3 losing trades" in g.record_strategy_result("orb", -10)
+
+
+def test_strategy_limits_reset_daily_and_on_resume_and_persist():
+    g = _guard(strategy_max_consecutive_losses=1, capital=500_000)
+    g.record_strategy_result("orb", -10)
+    assert "orb" in g.strategies_off
+    restored = IntradayGuard()
+    restored.restore(g.to_state(_t(11, 0)), DAY)
+    assert "orb" in restored.strategies_off and restored.strategy_pnl == {"orb": -10.0}
+    g.resume()
+    assert not g.strategies_off
+    g.record_strategy_result("orb", -10)
+    g.new_day(date(2026, 10, 13))
+    assert not g.strategies_off and not g.strategy_pnl
+
+
+def test_strategy_limits_from_config():
+    g = IntradayGuard.from_config({"portfolio": {"initial_capital": 200_000},
+                                   "intraday": {"strategy_limits": {"max_daily_loss_pct": 0.02,
+                                                                    "max_consecutive_losses": 0}}})
+    assert (g.strategy_max_daily_loss_pct, g.strategy_max_consecutive_losses, g.capital) == (0.02, 0, 200_000)
