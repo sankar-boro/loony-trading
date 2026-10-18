@@ -9,8 +9,9 @@ no token.
 ## The stock universe
 
 `config/instruments.py` is the single source of truth for what the project
-trades: 91 NSE stocks in 18 sectors (`STOCK_UNIVERSE`) plus 8 indices
-(`INDEX_INSTRUMENTS`). Each stock has:
+trades: 91 NSE stocks in 18 sectors (`STOCK_UNIVERSE`) plus the indices
+(`INDEX_INSTRUMENTS`: Nifty 50, Bank, IT, Fin Service, Auto, FMCG, Midcap
+50/150/Select, India VIX, Sensex and GIFT Nifty, some under two aliases). Each stock has:
 
 | Field | Example |
 |---|---|
@@ -20,7 +21,15 @@ trades: 91 NSE stocks in 18 sectors (`STOCK_UNIVERSE`) plus 8 indices
 | `fno`, `nifty50`, `nifty_next` | F&O eligible, index memberships |
 
 `INSTRUMENTS` maps every symbol and index alias (`NIFTY50`, `BANKNIFTY`,
-`NIFTYIT`, `MIDCAP`, …) to its Upstox instrument key. Helpers:
+`NIFTYIT`, `MIDCAP`, …) to its Upstox instrument key.
+
+**Never hardcode a key.** Code looks keys up here (`INSTRUMENTS["TCS"]`,
+`INDEX_INSTRUMENTS["VIXINDIA"]`, `STOCK_UNIVERSE["TCS"]["isin"]`) rather than
+keeping its own copy of an ISIN or an `NSE_INDEX|…` string.
+`tests/test_instrument_isins.py` scans every non-test Python file and fails
+on any such literal outside `config/instruments.py`. Docstrings and comments
+may still show example keys. To add a stock or index, add it here and
+everything that looks it up picks it up. Helpers:
 `get_sector_map()`, `get_fno_symbols()`, `get_nifty50_symbols()`,
 `get_symbols_by_sector()`, `get_large_cap_symbols()`, `symbol_info()`.
 
@@ -29,9 +38,8 @@ the old key returns no data — in October 2026 ten universe stocks had gone
 stale this way. `tests/test_instrument_isins.py` checks every ISIN against the
 downloaded Upstox master (`data/instruments/NSE.csv`, from
 `bash scripts/fetch_instruments.sh`); run it after refreshing the master and
-update `config/instruments.py` when it fails. Three scripts keep older copies of
-some ISINs (`scripts/order.py`, `scripts/market_watch.py`,
-`data_engine/upstox/instruments.py`); the same test checks they agree.
+update `config/instruments.py` when it fails. Because nothing else holds a
+copy, that one edit fixes every script, the bot and the dashboard.
 
 ## The instrument registry
 

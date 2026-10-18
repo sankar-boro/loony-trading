@@ -129,7 +129,6 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 - [ ] FII/DII scrape scheduled after NSE publishes (~17:30 IST)
 - [ ] Upstox returns HTTP 400 for 5/15-minute historical candles on this account (defaults use 30m)
 - [ ] BSE lot sizes (SENSEX, BANKEX) in `FO_LOT_SIZES` not re-verified
-- [ ] Three duplicate ISIN maps (`scripts/order.py`, `scripts/market_watch.py`, `KNOWN_INSTRUMENTS`) should read `config/instruments.py`
 
 ### Backtesting
 
@@ -185,6 +184,7 @@ regression tests.
 
 - [x] **Instrument master URLs returned 403**, leaving 66 of 99 universe symbols and indices unresolvable — working URLs, and the registry is always seeded from `config/instruments.py`
 - [x] **`MIDCAP` resolved to an ETF** of the same ticker — universe symbols take precedence
+- [x] **Instrument keys copied across the code base** (2026-10-18): `KNOWN_INSTRUMENTS`, `scripts/order.py`, `scripts/market_watch.py`, `scripts/seed_dashboard_data.py`, `scripts/test_upstox.py`, `scripts/check_token.py`, `scripts/option_chain.py` and the index keys in the VIX, GIFT Nifty, factor-model, beta-hedge, stream and backtest code — all now read `config/instruments.py`; a test fails on any new hardcoded key
 - [x] **10 stale ISINs** (KOTAKBANK, CANBK, BAJFINANCE, SHRIRAMFIN, COFORGE, EICHERMOT, DRREDDY, HAL, HPCL, PAGEIND) returned no data — updated; `tests/test_instrument_isins.py`
 - [x] **Stale F&O lot sizes** (NIFTY 75→65, FINNIFTY 65→60, MIDCPNIFTY 75→120; beta hedge used 50) — updated, master lot size preferred
 - [x] **Lot snapping never applied** to real numeric F&O keys — uses the master's per-contract lot size
