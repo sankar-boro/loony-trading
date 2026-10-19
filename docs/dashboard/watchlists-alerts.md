@@ -71,7 +71,8 @@ Alerts are checked against the **latest daily signal of each stock**:
   (`POST /api/alerts/evaluate?timeframe=30m`).
 
 Every match is stored as a trigger row and, if Telegram is configured, sent as
-one message listing up to ten triggers. An alert fires again on every
-evaluation while its condition stays true — there is no built-in cooldown.
+one message listing up to ten triggers. An alert that triggered for a stock
+does not trigger again for it within `notifications.alert_cooldown_minutes`
+(4 hours), however long its condition stays true.
 
 Evaluation logic: [Watchlists and Alerts internals](../marketpulse/watchlists-alerts.md).

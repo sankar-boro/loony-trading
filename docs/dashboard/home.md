@@ -79,10 +79,9 @@ It returns nothing without a valid token. These are the bot's rule-based
 strategy signals — for the MarketPulse composite score of every stock, see the
 [Signals](signals.md) page.
 
-> **Known limitation:** when Telegram is configured, each call that finds
-> signals with confidence ≥ 0.65 sends a Telegram message. Because the page
-> polls every minute, an open Home page can repeat the same alert every minute.
-> See [Project Status](../appendix/status.md).
+When Telegram is configured, signals with confidence ≥ 0.65 are sent as a
+Telegram message, each (stock, side, strategy) at most once a day, however
+often the page polls. See [Avoiding noise](../operations/notifications.md#avoiding-noise).
 
 ## Refresh intervals
 

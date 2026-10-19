@@ -257,6 +257,10 @@ Details: [The Scheduler](../marketpulse/scheduler.md).
 | `telegram.bot_token`, `telegram.chat_id` | from `.env` | |
 | `email.enabled` | `false` | Bot also e-mails notifications |
 | `email.smtp_host`, `smtp_port`, `user`, `password`, `to` | from `.env`, 587 | SMTP with STARTTLS |
+| `telegram.min_level`, `email.min_level` | `INFO`, `WARNING` | Lowest level each channel carries |
+| `dedupe_minutes` | `10` | The same message at most once in this window |
+| `rate_limit_per_minute` | `20` | Messages a minute (CRITICAL is exempt) |
+| `alert_cooldown_minutes` | `240` | An alert does not re-trigger for the same stock within this |
 
 Other components use the `TELEGRAM_*` environment variables directly
 ([Notifications](../operations/notifications.md)).

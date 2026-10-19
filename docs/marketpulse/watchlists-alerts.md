@@ -50,9 +50,8 @@ It is plain comparison — no LLM involved.
 
 ### Repeat triggering
 
-Evaluation has no memory of previous matches: while a stock's latest signal
-keeps meeting the condition, every run records another trigger and sends
-another notification. Because the scheduler re-scores and re-evaluates every
-five minutes, a persistent condition notifies every five minutes. Write
-conditions around changes you want to hear about, pause alerts you have acted
-on, or add a cooldown (see [Project Status](../appendix/status.md)).
+Evaluation remembers recent matches. An alert that triggered for a stock
+within `cooldown_minutes` (`notifications.alert_cooldown_minutes`, 240) is
+skipped for that stock, so a persistent condition records and notifies once
+every four hours rather than on every five-minute run. Pass
+`cooldown_minutes=0` to `evaluate_alerts()` to turn it off.

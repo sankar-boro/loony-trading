@@ -28,11 +28,9 @@ groups is self-contained.
    1,000-line second copy of the bot. It has none of the intraday session
    rules, uses a flat 0.1 % charge, and closes everything at 15:14. Make
    paper mode `main.py --mode paper` and delete or slim the script.
-7. **Stop repeated notifications.**
-   - `/api/signals` sends Telegram messages on every call, so an open Home
-     page repeats them every minute.
-   - Alerts have no cooldown.
-   - The notifier has no rate limit.
+7. ~~**Stop repeated notifications.**~~ **Done 2026-10-19:** dedupe, rate
+   limit, a daily cap per scanner signal and alert cooldowns; see
+   [Avoiding noise](operations/notifications.md#avoiding-noise).
 
 8. ~~**No shorts in delivery.**~~ **Done 2026-10-18.** SELL never opens a
    short on CNC in the executor, the bot or the backtester; see

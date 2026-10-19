@@ -78,6 +78,10 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 - [x] Handbook copied into Postgres (`doc_chapters`, `doc_sections`) by `scripts/migrate_docs.py`, which runs the table definitions in `db/sql/handbook.sql` and loads `docs/`; `DB_*` connection settings and `DB_SCHEMA` support (`tests/test_docs_sync.py`)
 - [x] Deployment documented (Docker Compose, systemd units, security checklist)
 
+### Notifications ([Avoiding noise](../operations/notifications.md#avoiding-noise))
+
+- [x] Shared dedupe + rate limit for both senders; e-mail from WARNING up; scanner signals once a day; alert cooldown per stock (`tests/test_notifications.py`)
+
 ### Execution ([Execution](../engine/execution.md))
 
 - [x] Limit-order chasing; execution log (`logs/executions.jsonl`), `scripts/execution_report.py` and the Trades page's Execution quality tab
@@ -161,8 +165,6 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 ### Dashboard and MarketPulse
 
 - [ ] Price stream `change_pct` is the change since the previous 2-second poll, not since yesterday's close (Home and Chart lists show ~0 %)
-- [ ] `/api/signals` sends Telegram messages on every call, so an open Home page can repeat alerts every minute
-- [ ] Alerts have no cooldown — a persistent condition notifies on every evaluation
 - [ ] News cards label `impact_score × 10` as "catalyst"
 - [ ] Portfolio Risk "Daily P&L" adds the latest daily record, which is yesterday's until today's report is written
 - [ ] The dashboard has no authentication

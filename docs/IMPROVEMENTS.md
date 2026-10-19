@@ -35,7 +35,7 @@ Each area gets one of three labels:
 | [Copilot](#copilot) | Basic | Keyword router plus one LLM call; no conversation or tools |
 | [News](#news) | Basic | NewsAPI or demo only |
 | [Database](#database) | Partial | `price_bars` table never written |
-| [Notifications](#notifications) | Basic | Telegram and e-mail, no rate limit or routing |
+| [Notifications](#notifications) | Partial | Dedupe, rate limit, severity routing and cooldowns done; Telegram commands still to do |
 | [Dashboard](#dashboard) | Basic | Read-only settings, polling, no order entry |
 | [Paper trading](#paper-trading) | Partial | A second bot that has diverged from `main.py` |
 
@@ -383,11 +383,14 @@ classified (LLM or demo), matched to stocks by
 
 **Today:** `Notifier` sends to Telegram and e-mail.
 
-**Extend with:**
-- Rate limiting and de-duplication: the same message at most once per N
-  minutes.
-- Severity routing: kill switch and errors to every channel, entries and
-  exits to Telegram only.
+**Done (2026-10-19):** see [Avoiding noise](operations/notifications.md#avoiding-noise).
+- One guard for both senders: dedupe, a rate limit (critical exempt) and
+  named cooldowns.
+- Severity routing: e-mail from WARNING up, levelled bot events.
+- The Home page scanner sends each signal once a day.
+- Alerts have a cooldown per stock.
+
+**Still to extend:**
 - Telegram commands (`/status`, `/pause`, `/flatten`) using the same
   control file as the Intraday Desk.
 - Slack or webhook channels.

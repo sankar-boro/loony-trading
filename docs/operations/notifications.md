@@ -45,7 +45,7 @@ otherwise the bot attempts (and logs failures for) every message.
 | Entry / exit (paper trader) | Alerter | "🟢 TRADE [donchian_breakout] RELIANCE BUY 25 @ ₹2,801.50" |
 | End-of-day summary (paper trader) | Alerter | "DAILY SUMMARY — P&L ₹+3,120 (+0.62 %) · Trades 4 · Win rate 75 % · Max DD 0.40 %" |
 | New scanner signals | Alerter | from `live_signals.py` |
-| Strong signals on the Home page feed | Alerter | "🔔 Signal Scanner — 2 signal(s)" (confidence ≥ 0.65) |
+| Strong signals on the Home page feed | Alerter | "🔔 Signal Scanner — 2 new signal(s)" (confidence ≥ 0.65; each at most once a day) |
 | Alert rules triggered | Alerter | "🔔 3 alert(s) triggered — Strong bullish: TCS — {…}" |
 | Bot entry filled | Notifier | "🟢 buy RELIANCE @ ₹2801.50 · donchian_breakout · conf=82%" |
 | Bot position closed | Notifier | "🔴 Closed RELIANCE · stop_loss · PnL: ₹-850.00" |
@@ -58,10 +58,26 @@ and a `min_level` (INFO / WARNING / CRITICAL) filter.
 
 ## Avoiding noise
 
-- **Alerts repeat** while their condition stays true — every scheduler run (5
-  minutes) can resend the same trigger. Pause alerts you have acted on.
-- **The Home page signal feed** can resend strong signals on every 60-second
-  poll while the page is open (a known issue).
+Every message from either sender passes one process-wide guard,
+`utils/notify_guard.py`:
+
+| Rule | Setting (default) | Effect |
+|---|---|---|
+| Dedupe | `notifications.dedupe_minutes` (10) | The same text is sent at most once in that window |
+| Rate limit | `notifications.rate_limit_per_minute` (20) | Extra messages in a minute are dropped and logged; **CRITICAL messages are never rate-limited** |
+| Named cooldowns | in code | An event can carry its own key, so the same event is not repeated however its text changes, e.g. the Home page scanner announces each signal once a day |
+
+On top of that:
+- **Alerts** do not trigger again for the same stock within
+  `notifications.alert_cooldown_minutes` (240), so a condition that stays
+  true is not resent every scheduler run.
+- **The Home page scanner** announces each signal (stock, side, strategy) at
+  most once a day, however often the page polls.
+- **E-mail** only carries `WARNING` and `CRITICAL` messages
+  (`notifications.email.min_level`); Telegram carries everything from `INFO`
+  (`notifications.telegram.min_level`). The bot's event notifications are
+  levelled: halts (kill switch, strategy limits) and errors are `CRITICAL`,
+  flattens and feed alerts `WARNING`.
 - Use a dedicated chat for trading messages.
 
 ## E-mail
