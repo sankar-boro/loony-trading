@@ -388,6 +388,11 @@ class PaperPortfolio:
         if st == SignalType.HOLD:
             return None
 
+        # An index cannot be traded itself (research-only signals)
+        from risk_manager.risk_manager import is_index
+        if is_index(sym):
+            return None
+
         # Don't re-enter if already in same direction
         if sym in self.positions:
             pos = self.positions[sym]

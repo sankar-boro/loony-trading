@@ -273,3 +273,17 @@ def test_full_sector_blocks_entry(monkeypatch):
     _tick(bot, symbol="ICICIBANK")
     assert bot.executor.executed == []
     assert "sector Banking at its 30% exposure cap" in bot._events[-1]["message"]
+
+
+# ── Index signals are research-only ─────────────────────────────────────────
+
+def test_index_signal_never_becomes_an_order(monkeypatch):
+    bot = _FakeBot(product="MIS")
+    _at(monkeypatch, 11, 0)
+    bot._df_cache["NIFTY50"] = pd.DataFrame({"close": range(100)})
+    bot.meta_engine = SimpleNamespace(
+        generate_signals=lambda symbol, d: [_signal("NIFTY50", SignalType.BUY)],
+        best_signal=lambda sigs: sigs[0])
+    asyncio.run(bot._on_tick({"symbol": "NIFTY50", "close": 100.0}))
+    assert bot.executor.executed == []
+    assert "index is not tradable" in bot._events[-1]["message"]

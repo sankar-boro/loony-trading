@@ -822,9 +822,11 @@ class UpstoxTradingBot:
 
         # Session rules: pause, halt, entry window, trade caps, cooldown —
         # and no new shorts on a product that cannot hold one (CNC).
-        from risk_manager.risk_manager import can_open_short
+        from risk_manager.risk_manager import can_open_short, is_index
         product = self.executor._default_product
-        if best.signal_type == SignalType.SELL and not can_open_short(product):
+        if is_index(symbol):
+            allowed, why = False, "an index is not tradable itself (signal is research-only)"
+        elif best.signal_type == SignalType.SELL and not can_open_short(product):
             allowed, why = False, f"no short entries on {product.value} (shorts need MIS)"
         else:
             allowed, why = self.guard.can_enter(symbol, ist_now, self._is_intraday_product(),

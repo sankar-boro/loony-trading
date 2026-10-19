@@ -31,7 +31,7 @@ from typing import Dict, List, Optional, Callable
 from data_engine.upstox.auth import UpstoxAuth
 from data_engine.upstox.instruments import InstrumentRegistry
 from execution_engine.order import Order, OrderSide, OrderStatus, OrderType
-from risk_manager.risk_manager import RiskManager, Position, can_open_short
+from risk_manager.risk_manager import RiskManager, Position, can_open_short, is_index
 from strategies.base import Signal, SignalType
 from utils.logger import get_logger
 from utils.timeutils import now_utc
@@ -222,6 +222,10 @@ class UpstoxExecutor:
         instrument_key = self._resolve_key(signal.symbol)
         if not instrument_key:
             logger.error(f"Cannot resolve instrument key for {signal.symbol}")
+            return None
+        if is_index(signal.symbol) or is_index(instrument_key):
+            logger.warning(f"{signal.symbol}: an index is not tradable itself — "
+                           f"{signal.strategy} signal not executed (research-only until futures are wired)")
             return None
 
         lot_size = self.registry.get_lot_size(instrument_key)

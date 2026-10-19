@@ -36,6 +36,18 @@ def can_open_short(product: str) -> bool:
     return str(getattr(product, "value", product)).upper() in SHORTABLE_PRODUCTS
 
 
+def is_index(symbol_or_key: str) -> bool:
+    """True for an index (NIFTY50, BANKNIFTY, ... or an NSE_INDEX/BSE_INDEX key).
+    An index cannot be bought or sold itself — it trades through futures or
+    options, which the bot cannot resolve yet — so index signals (VIX, FII/DII,
+    GIFT Nifty gap) are research-only and never become orders."""
+    s = str(symbol_or_key)
+    if s.startswith(("NSE_INDEX|", "BSE_INDEX|")):
+        return True
+    from config.instruments import INDEX_INSTRUMENTS
+    return s.upper() in INDEX_INSTRUMENTS
+
+
 def snap_to_lot(symbol: str, quantity: float) -> int:
     """Round quantity down to the nearest valid F&O lot size. Equity lot size is 1."""
     lot = FO_LOT_SIZES.get(symbol.upper().split("|")[-1][:10], 1)

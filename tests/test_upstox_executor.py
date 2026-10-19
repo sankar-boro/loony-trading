@@ -282,3 +282,16 @@ def test_order_sized_below_one_lot_is_skipped_not_rounded_up(executor, monkeypat
     monkeypatch.setattr(executor.risk_manager, "size_position", lambda s: 0.4)
     assert asyncio.run(executor.execute_signal(make_signal())) is None
     assert executor.risk_manager.open_count == 0
+
+
+def test_is_index():
+    from risk_manager.risk_manager import is_index
+    assert is_index("NIFTY50") and is_index("banknifty") and is_index("NSE_INDEX|India VIX")
+    assert is_index("BSE_INDEX|SENSEX") and not is_index("TCS") and not is_index("NSE_EQ|INE467B01029")
+
+
+def test_index_signal_is_not_executed(executor):
+    sig = Signal(strategy="vix_strategy", symbol="NIFTY50", signal_type=SignalType.BUY,
+                 price=24000.0, stop_loss=23500.0, take_profit=25000.0, confidence=0.9)
+    assert asyncio.run(executor.execute_signal(sig)) is None
+    assert executor.risk_manager.open_count == 0
