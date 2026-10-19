@@ -373,8 +373,9 @@ class UpstoxTradingBot:
                              "kind": kind, "message": message})
         (logger.warning if kind in ("block", "halt", "error", "heartbeat") else logger.info)(message)
         if notify:
+            level = "CRITICAL" if kind in ("halt", "error") else "WARNING"
             try:
-                asyncio.get_running_loop().create_task(self.notifier.send(f"⚠️ {message}"))
+                asyncio.get_running_loop().create_task(self.notifier.send(f"⚠️ {message}", level=level))
             except RuntimeError:
                 pass
 

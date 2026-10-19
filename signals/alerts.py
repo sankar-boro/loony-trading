@@ -11,7 +11,7 @@ nothing here an LLM would do better than `operator.gt`.
 from __future__ import annotations
 import operator
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -82,7 +82,17 @@ class EvaluationSummary:
     triggers: list[TriggerEvent] = field(default_factory=list)
 
 
-def evaluate_alerts(db: Session, notifier=None, timeframe: str = "1d") -> EvaluationSummary:
+def _alert_cooldown_minutes() -> float:
+    try:
+        from config.loader import Settings
+        return float((Settings().as_dict().get("notifications", {}) or {})
+                     .get("alert_cooldown_minutes", 240))
+    except Exception:
+        return 240.0
+
+
+def evaluate_alerts(db: Session, notifier=None, timeframe: str = "1d",
+                    cooldown_minutes: float | None = None) -> EvaluationSummary:
     """Runs every active Alert against the latest composite Signal per
     stock, records an AlertTrigger row for each match, and optionally
     notifies via `notifier` (anything with a `.send(text)` method — e.g.
@@ -91,9 +101,17 @@ def evaluate_alerts(db: Session, notifier=None, timeframe: str = "1d") -> Evalua
     `timeframe` selects which bar-size signals to evaluate against
     (docs/appendix/intraday-audit.md §5) — defaults to "1d" so existing daily-
     cadence alert rules keep behaving exactly as before; an intraday
-    scheduler job would pass e.g. "15m" explicitly."""
+    scheduler job would pass e.g. "15m" explicitly.
+
+    An alert that already triggered for a stock within `cooldown_minutes`
+    (notifications.alert_cooldown_minutes, 240) is not triggered again for
+    it, so a condition that stays true does not notify on every run."""
     alerts = db.query(Alert).filter(Alert.is_active == True).all()  # noqa: E712
     events: list[TriggerEvent] = []
+    cooldown = _alert_cooldown_minutes() if cooldown_minutes is None else cooldown_minutes
+    since = datetime.now(timezone.utc) - timedelta(minutes=cooldown)
+    recent = {(t.alert_id, t.stock_id) for t in
+              db.query(AlertTrigger).filter(AlertTrigger.created_at >= since).all()} if cooldown > 0 else set()
 
     for alert in alerts:
         q = latest_signal_per_stock(db, timeframe=timeframe)
@@ -102,7 +120,7 @@ def evaluate_alerts(db: Session, notifier=None, timeframe: str = "1d") -> Evalua
 
         for signal, symbol in q.all():
             matched = _condition_matches(signal, alert.condition)
-            if matched is None:
+            if matched is None or (alert.id, signal.stock_id) in recent:
                 continue
             db.add(AlertTrigger(
                 alert_id=alert.id, stock_id=signal.stock_id, signal_id=signal.id,

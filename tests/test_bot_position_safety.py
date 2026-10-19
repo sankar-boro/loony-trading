@@ -45,7 +45,7 @@ class _Executor:
 
 
 class _Notifier:
-    async def send(self, msg):
+    async def send(self, msg, **kwargs):
         pass
 
 

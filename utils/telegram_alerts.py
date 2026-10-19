@@ -71,9 +71,16 @@ class TelegramAlerter:
         t = threading.Thread(target=_post, daemon=True)
         t.start()
 
-    def send(self, text: str, level: str = "INFO") -> None:
-        if self._should_send(level):
+    def send(self, text: str, level: str = "INFO", key: Optional[str] = None,
+             cooldown_sec: Optional[float] = None) -> bool:
+        """Send unless below min_level or stopped by the shared
+        NotificationGuard (dedupe / named-key cooldown / rate limit).
+        Returns whether it was sent."""
+        from utils.notify_guard import get_guard
+        if self._should_send(level) and get_guard().allow(text, level, key, cooldown_sec):
             self._send_async(text)
+            return True
+        return False
 
     # ── Pre-formatted alert methods ───────────────────────────────────────────
 

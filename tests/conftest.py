@@ -26,6 +26,13 @@ import pytest  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
+def _fresh_notification_guard(monkeypatch):
+    """Each test starts with an empty dedupe / rate-limit history."""
+    import utils.notify_guard as ng
+    monkeypatch.setattr(ng, "_guard", None)
+
+
+@pytest.fixture(autouse=True)
 def _isolated_execution_log(tmp_path, monkeypatch):
     """The executor's execution log goes to a temporary file, never logs/."""
     import execution_engine.upstox_executor as ex

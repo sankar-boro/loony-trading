@@ -90,9 +90,15 @@ async def get_signals() -> list:
             from utils.telegram_alerts import TelegramAlerter
             alerter = TelegramAlerter()
             if alerter.enabled:
-                strong = [s for s in top if s["confidence"] >= 0.65]
+                # This endpoint is polled by every open Home page, so each
+                # signal is announced at most once per day, not on every call.
+                from utils.notify_guard import get_guard
+                guard, today = get_guard(), date.today().isoformat()
+                strong = [s for s in top if s["confidence"] >= 0.65 and guard.allow(
+                    "", key=f"scan:{s['symbol']}:{s['signal']}:{s['strategy']}:{today}",
+                    cooldown_sec=86400)]
                 if strong:
-                    lines = [f"🔔 <b>Signal Scanner — {len(strong)} signal(s)</b>"]
+                    lines = [f"🔔 <b>Signal Scanner — {len(strong)} new signal(s)</b>"]
                     for s in strong[:5]:
                         emoji = "🟢" if s["signal"] == "BUY" else "🔴"
                         lines.append(f"{emoji} {s['symbol']} {s['signal']} @ ₹{s['price']:,.2f} ({s['strategy']} · {s['confidence']:.0%})")
