@@ -54,6 +54,14 @@ When the token is missing or expired, `demo_mode` is true and the amber
 | Intraday Lab | `/intraday` | [Intraday Lab](intraday-lab.md) |
 | Docs | `/docs/*` | [The Docs Reader](docs-reader.md) |
 
+## Signing in
+
+On the machine it runs on, the dashboard opens straight away. From anywhere
+else it shows a login screen, which works only once `DASHBOARD_PASSWORD` is
+set on the server. **Sign out** is at the bottom of the sidebar. An expired
+session returns you to the login screen. See
+[Dashboard login](../operations/deployment.md#dashboard-login).
+
 ## Where the data comes from
 
 Pages get their data from three kinds of source, and knowing which explains

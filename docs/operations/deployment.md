@@ -15,8 +15,8 @@ docker compose ps             # health status
 
 | Service | Image / command | Port | Notes |
 |---|---|---|---|
-| `db` | `postgres:16-alpine` | 5432 | Data in the `loony-pgdata` volume; healthcheck `pg_isready` |
-| `redis` | `redis:7-alpine` | 6379 | Provisioned for future caching; not required by current code |
+| `db` | `postgres:16-alpine` | 5432 on 127.0.0.1 only | Data in the `loony-pgdata` volume; healthcheck `pg_isready` |
+| `redis` | `redis:7-alpine` | 6379 on 127.0.0.1 only | Provisioned for future caching; not required by current code |
 | `dashboard` | `uvicorn dashboard.backend.main:app --workers 1` | 8000 | Serves the API **and** the built React app; healthcheck `GET /api/health` |
 | `bot` | `python scripts/paper_trade.py` | — | Paper trading; healthcheck: `live_positions.json` saved within 5 minutes |
 
@@ -94,11 +94,37 @@ sudo systemctl enable --now loony-dashboard loony-bot
 journalctl -u loony-bot -f
 ```
 
+## Dashboard login
+
+The dashboard can pause the bot and flatten every position, so it is locked
+down by default (`dashboard/backend/auth.py`):
+
+| `DASHBOARD_PASSWORD` | Who can use the dashboard |
+|---|---|
+| Not set (default) | Only the machine it runs on. Requests from anywhere else, including through the Vite dev proxy or Docker's network, get 401, and the page explains how to enable a login |
+| Set | Anyone with the password. The login screen opens a session cookie (HttpOnly, SameSite=Strict, Secure over HTTPS) valid for `DASHBOARD_SESSION_HOURS` (12) |
+
+```env
+DASHBOARD_PASSWORD=a-long-random-passphrase
+DASHBOARD_SESSION_HOURS=12
+```
+
+- Under Docker Compose the browser is never on the container's own
+  loopback, so **set a password** to use the dashboard at all.
+- Five wrong passwords from one address within five minutes block that
+  address for the rest of the window.
+- Sessions are signed with a random key in `data/.dashboard_secret` plus the
+  password, so changing the password signs everyone out. Deleting the file
+  does the same.
+- `/api/health` stays open for health checks.
+
 ## Security checklist
 
-- Expose port 8000 only on a private network or behind a reverse proxy with
-  authentication — **the dashboard has no login**, and its API can trigger
-  backtests, alert evaluations and news ingestion.
+- Set `DASHBOARD_PASSWORD` before exposing port 8000 beyond this machine
+  ([Dashboard login](#dashboard-login)), and serve it over HTTPS (a reverse
+  proxy) so the password and session cookie are encrypted.
+- Docker Compose publishes Postgres (5432) and Redis (6379) on 127.0.0.1
+  only; keep it that way, or firewall them.
 - Keep `.env` and `data/` readable only by the service user (`chmod 600 .env`).
 - CORS allows only the local development origins
   (`localhost:5163/5174/5175/3000`); add your own origin in

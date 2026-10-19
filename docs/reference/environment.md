@@ -60,6 +60,8 @@ Without any valid token the dashboard runs in demo mode.
 |---|---|
 | `BINANCE_API_KEY`, `BINANCE_API_SECRET` | Crypto add-on / `--market crypto` backtests |
 | `ALPACA_API_KEY`, `ALPACA_API_SECRET`, `ALPACA_BASE_URL` | Placeholders in `settings.yaml`; unused |
+| `DASHBOARD_PASSWORD` | Turns on the dashboard login; without it the dashboard only answers the machine it runs on ([Dashboard login](../operations/deployment.md#dashboard-login)) |
+| `DASHBOARD_SESSION_HOURS` | Login session length (default 12) |
 | `PYTHON` | Interpreter used by `loony.sh` (default `python3`) |
 | `ANTHROPIC_LOG` | `debug`/`info` for Anthropic SDK logging |
 

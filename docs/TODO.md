@@ -9,12 +9,11 @@ groups is self-contained.
 
 ## 1. Before trading real money
 
-1. **Dashboard login.** The dashboard has no login at all. Anyone who can
-   reach port 8000 can press **Flatten all**, pause the bot or read your
-   positions.
-2. **Lock down the Docker ports.** Docker Compose publishes Postgres (5432),
-   Redis (6379) and the dashboard (8000) on every network interface. Bind
-   them to `127.0.0.1` or put them behind a proxy.
+1. ~~**Dashboard login.**~~ **Done 2026-10-19:** `DASHBOARD_PASSWORD`;
+   without it the dashboard answers only its own machine. See
+   [Dashboard login](operations/deployment.md#dashboard-login).
+2. ~~**Lock down the Docker ports.**~~ **Done 2026-10-19:** Postgres and Redis
+   publish on 127.0.0.1 only; the dashboard needs a password from outside.
 3. **Test exchange stops with one share.** The stop orders held at Upstox
    are only tested against fakes. Try them on a live one-share position
    before turning them on.

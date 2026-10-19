@@ -414,7 +414,7 @@ controls, watchlists, alerts and backtests.
   exit.
 - **Strategy pages:** per-strategy equity curve, trade list and current
   parameters.
-- **Login:** see [TODO](TODO.md) item 1.
+- **Login:** done; see [Dashboard login](operations/deployment.md#dashboard-login).
 
 ## Paper trading
 

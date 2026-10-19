@@ -4,12 +4,22 @@ The dashboard backend (`dashboard/backend/`, FastAPI) serves every endpoint
 under `/api` on port 8000. An interactive explorer with request and response
 schemas is at **http://localhost:8000/api/docs** (Swagger UI).
 
-There is no authentication — keep the port private (see
-[Deployment](../operations/deployment.md#security-checklist)).
+**Login.** With `DASHBOARD_PASSWORD` set, every endpoint except
+`/api/health` and `/api/auth/*` needs a session: log in with
+`POST /api/auth/login`, which sets an HttpOnly cookie and also returns the
+token for scripts (`Authorization: Bearer <token>`). Without a password, the
+API answers only this machine and returns 401 to everyone else. See
+[Dashboard login](../operations/deployment.md#dashboard-login).
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/auth/login` | Body `{"password": "…"}` → `{ok, token, expires_in}` and a session cookie; 401 wrong password, 429 after 5 failures in 5 minutes, 400 if no password is configured |
+| POST | `/api/auth/logout` | Clears the session cookie |
+| GET | `/api/auth/status` | `{password_set, local, authenticated}` |
 
 Conventions: JSON in and out; errors are `{"detail": "…"}` with an HTTP status
-(400 bad input, 401 missing/expired Upstox token, 404 unknown resource, 500
-server error). "Token" below means a valid Upstox daily token; endpoints marked
+(400 bad input, 401 not logged in or missing/expired Upstox token, 404 unknown
+resource, 500 server error). "Token" below means a valid Upstox daily token; endpoints marked
 **DB** need PostgreSQL.
 
 ## System

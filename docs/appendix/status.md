@@ -78,6 +78,11 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 - [x] Handbook copied into Postgres (`doc_chapters`, `doc_sections`) by `scripts/migrate_docs.py`, which runs the table definitions in `db/sql/handbook.sql` and loads `docs/`; `DB_*` connection settings and `DB_SCHEMA` support (`tests/test_docs_sync.py`)
 - [x] Deployment documented (Docker Compose, systemd units, security checklist)
 
+### Dashboard security ([Dashboard login](../operations/deployment.md#dashboard-login))
+
+- [x] Password login with signed HttpOnly session cookies; without a password the API answers only this machine; login lockout (`tests/test_dashboard_auth.py`)
+- [x] Docker Compose publishes Postgres and Redis on 127.0.0.1 only
+
 ### Notifications ([Avoiding noise](../operations/notifications.md#avoiding-noise))
 
 - [x] Shared dedupe + rate limit for both senders; e-mail from WARNING up; scanner signals once a day; alert cooldown per stock (`tests/test_notifications.py`)
@@ -167,7 +172,6 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 - [ ] Price stream `change_pct` is the change since the previous 2-second poll, not since yesterday's close (Home and Chart lists show ~0 %)
 - [ ] News cards label `impact_score × 10` as "catalyst"
 - [ ] Portfolio Risk "Daily P&L" adds the latest daily record, which is yesterday's until today's report is written
-- [ ] The dashboard has no authentication
 - [ ] `ANTHROPIC_MODEL` defaults to `claude-opus-5`; `claude-opus-5-5` is newer and cheaper
 - [ ] `dashboard/backend/routers/backtest.safe.py` is dead code
 
