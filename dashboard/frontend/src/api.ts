@@ -10,8 +10,16 @@ import type {
 
 const BASE = '/api'
 
+// A 401 means the session ended (or the dashboard needs a login): tell the
+// Layout, which shows the login screen.
+export const AUTH_EVENT = 'loony-auth-required'
+function checkAuth(res: Response) {
+  if (res.status === 401) window.dispatchEvent(new Event(AUTH_EVENT))
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`)
+  checkAuth(res)
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
   return res.json()
 }
@@ -22,6 +30,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
+  checkAuth(res)
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
   return res.json()
 }
@@ -103,6 +112,17 @@ export const api = {
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
     return res.text()
   },
+  login: async (password: string): Promise<void> => {
+    const res = await fetch(`${BASE}/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body.detail ?? `${res.status} ${res.statusText}`)
+    }
+  },
+  logout: (): Promise<{ ok: boolean }> => post('/auth/logout', {}),
   docSearch: (q: string): Promise<DocSearchHit[]> =>
     get(`/doc-files/search?q=${encodeURIComponent(q)}`),
   intradayDesk: (): Promise<DeskResponse> => get('/intraday/desk'),
@@ -112,4 +132,4 @@ export const api = {
 
 // SWR fetcher
 export const fetcher = (url: string) =>
-  fetch(url).then(r => { if (!r.ok) throw new Error(r.statusText); return r.json() })
+  fetch(url).then(r => { checkAuth(r); if (!r.ok) throw new Error(r.statusText); return r.json() })

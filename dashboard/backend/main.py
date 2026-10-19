@@ -26,6 +26,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Loony Trading API", docs_url="/api/docs", lifespan=lifespan)
 
+# Login (dashboard/backend/auth.py): with DASHBOARD_PASSWORD set every API
+# route needs a session; without one the API only answers this machine.
+from . import auth  # noqa: E402
+app.middleware("http")(auth.middleware)
+app.include_router(auth.router, prefix="/api", tags=["auth"])
+
 # CORS
 app.add_middleware(
     CORSMiddleware,

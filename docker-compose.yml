@@ -25,7 +25,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-loony}
       - POSTGRES_DB=${POSTGRES_DB:-loony_trading}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"   # this machine only
     volumes:
       - loony-pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -40,7 +40,7 @@ services:
     container_name: loony-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"   # this machine only
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

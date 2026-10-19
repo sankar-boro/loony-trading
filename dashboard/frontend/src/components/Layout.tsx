@@ -1,6 +1,7 @@
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import useSWR from 'swr'
-import { fetcher } from '../api'
+import { api, fetcher, AUTH_EVENT } from '../api'
 import type { StatusResponse } from '../types'
 import clsx from 'clsx'
 
@@ -33,7 +34,61 @@ function Dot({ on, pulse }: { on: boolean; pulse?: boolean }) {
   )
 }
 
+interface AuthStatus { password_set: boolean; local: boolean; authenticated: boolean }
+
+function Login({ auth, onDone }: { auth: AuthStatus; onDone: () => void }) {
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    setBusy(true); setError('')
+    try { await api.login(password); onDone() }
+    catch (err) { setError(err instanceof Error ? err.message : String(err)) }
+    finally { setBusy(false) }
+  }
+  return (
+    <div className="h-screen flex items-center justify-center bg-bg text-primary">
+      <div className="w-80 bg-surface border border-border rounded-xl p-6 space-y-4">
+        <div className="flex items-center gap-2.5">
+          <span className="text-blue text-2xl font-bold leading-none">▲</span>
+          <span className="text-base font-semibold tracking-wide">LOONY TRADING</span>
+        </div>
+        {auth.password_set ? (
+          <form onSubmit={submit} className="space-y-3">
+            <input type="password" autoFocus value={password} onChange={e => setPassword(e.target.value)}
+                   placeholder="Dashboard password"
+                   className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue" />
+            {error && <div className="text-sm text-red">{error}</div>}
+            <button disabled={busy || !password}
+                    className="w-full bg-blue text-white rounded-lg py-2 text-sm font-medium disabled:opacity-40">
+              {busy ? 'Signing in…' : 'Sign in'}
+            </button>
+          </form>
+        ) : (
+          <div className="text-sm text-dim space-y-2">
+            <p>This dashboard only answers the machine it runs on.</p>
+            <p>To use it from here, set <code className="text-blue">DASHBOARD_PASSWORD</code> in the
+               server's <code className="text-blue">.env</code> and restart it.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function Layout() {
+  const { data: auth, mutate: recheck } = useSWR<AuthStatus>('/api/auth/status', fetcher, { refreshInterval: 60_000 })
+  useEffect(() => {
+    const onAuth = () => { recheck() }
+    window.addEventListener(AUTH_EVENT, onAuth)
+    return () => window.removeEventListener(AUTH_EVENT, onAuth)
+  }, [recheck])
+  if (auth && !auth.authenticated) return <Login auth={auth} onDone={() => recheck()} />
+  return <Shell showLogout={!!auth?.password_set} onLogout={async () => { await api.logout(); recheck() }} />
+}
+
+function Shell({ showLogout, onLogout }: { showLogout: boolean; onLogout: () => void }) {
   const { data: status } = useSWR<StatusResponse>('/api/status', fetcher, { refreshInterval: 10_000 })
 
   const marketOpen  = status?.market_open ?? false
@@ -112,8 +167,11 @@ export default function Layout() {
             </span>
           </div>
 
-          <div className="pt-1 border-t border-border/50">
+          <div className="pt-1 border-t border-border/50 flex items-center justify-between">
             <span className="text-[12px] text-dim/50 font-mono">v1.1.0 · NSE</span>
+            {showLogout && (
+              <button onClick={onLogout} className="text-[12px] text-dim hover:text-primary">Sign out</button>
+            )}
           </div>
         </div>
       </aside>

@@ -6,7 +6,9 @@ export default defineConfig({
   server: {
     port: 5163,
     proxy: {
-      '/api': { target: 'http://localhost:8000', changeOrigin: true },
+      // xfwd: pass the browser's address on, so the backend can tell a remote
+      // visitor from this machine even through the dev proxy
+      '/api': { target: 'http://localhost:8000', changeOrigin: true, xfwd: true },
       '/ws':  { target: 'ws://localhost:8000',   ws: true },
     },
   },

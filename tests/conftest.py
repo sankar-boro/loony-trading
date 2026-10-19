@@ -15,6 +15,7 @@ for _key in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "SMTP_HOST", "EMAIL_USER"
              "EMAIL_PASSWORD", "EMAIL_TO", "NEWS_API_KEY", "ANTHROPIC_API_KEY"):
     os.environ[_key] = ""
 os.environ["LLM_PROVIDER"] = "demo"
+os.environ["DASHBOARD_PASSWORD"] = ""      # tests that need a login set their own
 
 # Broker credentials: ignore .env, but keep a token you export on purpose
 # (UPSTOX_ACCESS_TOKEN=<token> pytest tests/test_live_upstox.py).
