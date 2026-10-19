@@ -206,7 +206,7 @@ portfolio:
 # universe signal scan against a rate-limited broker API every 60s isn't
 # realistic for every provider; tune per your API tier.
 scheduler:
-  enabled: false
+  enabled: true
   news_interval_seconds: 60            # spec: every 15-60s
   signal_interval_seconds: 300         # spec: every minute (loosened — see above)
   alert_interval_seconds: 300          # runs right after signal scoring
