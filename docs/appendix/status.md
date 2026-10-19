@@ -78,6 +78,11 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 - [x] Handbook copied into Postgres (`doc_chapters`, `doc_sections`) by `scripts/migrate_docs.py`, which runs the table definitions in `db/sql/handbook.sql` and loads `docs/`; `DB_*` connection settings and `DB_SCHEMA` support (`tests/test_docs_sync.py`)
 - [x] Deployment documented (Docker Compose, systemd units, security checklist)
 
+### Execution ([Execution](../engine/execution.md))
+
+- [x] Limit-order chasing; execution log (`logs/executions.jsonl`), `scripts/execution_report.py` and the Trades page's Execution quality tab
+- [x] GTT orders on the Upstox v3 API; delivery positions' broker stops are GTTs that survive the close (`tests/test_execution_quality.py`)
+
 ### Portfolio analytics ([Portfolio Risk](../dashboard/portfolio-risk.md#beta-factors-and-stress-tests))
 
 - [x] Beta and futures hedge suggestion, factor exposures and crisis stress tests for the current holdings (`GET /api/portfolio/analytics`, `tests/test_portfolio_analytics.py`)
@@ -179,6 +184,7 @@ regression tests.
 
 ### Live trading safety
 
+- [x] **A failed live close was booked at ₹0** (2026-10-19): a rejected market close recorded a fake P&L and dropped a position that was still open at the broker — closes are booked only when filled, retried after 30 s
 - [x] **MIS squareoff left stale positions** in the risk book (live), so a later stop sent an opposite order on a flat position — now removed without a second order
 - [x] **MIS squareoff did nothing in `main.py` paper mode** — paper positions now closed
 - [x] **New entries after 15:14** — blocked for MIS; squareoff re-arms each day

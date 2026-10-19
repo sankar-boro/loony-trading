@@ -51,6 +51,14 @@ The file is never rotated; `health.py` warns when logs grow large.
  "strategy": "donchian_breakout"}
 ```
 
+### executions.jsonl
+
+One line per entry or exit order from the bot's executor, paper and live,
+filled or not: decision price, fill price, `slippage_bps`, `outcome`,
+`chases`, `latency_ms`. Read by `scripts/execution_report.py` and the Trades
+page's Execution quality tab. See
+[Execution quality](../engine/execution.md#execution-quality).
+
 ### paper_trades.jsonl
 
 ```json

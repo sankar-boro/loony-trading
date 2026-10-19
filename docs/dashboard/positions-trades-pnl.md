@@ -75,6 +75,18 @@ reason:
 | `mis_squareoff_3:14pm` / `mis_squareoff` | paper trader / `main.py` | Intraday positions closed at 15:14 IST |
 | `reconcile_missing_at_broker` | `main.py` live | Removed because Upstox did not hold it (see [Position Safety](../engine/position-safety.md)) |
 
+### Execution quality
+
+The **Execution quality** button switches the Trades page to how well orders
+were filled, for the chosen paper or live source over 7, 30 or 90 days:
+- the fill rate, slippage against the price the bot decided at (basis
+  points, + = cost), the slippage cost in rupees, and the order outcomes;
+- tables by entry/exit, order type, chases (limit orders), hour and
+  strategy.
+
+The data comes from `logs/executions.jsonl`; see
+[Execution quality](../engine/execution.md#execution-quality).
+
 ## Daily P&L
 
 `/daily`, `pages/DailyPnL.tsx`, reading `GET /api/daily` — one record per

@@ -58,13 +58,26 @@ Limit prices are rounded to the instrument's tick size.
    order type, tag `loony-<strategy>`.
 5. **Paper**: simulated fill (below). **Live**: place it once, then poll its
    status every second for up to 30 s.
-6. **Live, still not filled after the poll** (typically an unfilled limit
-   order): the order is **cancelled**. If part of it filled, the bot tracks only
-   the filled quantity; otherwise it records nothing. Nothing is left working
-   at the broker.
-7. On a fill: open a `Position` in the risk manager at the actual fill price,
+6. **Live, a limit order still not filled after the poll** is **chased**
+   ([below](#limit-order-chasing)).
+7. **Live, still not filled after chasing**: the order is **cancelled**. If
+   part of it filled, the bot tracks only the filled quantity; otherwise it
+   records nothing. Nothing is left working at the broker.
+8. Every order, filled or not, is written to the
+   [execution log](#execution-quality).
+9. On a fill: open a `Position` in the risk manager at the actual fill price,
    record the order, and call the `on_fill` callbacks (the bot logs to
    `logs/trades.jsonl`).
+
+### Limit-order chasing
+
+A live limit order still working after the 30-second poll is re-priced
+toward the market up to `execution.chase_attempts` (2) times. Each attempt
+moves the limit to the last traded price, at least one tick, but never more
+than `max_chase_pct` (0.3 %) from the original limit. It then waits
+`chase_wait_sec` (10 s) for a fill. When the cap is reached, or the attempts
+run out, the rest is cancelled as before. Market orders are never chased.
+Set `chase_attempts: 0` to turn chasing off.
 
 **Order placement is never retried.** Placing an order is not idempotent: a
 request that times out may still have reached the exchange, and a retry would
@@ -108,13 +121,57 @@ direction for the position's size (rounded to lots), in the default product,
 then books the P&L in the risk manager. In paper mode it fills at the given
 price with slippage.
 
+**Live, a close is booked only if it filled.** A rejected or failed market
+order returns nothing and the position stays tracked. The next stop check
+retries, but no sooner than 30 seconds after the failure, so a broker that
+keeps rejecting is not flooded with orders. Before 2026-10-19 a failed close
+was booked at ₹0: a fake P&L, and a position the bot no longer tracked while
+it was still open at the broker.
+
+## Execution quality
+
+Every entry and exit order, paper and live, adds one line to
+`logs/executions.jsonl`:
+
+```json
+{"ts": "2026-10-19T09:41:12+05:30", "mode": "live", "kind": "entry", "symbol": "TCS",
+ "strategy": "donchian_breakout", "side": "BUY", "order_type": "LIMIT", "product": "MIS",
+ "qty": 40, "filled_qty": 40, "decision_price": 4012.5, "limit_price": 4012.5,
+ "fill_price": 4014.0, "slippage_bps": 3.74, "outcome": "filled", "chases": 1, "latency_ms": 31840}
+```
+
+Slippage is measured against the **decision price**: the price the signal,
+or the stop or target check, saw when it decided to trade. It is in basis
+points, and positive means a cost. `outcome` is `filled`, `partial`,
+`unfilled` (cancelled by the bot) or `rejected`.
+
+`analytics/execution_quality.report()`, `python scripts/execution_report.py`
+and the **Execution quality** tab on the Trades page summarise the log:
+- fill rate;
+- average, median and 90th-percentile slippage;
+- slippage cost in rupees;
+- broken down by entry/exit, order type, strategy, hour of day, and the
+  number of chases for limit orders.
+
+## GTT orders
+
+`place_gtt`, `modify_gtt`, `cancel_gtt`, `get_gtt` and `get_gtt_orders`
+use Upstox's **v3** GTT API (`/v3/order/gtt/...`). A single-leg GTT has one
+`ENTRY` rule: trigger `ABOVE` or `BELOW` a price, product `D` (delivery) or
+`I` (intraday). When it triggers, the broker places a limit order. A GTT
+lasts until it triggers, is cancelled, or a year passes. The bot uses GTTs
+for [broker-held stops on delivery positions](intraday-controls.md#exchange-held-stops).
+The earlier implementation targeted a non-existent v2 endpoint with a
+different payload, so it could never have placed an order. SELL GTTs
+against delivery holdings need the account's eDIS or DDPI authorisation.
+
 ## Other operations
 
 | Method | Purpose |
 |---|---|
 | `modify_order(order_id, quantity, price, order_type, trigger_price)` | Change a working order |
 | `cancel_order(order_id)`, `cancel_all_orders()` | Cancel one / every open order |
-| `place_gtt(symbol, side, qty, product, trigger, limit, trigger_type)` | Good-till-triggered order (`single` or `two-leg`) — persists at Upstox until triggered or cancelled |
+| `place_gtt(symbol, side, qty, product, trigger, trigger_type)` | Good-till-triggered order on the v3 API ([GTT orders](#gtt-orders)) |
 | `squareoff_all_mis()` | Close every open MIS position at the broker with market orders (live); no-op in paper |
 | `place_basket_order(legs)` | Several option legs in sequence, each lot-snapped |
 | `execute_options_signal(signal)` | Build legs from an options signal and place them as a basket |
@@ -127,7 +184,11 @@ After-market orders are supported through `UpstoxOrder.is_amo`.
 
 `execution_engine/smart_order.py` provides algorithms for splitting a large
 order over time. They produce schedules and track execution, but the bot does
-not use them yet.
+not use them. The executor runs inside the tick loop, so an order spread over
+minutes would stall ticks for every symbol. Slicing needs a background order
+manager first, and at the default ₹5 lakh capital (at most ₹1 lakh per
+position) it would rarely trigger. The [execution log](#execution-quality)
+shows whether slippage makes it worth building.
 
 | Class | Behaviour |
 |---|---|

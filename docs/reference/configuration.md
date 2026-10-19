@@ -122,6 +122,9 @@ Session rules, operator controls and monitoring for the live bot
 | `latency_budget_ms` | `100` | Informational |
 | `reconcile_interval_sec` | `300` | Live: broker reconciliation interval |
 | `max_tick_jump_pct` | `0.20` | Drop ticks moving more than this from the last price |
+| `chase_attempts` | `2` | Live: times an unfilled limit order is re-priced toward the market before the rest is cancelled (`0` = off) |
+| `chase_wait_sec` | `10` | Seconds to wait for a fill after each re-price |
+| `max_chase_pct` | `0.003` | Never chase more than this from the original limit |
 | `upstox_product` | *(unset)* | Overrides `exchanges.upstox.default_product` |
 
 ## data

@@ -32,6 +32,7 @@ not passed its 03:30 IST expiry).
 | Trade journal | `trade_journal.py` | `journal` |
 | Strategy report | `strategy_report.py` | `report` |
 | Daily P&L report | `daily_report.py` | — |
+| Execution quality | `execution_report.py` | — |
 | MarketPulse: load stocks | `backfill_stocks.py` | — |
 | MarketPulse: score signals | `run_signal_engine.py` | — |
 | MarketPulse: signal track record | `evaluate_signals.py` | — |

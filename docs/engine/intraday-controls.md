@@ -144,8 +144,18 @@ write_control("pause")
 The bot normally holds stops in memory and sends a market order when a tick
 crosses one. If the bot crashes, loses its network connection or the feed
 stops, those stops do nothing. With `intraday.exchange_stops: true` (live mode
-only; off by default) every position also gets a **stop-loss-market (SL-M)
-order at the broker**:
+only; off by default) every position also gets a **stop at the broker**:
+
+| Product | Broker stop | Why |
+|---|---|---|
+| MIS | Stop-loss-market (SL-M) order, DAY validity | Gone with the position at the squareoff |
+| CNC | [GTT](execution.md#gtt-orders): sell `BELOW` the stop (buy `ABOVE` for a short) | A DAY order expires at the close and would leave a delivery position unprotected overnight; a GTT persists |
+
+A SELL GTT against delivery holdings needs the account's eDIS or DDPI
+authorisation. Without it, placement fails and the Intraday Desk shows the
+stop as *missing*.
+
+How the broker stop is handled:
 
 - **Placed** right after an entry fills, for the whole quantity, at
   `stop_loss` rounded to the tick size, product as configured, tag
@@ -171,8 +181,13 @@ memory, but not at the broker.
 
 Two caveats:
 - **Restart after a crash**: positions restored from an earlier day lose
-  their stop-order ids (DAY orders expire), and new stops are placed after
-  the first reconciliation. On the same day the ids are kept.
+  their SL-M order ids (DAY orders expire), and new stops are placed after
+  the first reconciliation. GTT ids are kept, because GTTs persist; on the
+  same day all ids are kept.
+- **A GTT that has executed** disappears from Upstox's GTT list. The bot then
+  checks the broker's holdings: if the position is gone, the stop executed
+  and the exit is booked at the trigger price; if it is still held, the GTT
+  was cancelled elsewhere.
 - **Paper mode** never places exchange stops.
 
 ## Monitoring

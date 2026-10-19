@@ -27,7 +27,7 @@ Each area gets one of three labels:
 | [Regime detection](#regime-detection) | **Done** | Gated HMM (fit script and weekly job), breakout and crisis regimes, regime on the Chart page |
 | [Features](#features) | Partial | Advanced OI/IV/macro features used only by tests |
 | [Risk management](#risk-management) | Basic | Sector cap and per-strategy limits done; CVaR and volatility targeting still to wire |
-| [Execution](#execution) | Basic | Market/limit only; the 422-line smart-order router is unused |
+| [Execution](#execution) | Partial | Limit chasing, execution-quality report, v3 GTT stops done; TWAP/VWAP slicing still unused |
 | [Portfolio analytics](#portfolio-analytics) | **Done** | Beta and hedge, factor exposures and stress tests on the Portfolio Risk page |
 | [Backtesting](#backtesting) | Basic | One symbol, one position at a time; no portfolio backtest |
 | [Machine learning](#machine-learning) | Partial | Ensemble trains; TFT, online learning, RL, Bayesian tuning never used |
@@ -231,13 +231,24 @@ optional.
 **Not wired:** `execution_engine/smart_order.py` (422 lines) has TWAP/VWAP
 slicing and an Indian intraday volume profile.
 
-**Extend with:**
-- Limit-order chasing: re-price an unfilled limit order toward the market a
-  few times before cancelling.
-- TWAP/VWAP slicing for orders above a size threshold, using `smart_order`.
-- Upstox GTT orders, so delivery positions keep stops across days.
-- An execution-quality report: slippage per order against the signal price
-  and arrival price, per strategy and time of day.
+**Done (2026-10-19):** see [Execution](engine/execution.md).
+- [Limit-order chasing](engine/execution.md#limit-order-chasing), capped at
+  0.3 % from the original limit.
+- An [execution log and report](engine/execution.md#execution-quality):
+  slippage against the decision price by entry/exit, order type, strategy,
+  hour and chases. It is also on the Trades page.
+- [GTT orders](engine/execution.md#gtt-orders) rewritten to Upstox's v3
+  API; the old code could never have worked. Broker stops on delivery
+  positions are now GTTs, so they survive the close.
+- Fixed: a failed live close was booked at ₹0 and the position dropped from
+  the books while still open at the broker.
+
+**Still to extend:**
+- TWAP/VWAP slicing with `smart_order`. It needs a background order manager,
+  so the tick loop is not stalled; the execution log will show whether
+  slippage justifies it.
+- Arrival price (the quote when the order is sent) alongside the decision
+  price.
 
 ## Portfolio analytics
 

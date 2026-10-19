@@ -29,6 +29,7 @@ server error). "Token" below means a valid Upstox daily token; endpoints marked
 | GET | `/api/positions` | `positions`, `signal_log`, `cash`, `initial_capital`, `saved_at` from `data/live_positions.json` |
 | GET | `/api/equity` | Array of equity snapshots from `data/equity_curve.jsonl` |
 | GET | `/api/trades?source=paper\|live` | `trades` (closed trades) and `stats` (total, wins, losses, win_rate, total_pnl, avg_win, avg_loss, expectancy, profit_factor) |
+| GET | `/api/execution/quality?days=30&mode=paper\|live` | Fill rate and slippage vs the decision price from `logs/executions.jsonl`: `overall`, `outcomes`, `by_kind`, `by_order_type`, `by_strategy`, `by_hour`, `by_chases` |
 | GET | `/api/daily` | `days` from `data/daily_pnl.jsonl` and `summary` (total_realised, avg_daily, best_day, worst_day, sharpe_ann, total_trades, overall_win_rate) |
 | GET | `/api/intraday/desk` | Everything the [Intraday Desk](../dashboard/intraday-desk.md) shows: `session` (phase, entry window, minutes to last entry / squareoff / close), `bot` (running, mode, feed age, `feed_stale`, `exchange_stops`), `guard` (trade counts, caps, cooldowns, halt, pause), `control`, `pnl` (realised, unrealised, day, loss limit, `loss_used_pct`, profit lock), `positions`, today's `trades`, `by_strategy`, `curve` (minute P&L) and today's `events` (newest first) |
 | POST | `/api/intraday/control` | Body `{"action": "pause" \| "resume" \| "flatten"}` → writes `data/bot_control.json`; returns `{ok, action, control}`. 400 for any other action |
