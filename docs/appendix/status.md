@@ -132,7 +132,7 @@ the code. `[x]` = done and verified in code · `[ ]` = open.
 
 ### Trading and execution
 
-- [ ] **Index signals are not tradable.** `vix_strategy`, `fii_dii` and `gift_nifty_gap` signal on `NIFTY50`/`BANKNIFTY`; the executor has no mapping to futures, options or an ETF, so live index orders would be rejected and paper mode treats the index as a stock
+- [ ] Index signals (`vix_strategy`, `fii_dii`, `gift_nifty_gap`) are research-only: they no longer become orders, and trading them needs futures contract resolution
 - [ ] Options strategies not in the engine; the options resolver builds name-based keys (`NSE_FO|NIFTY25JUN24500CE`) but real Upstox F&O keys are numeric tokens from the instrument master; F&O STT is not modelled in `_compute_charges()`
 - [ ] `ExpiryDayStrategy` assumes weekly BankNifty expiries, which NSE discontinued in 2024
 - [ ] `order_book_imbalance` never receives an order book and `mtf_trend` never receives multi-timeframe frames, so neither can fire
@@ -190,6 +190,7 @@ regression tests.
 
 ### Live trading safety
 
+- [x] **Index signals became orders** (2026-10-19): paper mode traded NIFTY50 like a share and live would have sent unfillable orders — the executor and the bot now refuse index entries
 - [x] **A failed live close was booked at ₹0** (2026-10-19): a rejected market close recorded a fake P&L and dropped a position that was still open at the broker — closes are booked only when filled, retried after 30 s
 - [x] **MIS squareoff left stale positions** in the risk book (live), so a later stop sent an opposite order on a flat position — now removed without a second order
 - [x] **MIS squareoff did nothing in `main.py` paper mode** — paper positions now closed

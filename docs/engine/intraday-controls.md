@@ -27,7 +27,8 @@ checks in order. The first one that fails stops the entry:
 2. The best signal is a BUY or SELL.
 3. No open position in that symbol in the same direction. An opposite signal
    closes the position instead; see [Position Safety](position-safety.md#one-position-per-symbol).
-4. A SELL on a flat symbol needs a product that can hold a short (MIS);
+4. The symbol is not an index ([Indices are not tradable](execution.md#indices-are-not-tradable)),
+   and a SELL on a flat symbol needs a product that can hold a short (MIS);
    see [Shorts need MIS](execution.md#shorts-need-mis).
 5. **Session rules** (`IntradayGuard.can_enter`), in this order:
    operator pause → day halted → entry window (MIS only) → daily trade

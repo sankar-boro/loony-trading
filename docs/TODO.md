@@ -17,9 +17,10 @@ groups is self-contained.
 3. **Test exchange stops with one share.** The stop orders held at Upstox
    are only tested against fakes. Try them on a live one-share position
    before turning them on.
-4. **Make index signals tradable.** `vix_strategy`, `fii_dii` and
-   `gift_nifty_gap` signal on NIFTY/BANKNIFTY, which can't be bought as a
-   stock. Map them to futures or an ETF, or stop them generating orders.
+4. ~~**Make index signals tradable.**~~ **Stopped 2026-10-19:** index
+   signals no longer become orders (they were traded like shares in paper
+   mode). Trading them through futures waits on item 13; see
+   [Indices are not tradable](engine/execution.md#indices-are-not-tradable).
 5. **Re-tune strategy weights.** The current enabled list and weights came
    from backtests with known bugs: VWAP firing on every bar, double-counted
    costs, close-only stops.

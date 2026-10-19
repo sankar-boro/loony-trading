@@ -20,6 +20,14 @@ order = await executor.execute_signal(signal)
 The product for every order comes from `exchanges.upstox.default_product`
 (`CNC` by default); `execution.upstox_product`, if set, overrides it.
 
+### Indices are not tradable
+
+An index (`NIFTY50`, `BANKNIFTY`, any `NSE_INDEX|…` / `BSE_INDEX|…` key)
+cannot be bought or sold itself, so `execute_signal` refuses it in live and
+paper mode (`risk_manager.is_index`). Index signals from the macro
+strategies are research-only until futures contracts can be resolved; see
+[Macro strategies](strategies-macro.md).
+
 ### Shorts need MIS
 
 A SELL signal on a flat symbol would open a short. NSE does not allow an

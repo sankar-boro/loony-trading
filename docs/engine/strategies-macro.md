@@ -11,11 +11,15 @@ Two caveats apply to all three:
   GIFT gap are fetched as of *now*, whatever bar is being evaluated. Their
   results in a backtest therefore do not reflect what they would have done on
   those historical days.
-- **Index signals are not directly tradable.** An index cannot be bought or
-  sold; a BUY on `NIFTY50` needs to become a futures, options or ETF trade.
-  The executor has no such mapping yet, so in live mode an index order would
-  be rejected, and in paper mode it is simulated as if the index were a stock.
-  See [Project Status](../appendix/status.md).
+- **Index signals are research-only.** An index cannot be bought or sold; a
+  BUY on `NIFTY50` would have to become a futures, options or ETF trade, and
+  F&O contracts cannot be resolved yet. So a signal on an index never becomes
+  an order. The executor refuses it in live and paper mode
+  (`risk_manager.is_index`), and the bot logs a `block` event: "an index is
+  not tradable itself". The signals still appear in the composite scores and
+  the bot's events. Before 2026-10-19, paper mode traded the index as if it
+  were a share. Backtests on an index still simulate it as a tradable price,
+  as a rough stand-in for futures.
 
 ## India VIX Strategy
 
