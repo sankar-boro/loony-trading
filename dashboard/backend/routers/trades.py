@@ -34,3 +34,11 @@ def get_trades(source: str = Query("paper", pattern="^(paper|live)$")) -> dict:
             "profit_factor":  round(pf, 3),
         },
     }
+
+@router.get("/execution/quality")
+def get_execution_quality(days: int = Query(30, ge=1, le=365),
+                          mode: str | None = Query(None, pattern="^(paper|live)$")) -> dict:
+    """Fill rate and slippage against the decision price, from
+    logs/executions.jsonl (analytics/execution_quality.py)."""
+    from analytics import execution_quality as eq
+    return eq.report(eq.load(eq.EXECUTION_LOG), days=days, mode=mode)

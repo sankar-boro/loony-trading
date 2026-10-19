@@ -23,6 +23,7 @@ Order types:
 from __future__ import annotations
 import asyncio
 import time
+from pathlib import Path
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Callable
@@ -38,6 +39,9 @@ from utils.timeutils import now_utc
 logger = get_logger("upstox.execution")
 
 _BASE_URL = "https://api.upstox.com/v2"
+_V3_URL = "https://api.upstox.com/v3"          # GTT orders live on v3
+_EXECUTION_LOG = Path(__file__).resolve().parent.parent / "logs" / "executions.jsonl"
+_CLOSE_RETRY_SEC = 30                           # wait before re-sending a failed close
 
 
 class UpstoxProduct(str, Enum):
@@ -122,6 +126,11 @@ class UpstoxExecutor:
         self._slippage_pct = self.cfg.get("slippage_pct", 0.0005)  # 0.05% for NSE
         self._retry_attempts = self.cfg.get("retry_attempts", 3)
         self._session = None
+        self._close_failed_at: dict[str, float] = {}   # symbol → time of the last failed close
+        # Limit-order chasing (live): re-price an unfilled limit toward the market
+        self._chase_attempts = int(self.cfg.get("chase_attempts", 2))
+        self._chase_wait_sec = float(self.cfg.get("chase_wait_sec", 10))
+        self._max_chase_pct = float(self.cfg.get("max_chase_pct", 0.003))
 
         # India-specific defaults. `exchanges.upstox.default_product` is the
         # documented setting; `execution.upstox_product` still overrides it.
@@ -145,27 +154,31 @@ class UpstoxExecutor:
         })
         return self._session
 
+    @staticmethod
+    def _url(endpoint: str) -> str:
+        return endpoint if endpoint.startswith("http") else f"{_BASE_URL}{endpoint}"
+
     def _post(self, endpoint: str, payload: dict) -> dict:
         s = self._get_session()
-        resp = s.post(f"{_BASE_URL}{endpoint}", json=payload, timeout=15)
+        resp = s.post(self._url(endpoint), json=payload, timeout=15)
         resp.raise_for_status()
         return resp.json()
 
     def _put(self, endpoint: str, payload: dict) -> dict:
         s = self._get_session()
-        resp = s.put(f"{_BASE_URL}{endpoint}", json=payload, timeout=15)
+        resp = s.put(self._url(endpoint), json=payload, timeout=15)
         resp.raise_for_status()
         return resp.json()
 
-    def _delete(self, endpoint: str, params: dict) -> dict:
+    def _delete(self, endpoint: str, params: dict | None = None, body: dict | None = None) -> dict:
         s = self._get_session()
-        resp = s.delete(f"{_BASE_URL}{endpoint}", params=params, timeout=15)
+        resp = s.delete(self._url(endpoint), params=params, json=body, timeout=15)
         resp.raise_for_status()
         return resp.json()
 
     def _get(self, endpoint: str, params: dict | None = None) -> dict:
         s = self._get_session()
-        resp = s.get(f"{_BASE_URL}{endpoint}", params=params, timeout=15)
+        resp = s.get(self._url(endpoint), params=params, timeout=15)
         resp.raise_for_status()
         return resp.json()
 
@@ -191,9 +204,10 @@ class UpstoxExecutor:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._put, endpoint, payload)
 
-    async def _delete_async(self, endpoint: str, params: dict) -> dict:
+    async def _delete_async(self, endpoint: str, params: dict | None = None,
+                            body: dict | None = None) -> dict:
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self._delete, endpoint, params)
+        return await loop.run_in_executor(None, self._delete, endpoint, params, body)
 
     # ── Signal execution ──────────────────────────────────────────────────────
 
@@ -247,10 +261,15 @@ class UpstoxExecutor:
             tag=f"loony-{signal.strategy[:20]}",
         )
 
+        t0 = time.monotonic()
+        limit0, chases = order.price, 0
         if self.mode == "paper":
             await self._paper_fill(order, signal.price)
         else:
             await self._live_place(order)
+            if (not order.is_filled and not order.is_rejected and order.order_id
+                    and order.order_type == UpstoxOrderType.LIMIT):
+                chases = await self._chase(order, instrument_key)
             if not order.is_filled and not order.is_rejected and order.order_id:
                 # Still working after the status poll (e.g. an unfilled limit
                 # order): cancel the rest so nothing can fill later untracked,
@@ -265,6 +284,8 @@ class UpstoxExecutor:
                     logger.info(f"Order {order.order_id} for {signal.symbol} not filled — cancelled")
                     order.status = "cancelled"
 
+        self._log_execution("entry", order, signal.symbol, signal.strategy, signal.price,
+                            limit0, qty, chases, t0)
         if order.is_filled or self.mode == "paper":
             pos = self.risk_manager.open_position(signal, qty)
             if order.avg_price > 0:
@@ -278,6 +299,74 @@ class UpstoxExecutor:
         return order
 
     # ── Order lifecycle ───────────────────────────────────────────────────────
+
+    async def _ltp(self, instrument_key: str) -> float | None:
+        """Last traded price from the quote API (None on any failure)."""
+        try:
+            data = await self._get_async("/market-quote/ltp", params={"instrument_key": instrument_key})
+            for v in (data.get("data") or {}).values():
+                if v.get("last_price"):
+                    return float(v["last_price"])
+        except Exception as e:
+            logger.debug(f"LTP {instrument_key}: {e}")
+        return None
+
+    async def _chase(self, order: UpstoxOrder, instrument_key: str) -> int:
+        """A limit order still working after the first poll is re-priced toward
+        the market up to `execution.chase_attempts` times, never further than
+        `max_chase_pct` from its original price, waiting `chase_wait_sec`
+        after each change. Returns how many times it was re-priced."""
+        side = 1 if order.transaction_type == "BUY" else -1
+        start = order.price
+        cap = start * (1 + side * self._max_chase_pct)
+        tick = self.registry.get_tick_size(instrument_key) or 0.05
+        chases = 0
+        for _ in range(self._chase_attempts):
+            ltp = await self._ltp(instrument_key)
+            target = ltp if ltp else order.price * (1 + side * self._max_chase_pct / max(self._chase_attempts, 1))
+            new = min(max(target, order.price + tick), cap) if side == 1 else max(min(target, order.price - tick), cap)
+            new = self.registry.round_to_tick(new, instrument_key)
+            if (new - order.price) * side < tick / 2:
+                break                                   # already at the cap
+            if not await self.modify_order(order.order_id, price=new):
+                break
+            order.price = new
+            chases += 1
+            logger.info(f"Chasing {order.order_id}: limit {start:.2f} → {new:.2f}")
+            await self._poll_order_status(order, timeout_sec=self._chase_wait_sec)
+            if order.is_filled or order.is_rejected:
+                break
+        return chases
+
+    def _log_execution(self, kind: str, order: UpstoxOrder, symbol: str, strategy: str,
+                       decision_price: float, limit_price: float, qty: int, chases: int,
+                       t0: float) -> None:
+        """One line per order in logs/executions.jsonl for the execution-quality
+        report: decision vs fill price, outcome, chases, latency."""
+        import json
+        from utils.timeutils import now_ist
+        filled = order.filled_qty or (order.quantity if order.is_filled else 0)
+        side = 1 if order.transaction_type == "BUY" else -1
+        fill = order.avg_price if filled else None
+        rec = {
+            "ts": now_ist().isoformat(timespec="seconds"), "mode": self.mode, "kind": kind,
+            "symbol": symbol, "strategy": strategy, "side": order.transaction_type,
+            "order_type": order.order_type.value, "product": order.product.value,
+            "qty": qty, "filled_qty": filled, "decision_price": decision_price,
+            "limit_price": limit_price or None, "fill_price": fill,
+            "slippage_bps": (round(side * (fill - decision_price) / decision_price * 1e4, 2)
+                             if fill and decision_price else None),
+            "outcome": ("filled" if filled >= qty else "partial" if filled else
+                        "unfilled" if order.status == "cancelled" or not order.is_rejected
+                        else "rejected"),
+            "chases": chases, "latency_ms": round((time.monotonic() - t0) * 1000),
+        }
+        try:
+            _EXECUTION_LOG.parent.mkdir(parents=True, exist_ok=True)
+            with _EXECUTION_LOG.open("a") as f:
+                f.write(json.dumps(rec) + "\n")
+        except OSError as e:
+            logger.warning(f"Could not write execution log: {e}")
 
     async def _live_place(self, order: UpstoxOrder) -> None:
         payload = {
@@ -355,8 +444,18 @@ class UpstoxExecutor:
     # network dies. These keep an SL-M order at the broker for each live
     # position, moved with the trailing stop (intraday.exchange_stops).
 
+    def _uses_gtt(self) -> bool:
+        """Delivery positions are held overnight, and a DAY stop order expires at
+        the close — so on CNC the broker stop is a GTT, which persists."""
+        return self._default_product == UpstoxProduct.CNC
+
+    @staticmethod
+    def _is_gtt(stop_id: str) -> bool:
+        return stop_id.startswith("GTT-")
+
     async def place_exchange_stop(self, pos: Position) -> str:
-        """Live: place an SL-M order at pos.stop_loss for the whole position.
+        """Live: protect the position with a broker-held stop at pos.stop_loss —
+        an SL-M DAY order on MIS, a GTT on CNC (it survives the close).
         Records the id on the position; returns it, or "" on failure / paper."""
         if self.mode != "live":
             return ""
@@ -364,6 +463,18 @@ class UpstoxExecutor:
         if not instrument_key:
             return ""
         trigger = self.registry.round_to_tick(pos.stop_loss, instrument_key)
+        if self._uses_gtt():
+            loop = asyncio.get_running_loop()
+            gtt = await loop.run_in_executor(
+                None, lambda: self.place_gtt(pos.symbol, "SELL" if pos.direction == 1 else "BUY",
+                                             int(round(pos.size)), self._default_product, trigger,
+                                             "BELOW" if pos.direction == 1 else "ABOVE"))
+            if gtt and gtt.gtt_id:
+                pos.stop_order_id, pos.stop_synced = gtt.gtt_id, trigger
+                return gtt.gtt_id
+            logger.error(f"Could not place GTT stop for {pos.symbol} (SELL GTTs on delivery "
+                         "holdings need eDIS/DDPI authorisation on the account)")
+            return ""
         payload = {
             "quantity":         int(round(pos.size)),
             "product":          self._default_product.value,
@@ -397,6 +508,14 @@ class UpstoxExecutor:
         tick = self.registry.get_tick_size(instrument_key) or 0.05
         if abs(trigger - pos.stop_synced) < max(tick, pos.stop_synced * min_move_pct):
             return False
+        if self._is_gtt(pos.stop_order_id):
+            loop = asyncio.get_running_loop()
+            ok = await loop.run_in_executor(
+                None, lambda: self.modify_gtt(pos.stop_order_id, int(round(pos.size)), trigger,
+                                              "BELOW" if pos.direction == 1 else "ABOVE"))
+            if ok:
+                pos.stop_synced = trigger
+            return ok
         if await self.modify_order(pos.stop_order_id, trigger_price=trigger,
                                    order_type=UpstoxOrderType.SL_M):
             pos.stop_synced = trigger
@@ -408,6 +527,8 @@ class UpstoxExecutor:
         {} if there is none or the lookup fails."""
         if not pos.stop_order_id:
             return {}
+        if self._is_gtt(pos.stop_order_id):
+            return await self._gtt_stop_status(pos)
         try:
             data = await self._get_async("/order/details", params={"order_id": pos.stop_order_id})
             o = data.get("data", {})
@@ -418,9 +539,50 @@ class UpstoxExecutor:
             logger.warning(f"Exchange stop status {pos.stop_order_id}: {e}")
             return {}
 
+    async def _gtt_stop_status(self, pos: Position) -> dict:
+        """Status of a GTT stop in the same shape as an order's. A triggered GTT
+        reports its generated order's status and fill. The API stops listing a
+        GTT once it completes, so a GTT that has vanished is resolved against
+        the broker's holdings: if the position is gone, the stop executed."""
+        loop = asyncio.get_running_loop()
+        try:
+            gtt = await loop.run_in_executor(None, self.get_gtt, pos.stop_order_id)
+        except Exception:
+            return {}
+        if gtt is None:
+            key = self._resolve_key(pos.symbol)
+            try:
+                total, _ = await self.fetch_broker_quantities()
+            except Exception as e:
+                logger.warning(f"GTT {pos.stop_order_id} gone and holdings unavailable: {e}")
+                return {}
+            held = total.get(key, 0) * pos.direction
+            if held < pos.size:
+                return {"status": "complete", "avg_price": pos.stop_synced, "filled_qty": int(pos.size)}
+            return {"status": "cancelled", "avg_price": 0.0, "filled_qty": 0}
+        rule = (gtt.get("rules") or [{}])[0]
+        status = str(rule.get("status", "")).upper()
+        if status in ("TRIGGERED", "COMPLETED", "OPEN") and rule.get("order_id"):
+            data = await self._get_async("/order/details", params={"order_id": rule["order_id"]})
+            o = data.get("data", {})
+            return {"status": str(o.get("status", "")).lower(),
+                    "avg_price": float(o.get("average_price", 0) or 0),
+                    "filled_qty": int(o.get("filled_quantity", 0) or 0)}
+        return {"status": status.lower(), "avg_price": 0.0, "filled_qty": 0}
+
     async def cancel_exchange_stop(self, pos: Position) -> bool:
         if not pos.stop_order_id:
             return True
+        if self._is_gtt(pos.stop_order_id):
+            status = await self._gtt_stop_status(pos)
+            if status.get("status") == "cancelled":       # already gone at the broker
+                pos.stop_order_id = ""
+                return True
+            loop = asyncio.get_running_loop()
+            ok = await loop.run_in_executor(None, self.cancel_gtt, pos.stop_order_id)
+            if ok:
+                pos.stop_order_id = ""
+            return ok
         ok = await self.cancel_order(pos.stop_order_id)
         if ok:
             pos.stop_order_id = ""
@@ -465,10 +627,25 @@ class UpstoxExecutor:
             tag="loony-close",
         )
 
+        t0 = time.monotonic()
         if self.mode == "paper":
             await self._paper_fill(order, current_price)
         else:
+            last_fail = self._close_failed_at.get(pos.symbol, 0.0)
+            if time.monotonic() - last_fail < _CLOSE_RETRY_SEC:
+                return None                     # a close just failed; don't hammer the broker
             await self._live_place(order)
+        self._log_execution("exit", order, pos.symbol, pos.strategy, current_price, 0.0,
+                            qty, 0, t0)
+        if self.mode != "paper" and not (order.is_filled and order.avg_price > 0):
+            # Never book a close that did not happen: a rejected or failed
+            # market order used to close the position at ₹0 in the books while
+            # it stayed open at the broker.
+            self._close_failed_at[pos.symbol] = time.monotonic()
+            logger.error(f"Close of {pos.symbol} ({reason}) not filled (status {order.status}) — "
+                         f"position kept; retrying in {_CLOSE_RETRY_SEC}s")
+            return None
+        self._close_failed_at.pop(pos.symbol, None)
 
         pnl = self.risk_manager.close_position(pos, order.avg_price, reason)
         self.order_history.append(order)
@@ -477,68 +654,79 @@ class UpstoxExecutor:
 
     # ── GTT Orders ────────────────────────────────────────────────────────────
 
+    # Upstox v3 GTT API (documented at upstox.com/developer/api-documentation/
+    # place-gtt-order, checked 2026-10-19). A GTT stays at the broker until it
+    # triggers, is cancelled, or a year passes — unlike a DAY stop order, it
+    # survives the close, so it protects delivery (CNC) positions overnight.
+    # SELL GTTs on delivery holdings need the account's eDIS/DDPI authorisation.
+    _GTT_PRODUCT = {"CNC": "D", "MIS": "I"}
+
+    def _gtt_payload(self, instrument_key: str, transaction_type: str, quantity: int,
+                     product: UpstoxProduct, trigger_price: float, trigger_type: str) -> dict:
+        return {
+            "type": "SINGLE", "quantity": int(quantity),
+            "product": self._GTT_PRODUCT.get(product.value, "D"),
+            "instrument_token": instrument_key, "transaction_type": transaction_type,
+            "rules": [{"strategy": "ENTRY", "trigger_type": trigger_type,
+                       "trigger_price": float(trigger_price)}],
+        }
+
     def place_gtt(self, symbol: str, transaction_type: str, quantity: int,
-                   product: UpstoxProduct, trigger_price: float,
-                   limit_price: float,
-                   trigger_type: str = "single") -> Optional[GTTOrder]:
-        """
-        Place a Good Till Triggered order.
-        GTT orders persist until triggered or manually cancelled.
-        """
+                  product: UpstoxProduct, trigger_price: float,
+                  trigger_type: str = "BELOW") -> Optional[GTTOrder]:
+        """Place a single-leg GTT: when the price crosses `trigger_price` in the
+        `trigger_type` direction (ABOVE/BELOW), the broker places a limit order."""
         instrument_key = self._resolve_key(symbol)
         if not instrument_key:
             return None
-        payload = {
-            "type":             trigger_type,
-            "quantity":         quantity,
-            "product":          product.value,
-            "instrument_token": instrument_key,
-            "transaction_type": transaction_type,
-            "orders": [{
-                "transaction_type": transaction_type,
-                "quantity":         quantity,
-                "product":          product.value,
-                "order_type":       "LIMIT",
-                "price":            limit_price,
-            }],
-            "condition": {
-                "instrument_token": instrument_key,
-                "exchange":         instrument_key.split("|")[0],
-                "trigger_values":   [trigger_price],
-                "last_traded_price": limit_price,
-            }
-        }
+        payload = self._gtt_payload(instrument_key, transaction_type, quantity, product,
+                                    trigger_price, trigger_type)
         try:
-            resp = self._post("/order/gtt/place", payload)
-            gtt_id = resp.get("data", {}).get("gtt_id", "")
-            gtt = GTTOrder(
-                instrument_key=instrument_key,
-                transaction_type=transaction_type,
-                quantity=quantity,
-                product=product,
-                order_type=UpstoxOrderType.LIMIT,
-                trigger_type=trigger_type,
-                trigger_price=trigger_price,
-                limit_price=limit_price,
-                gtt_id=gtt_id,
-            )
-            logger.info(f"GTT placed: {symbol} trigger={trigger_price} gtt_id={gtt_id}")
-            return gtt
+            resp = self._post(f"{_V3_URL}/order/gtt/place", payload)
+            ids = (resp.get("data") or {}).get("gtt_order_ids") or []
+            gtt_id = ids[0] if ids else ""
+            logger.info(f"GTT placed: {symbol} {transaction_type} {trigger_type} {trigger_price} id={gtt_id}")
+            return GTTOrder(instrument_key=instrument_key, transaction_type=transaction_type,
+                            quantity=quantity, product=product, order_type=UpstoxOrderType.LIMIT,
+                            trigger_type=trigger_type, trigger_price=trigger_price,
+                            limit_price=0.0, gtt_id=gtt_id)
         except Exception as e:
             logger.error(f"GTT place error {symbol}: {e}")
             return None
 
+    def modify_gtt(self, gtt_id: str, quantity: int, trigger_price: float,
+                   trigger_type: str = "BELOW") -> bool:
+        try:
+            self._put(f"{_V3_URL}/order/gtt/modify", {
+                "type": "SINGLE", "quantity": int(quantity), "gtt_order_id": gtt_id,
+                "rules": [{"strategy": "ENTRY", "trigger_type": trigger_type,
+                           "trigger_price": float(trigger_price)}]})
+            return True
+        except Exception as e:
+            logger.error(f"GTT modify error {gtt_id}: {e}")
+            return False
+
     def cancel_gtt(self, gtt_id: str) -> bool:
         try:
-            self._delete("/order/gtt/cancel", {"gtt_id": gtt_id})
+            self._delete(f"{_V3_URL}/order/gtt/cancel", body={"gtt_order_id": gtt_id})
             return True
         except Exception as e:
             logger.error(f"GTT cancel error {gtt_id}: {e}")
             return False
 
+    def get_gtt(self, gtt_id: str) -> Optional[dict]:
+        """The GTT's details, or None if the broker no longer lists it (the
+        API does not return completed GTTs)."""
+        try:
+            rows = self._get(f"{_V3_URL}/order/gtt", params={"gtt_order_id": gtt_id}).get("data") or []
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning(f"GTT details {gtt_id}: {e}")
+            raise
+
     def get_gtt_orders(self) -> List[dict]:
         try:
-            return self._get("/order/gtt/list").get("data", [])
+            return self._get(f"{_V3_URL}/order/gtt").get("data", []) or []
         except Exception as e:
             logger.error(f"GTT list error: {e}")
             return []

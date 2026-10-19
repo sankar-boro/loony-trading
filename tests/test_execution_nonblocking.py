@@ -79,7 +79,7 @@ def test_put_async_and_delete_async_delegate_correctly():
     asyncio.run(executor._delete_async("/order/cancel", {"order_id": "x"}))
 
     executor._put.assert_called_once_with("/order/modify", {"order_id": "x"})
-    executor._delete.assert_called_once_with("/order/cancel", {"order_id": "x"})
+    executor._delete.assert_called_once_with("/order/cancel", {"order_id": "x"}, None)
 
 
 # ── The actual property that matters: doesn't block the event loop ──────

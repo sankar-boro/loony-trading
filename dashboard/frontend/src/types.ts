@@ -618,3 +618,27 @@ export interface PortfolioAnalytics {
                  recovery_days: number; cvar_95_pct: number; survived: boolean }[]
   }
 }
+
+// ── Execution quality (/api/execution/quality) ──────────────────────────────
+
+export interface ExecStats {
+  orders: number
+  fill_rate_pct: number | null
+  avg_slippage_bps: number | null
+  median_slippage_bps: number | null
+  p90_slippage_bps: number | null
+  slippage_cost: number
+  avg_latency_ms: number | null
+}
+
+export interface ExecutionQuality {
+  days: number
+  mode: string | null
+  overall: ExecStats
+  outcomes: Record<string, number>
+  by_kind: (ExecStats & { key: string })[]
+  by_order_type: (ExecStats & { key: string })[]
+  by_strategy: (ExecStats & { key: string })[]
+  by_hour: (ExecStats & { key: string })[]
+  by_chases: (ExecStats & { key: string })[]
+}

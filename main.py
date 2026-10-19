@@ -574,7 +574,9 @@ class UpstoxTradingBot:
                 dropped.append(row["symbol"])
             else:
                 if not same_session:
-                    row = {**row, "stop_order_id": "", "stop_synced": 0.0}   # DAY orders expired
+                    if not str(row.get("stop_order_id", "")).startswith("GTT-"):
+                        # DAY stop orders expired overnight; a GTT persists
+                        row = {**row, "stop_order_id": "", "stop_synced": 0.0}
                 keep.append(row)
         if dropped:
             logger.warning(f"Not restoring intraday positions from {state.get('session_date')} "

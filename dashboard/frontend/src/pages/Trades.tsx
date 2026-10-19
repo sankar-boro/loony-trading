@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import { fetcher } from '../api'
-import type { TradesResponse } from '../types'
+import type { TradesResponse, ExecutionQuality, ExecStats } from '../types'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, ReferenceLine, CartesianGrid, Cell,
@@ -188,8 +188,86 @@ function TradesTab({ source }: { source: 'paper' | 'live' }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+// ── Execution quality tab ────────────────────────────────────────────────────
+
+const bps = (v: number | null) => v === null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(1)}`
+
+function ExecTable({ title, rows }: { title: string; rows: (ExecStats & { key: string })[] }) {
+  if (!rows.length) return null
+  return (
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-border text-sm font-medium text-dim uppercase tracking-wide">{title}</div>
+      <table className="w-full text-sm font-mono">
+        <thead><tr className="border-b border-border">
+          {['', 'Orders', 'Filled', 'Avg bps', 'Median', 'P90', 'Cost'].map(h => (
+            <th key={h} className="text-left px-3 py-2 text-[11px] uppercase tracking-wide text-dim font-medium">{h}</th>
+          ))}
+        </tr></thead>
+        <tbody className="divide-y divide-border/50">
+          {rows.map(r => (
+            <tr key={r.key}>
+              <td className="px-3 py-2">{r.key}</td>
+              <td className="px-3 py-2 text-dim">{r.orders}</td>
+              <td className="px-3 py-2">{r.fill_rate_pct === null ? '—' : `${r.fill_rate_pct.toFixed(0)}%`}</td>
+              <td className={clsx('px-3 py-2', (r.avg_slippage_bps ?? 0) > 0 ? 'text-red' : 'text-green')}>{bps(r.avg_slippage_bps)}</td>
+              <td className="px-3 py-2">{bps(r.median_slippage_bps)}</td>
+              <td className="px-3 py-2">{bps(r.p90_slippage_bps)}</td>
+              <td className="px-3 py-2">{inr(r.slippage_cost)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ExecutionTab({ source }: { source: 'paper' | 'live' }) {
+  const [days, setDays] = useState(30)
+  const { data: q, isLoading } = useSWR<ExecutionQuality>(`/api/execution/quality?days=${days}&mode=${source}`,
+                                                          fetcher, { refreshInterval: 60_000 })
+  return (
+    <div className="flex-1 overflow-auto min-h-0 flex flex-col gap-3">
+      <div className="flex items-center gap-2 text-sm">
+        {[7, 30, 90].map(d => (
+          <button key={d} onClick={() => setDays(d)}
+                  className={clsx('px-3 py-1 rounded-lg border',
+                    days === d ? 'bg-blue/15 text-blue border-blue/30' : 'border-border text-dim hover:text-primary')}>
+            {d} days
+          </button>
+        ))}
+        <span className="text-dim ml-2">Slippage vs the price the bot decided at, in basis points; + is a cost</span>
+      </div>
+      {isLoading && <span className="text-sm text-dim animate-pulse">Loading…</span>}
+      {q && q.overall.orders === 0 && (
+        <div className="bg-surface border border-border rounded-xl p-8 text-center text-dim">
+          No {source} orders logged in the last {days} days (<code className="text-blue">logs/executions.jsonl</code>).
+        </div>
+      )}
+      {q && q.overall.orders > 0 && (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+            <Stat label="Orders" value={String(q.overall.orders)} />
+            <Stat label="Fill rate" value={q.overall.fill_rate_pct === null ? '—' : `${q.overall.fill_rate_pct.toFixed(0)}%`} />
+            <Stat label="Avg slippage" value={`${bps(q.overall.avg_slippage_bps)} bps`} up={(q.overall.avg_slippage_bps ?? 0) <= 0} />
+            <Stat label="Slippage cost" value={inr(q.overall.slippage_cost)} />
+            <Stat label="Outcomes" value={Object.entries(q.outcomes).map(([k, v]) => `${k} ${v}`).join(' · ')} />
+          </div>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+            <ExecTable title="Entry / exit" rows={q.by_kind} />
+            <ExecTable title="Order type" rows={q.by_order_type} />
+            <ExecTable title="Limit orders by chases" rows={q.by_chases} />
+            <ExecTable title="Hour (IST)" rows={q.by_hour} />
+          </div>
+          <ExecTable title="Strategy" rows={q.by_strategy} />
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function Trades() {
   const [source, setSource] = useState<'paper' | 'live'>('paper')
+  const [tab, setTab] = useState<'trades' | 'execution'>('trades')
 
   return (
     <div className="flex flex-col h-full p-4 gap-3 overflow-hidden">
@@ -204,8 +282,18 @@ export default function Trades() {
             </button>
           ))}
         </div>
+        <div className="ml-auto flex gap-1.5">
+          {(['trades', 'execution'] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={clsx('px-3 py-1.5 rounded-lg text-sm transition-colors',
+                tab === t ? 'bg-blue/15 text-blue border border-blue/30 font-medium'
+                          : 'bg-surface border border-border text-dim hover:text-primary')}>
+              {t === 'trades' ? 'Trades' : 'Execution quality'}
+            </button>
+          ))}
+        </div>
       </div>
-      <TradesTab source={source} />
+      {tab === 'trades' ? <TradesTab source={source} /> : <ExecutionTab source={source} />}
     </div>
   )
 }
